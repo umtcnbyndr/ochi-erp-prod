@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ochi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ochi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ochi_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-ochi_erp_v2}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ochi} -d ${POSTGRES_DB:-ochi_erp_v2}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ochi-erp-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ochi}:${POSTGRES_PASSWORD:-ochi_dev_password}@postgres:5432/${POSTGRES_DB:-ochi_erp_v2}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET required}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      AUTH_TRUST_HOST: "true"
+      NODE_ENV: production
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Ochi ERP}
+      NEXT_PUBLIC_DEFAULT_PHARMACY_ID: ${NEXT_PUBLIC_DEFAULT_PHARMACY_ID:-1}
+      PSF_SANITY_THRESHOLD: ${PSF_SANITY_THRESHOLD:-0.1}
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+    driver: local

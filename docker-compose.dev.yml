@@ -1,0 +1,18 @@
+# Sadece PostgreSQL — geliştirme için (app lokal pnpm dev ile çalışır)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ochi-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ochi
+      POSTGRES_PASSWORD: ochi_dev_password
+      POSTGRES_DB: ochi_erp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_dev_data:
+    driver: local
