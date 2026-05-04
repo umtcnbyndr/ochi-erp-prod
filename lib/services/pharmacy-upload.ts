@@ -211,12 +211,27 @@ export async function analyzePharmacyUpload(
   preview.psfThreshold = psfThresholdInfo
 
   // DB lookups (alias-aware)
-  const [allBarcodes, allBrands, allCategories] = await Promise.all([
+  const [allBarcodes, allProductCodes, allBrands, allCategories] = await Promise.all([
     prisma.productBarcode.findMany({
       select: {
         barcode: true,
         productId: true,
         product: { select: { id: true, name: true } },
+      },
+    }),
+    // Eczane kodu eşleştirmesi için Product.pharmacyProductCode + streetPharmacyCode dolulari
+    prisma.product.findMany({
+      where: {
+        OR: [
+          { pharmacyProductCode: { not: null } },
+          { streetPharmacyCode: { not: null } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        pharmacyProductCode: true,
+        streetPharmacyCode: true,
       },
     }),
     prisma.brand.findMany({ select: { name: true, aliases: true } }),
@@ -226,6 +241,18 @@ export async function analyzePharmacyUpload(
   const barcodeMap = new Map<string, { productId: number; productName: string }>()
   for (const b of allBarcodes) {
     barcodeMap.set(b.barcode, { productId: b.product.id, productName: b.product.name })
+  }
+
+  // Eczane kodu lookup (Excel'in "Ürün kodu" kolonu — eczane kendi iç kodu)
+  // Hem pharmacyProductCode (ana depo kodu) hem streetPharmacyCode (cadde kodu) eslesir
+  const productCodeMap = new Map<string, { productId: number; productName: string }>()
+  for (const p of allProductCodes) {
+    if (p.pharmacyProductCode) {
+      productCodeMap.set(p.pharmacyProductCode.trim(), { productId: p.id, productName: p.name })
+    }
+    if (p.streetPharmacyCode) {
+      productCodeMap.set(p.streetPharmacyCode.trim(), { productId: p.id, productName: p.name })
+    }
   }
 
   // file-level duplicate tracking (by barcode)
@@ -306,8 +333,10 @@ export async function analyzePharmacyUpload(
     if (brandName) brandsSeen.set(norm(brandName), brandName)
     if (categoryName) categoriesSeen.set(norm(categoryName), categoryName)
 
-    // barcode lookup
-    const existing = barcodeMap.get(barcode)
+    // Eşleştirme: ÖNCE eczane kodu (pharmacyProductCode/streetPharmacyCode), SONRA barkod fallback
+    // Eczane kendi iç kodu daha stabil — barkod farklı satırlarda tekrarlanabilir, eczane kodu unique.
+    let existing = productCode ? productCodeMap.get(productCode.trim()) : undefined
+    if (!existing) existing = barcodeMap.get(barcode)
     if (existing) {
       if (norm(existing.productName) === norm(name)) {
         preview.rows.push({
