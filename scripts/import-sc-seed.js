@@ -187,6 +187,22 @@ async function main() {
       productMap.set(p.id, created.id)
       inserted++
 
+      // Primary barkod ProductBarcode tablosuna mutlaka eklenmeli
+      // (pharmacy-upload sadece ProductBarcode'a bakıyor)
+      try {
+        await prisma.productBarcode.upsert({
+          where: { barcode: p.primaryBarcode },
+          update: {},
+          create: {
+            productId: created.id,
+            barcode: p.primaryBarcode,
+            isPrimary: true,
+            source: "ERP_PRIMARY",
+          },
+        })
+      } catch {}
+
+      // Alternatif barkodlar
       for (const b of p.barcodes) {
         if (b.barcode === p.primaryBarcode) continue
         try {
