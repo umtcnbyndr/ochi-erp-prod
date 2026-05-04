@@ -405,6 +405,7 @@ export function ProductList({
                 active={sortBy === "name"}
                 dir={sortDir}
                 onClick={applySort}
+                className="min-w-[280px]"
               />
               <TableHead>Marka</TableHead>
               <TableHead>Kategori</TableHead>
@@ -515,10 +516,12 @@ export function ProductList({
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <Link href={`/urunler/${p.id}`} className="hover:underline">
-                      <div className="min-w-0 max-w-[160px]">
-                        <p className="truncate font-medium leading-tight">{p.name}</p>
+                  <TableCell className="min-w-[280px]">
+                    <Link href={`/urunler/${p.id}`} className="hover:underline" title={p.name}>
+                      <div className="min-w-0">
+                        <p className="font-medium leading-tight whitespace-normal break-words">
+                          {p.name}
+                        </p>
                         <div className="flex flex-wrap items-center gap-1 mt-0.5">
                           {p.productType !== "SINGLE" && (
                             <Badge variant="secondary" className="h-4 px-1 text-[10px]">
@@ -1014,6 +1017,7 @@ function SortHeader({
   active,
   dir,
   onClick,
+  className,
 }: {
   label: string
   column: ProductSortBy
@@ -1021,10 +1025,11 @@ function SortHeader({
   active: boolean
   dir: "asc" | "desc"
   onClick: (col: ProductSortBy) => void
+  className?: string
 }) {
   const Icon = !active ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown
   return (
-    <TableHead className={align === "right" ? "text-right" : ""}>
+    <TableHead className={cn(align === "right" ? "text-right" : "", className)}>
       <button
         type="button"
         onClick={() => onClick(column)}
