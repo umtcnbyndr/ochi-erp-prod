@@ -229,10 +229,11 @@ model ProductMarketplaceListing {
   productId     Int
   marketplaceId Int
 
-  // Marketplace'teki kimlik
-  barcode       String?  // TY/HB/n11/Pazarama/PttAvm/Amazon için
-  sku           String?  // Dopigo merchant_sku için
-  externalCode  String?  // marketplace içsel ürün kodu (TY contentId vs)
+  // Marketplace'teki kimlik (Excel kolonlarına direkt karşılık gelir)
+  barcode       String?  // TY barkod → Dopigo Excel "barkod/gtin" kolonu
+  sku           String?  // Dopigo internal SKU → Excel "sku" kolonu (eşleştirme key'i)
+  supplierSku   String?  // Dopigo Tedarikçi SKU → Excel "Tedarikçi SKU" kolonu
+  externalCode  String?  // gelecekte TY contentId vs için (opsiyonel meta)
 
   // Davranış
   isPrimary    Boolean @default(true)

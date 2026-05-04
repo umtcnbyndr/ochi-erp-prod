@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { ListingsSection } from "./[id]/listings-section"
 
 interface InitialData {
   id: number
@@ -207,48 +208,22 @@ export function ProductForm({ brands, categories, initialData }: ProductFormProp
                   <FieldError message={errors.supplierBarcode?.message} />
                 </div>
 
-                <div className="sm:col-span-2 border-t pt-4 mt-2">
-                  <h3 className="text-sm font-semibold mb-1">Pazaryeri Kodları</h3>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Trendyol ve Dopigo'da bu ürünün karşılığı. Manuel eşleştirmeyle dolduruldu.
-                  </p>
-                </div>
-
-                <div>
-                  <Label htmlFor="trendyolBarcode">Trendyol Barkod</Label>
-                  <Input
-                    id="trendyolBarcode"
-                    {...form.register("trendyolBarcode")}
-                    placeholder="Örn: 3337875917919"
-                    className="font-mono text-sm"
-                  />
-                  <FieldError message={errors.trendyolBarcode?.message} />
-                </div>
-
-                <div>
-                  <Label htmlFor="dopigoBarcode">Dopigo Tedarikçi Barkod</Label>
-                  <Input
-                    id="dopigoBarcode"
-                    {...form.register("dopigoBarcode")}
-                    placeholder="Örn: 3337875917919"
-                    className="font-mono text-sm"
-                  />
-                  <FieldError message={errors.dopigoBarcode?.message} />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <Label htmlFor="dopigoSku">Dopigo Ürün Kodu</Label>
-                  <Input
-                    id="dopigoSku"
-                    {...form.register("dopigoSku")}
-                    placeholder="Örn: SKN-CTCLS-G-NTR-3"
-                    className="font-mono text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Dopigo'nun internal SKU'su. Dopigo Excel'in &quot;sku&quot; kolonundan gelir.
-                  </p>
-                  <FieldError message={errors.dopigoSku?.message} />
-                </div>
+                {/* Pazar yeri kayıtları (Listings) — düzenleme modunda göster */}
+                {isEdit && initialData?.id && (
+                  <div className="sm:col-span-2 border-t pt-4 mt-2">
+                    <ListingsSection productId={initialData.id} />
+                  </div>
+                )}
+                {!isEdit && (
+                  <div className="sm:col-span-2 border-t pt-4 mt-2">
+                    <h3 className="text-sm font-semibold mb-1">Pazar Yeri Kayıtları</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Trendyol barkod, Dopigo SKU, tedarikçi barkod gibi
+                      pazaryeri-spesifik bilgileri ürünü kaydettikten sonra bu sayfada
+                      ekleyebilirsin (her marketplace için 1+ kayıt).
+                    </p>
+                  </div>
+                )}
 
                 <div className="sm:col-span-2 border-t pt-2 mt-2" />
 

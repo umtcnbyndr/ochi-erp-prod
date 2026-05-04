@@ -16,6 +16,7 @@ export interface ListingRow {
   marketplaceName: string
   barcode: string | null
   sku: string | null
+  supplierSku: string | null
   externalCode: string | null
   isPrimary: boolean
   isActive: boolean
@@ -45,6 +46,7 @@ export async function getListingsForProduct(productId: number): Promise<ListingR
     marketplaceName: r.marketplace.name,
     barcode: r.barcode,
     sku: r.sku,
+    supplierSku: r.supplierSku,
     externalCode: r.externalCode,
     isPrimary: r.isPrimary,
     isActive: r.isActive,
@@ -62,6 +64,7 @@ export interface CreateListingInput {
   marketplaceId: number
   barcode?: string | null
   sku?: string | null
+  supplierSku?: string | null
   externalCode?: string | null
   isPrimary?: boolean
   isActive?: boolean
@@ -89,6 +92,7 @@ export async function createListing(input: CreateListingInput): Promise<ProductM
         marketplaceId: input.marketplaceId,
         barcode: input.barcode?.trim() || null,
         sku: input.sku?.trim() || null,
+        supplierSku: input.supplierSku?.trim() || null,
         externalCode: input.externalCode?.trim() || null,
         isPrimary: input.isPrimary ?? false,
         isActive: input.isActive ?? true,
@@ -103,6 +107,7 @@ export interface UpdateListingInput {
   id: number
   barcode?: string | null
   sku?: string | null
+  supplierSku?: string | null
   externalCode?: string | null
   isPrimary?: boolean
   isActive?: boolean
@@ -134,6 +139,8 @@ export async function updateListing(input: UpdateListingInput): Promise<ProductM
       data: {
         barcode: input.barcode !== undefined ? input.barcode?.trim() || null : undefined,
         sku: input.sku !== undefined ? input.sku?.trim() || null : undefined,
+        supplierSku:
+          input.supplierSku !== undefined ? input.supplierSku?.trim() || null : undefined,
         externalCode:
           input.externalCode !== undefined ? input.externalCode?.trim() || null : undefined,
         isPrimary: input.isPrimary,
@@ -158,7 +165,14 @@ export async function getActiveListingsForExport(
   productId: number,
   marketplaceName: string,
 ): Promise<
-  Array<{ id: number; barcode: string | null; sku: string | null; isPrimary: boolean; shareStock: boolean }>
+  Array<{
+    id: number
+    barcode: string | null
+    sku: string | null
+    supplierSku: string | null
+    isPrimary: boolean
+    shareStock: boolean
+  }>
 > {
   const rows = await prisma.productMarketplaceListing.findMany({
     where: {
@@ -171,6 +185,7 @@ export async function getActiveListingsForExport(
       id: true,
       barcode: true,
       sku: true,
+      supplierSku: true,
       isPrimary: true,
       shareStock: true,
     },
@@ -186,7 +201,19 @@ export async function getActiveListingsForExport(
 export async function getActiveListingsByMarketplaceBulk(
   productIds: number[],
   marketplaceName: string,
-): Promise<Map<number, Array<{ id: number; barcode: string | null; sku: string | null; isPrimary: boolean; shareStock: boolean }>>> {
+): Promise<
+  Map<
+    number,
+    Array<{
+      id: number
+      barcode: string | null
+      sku: string | null
+      supplierSku: string | null
+      isPrimary: boolean
+      shareStock: boolean
+    }>
+  >
+> {
   if (productIds.length === 0) return new Map()
 
   const rows = await prisma.productMarketplaceListing.findMany({
@@ -201,18 +228,30 @@ export async function getActiveListingsByMarketplaceBulk(
       productId: true,
       barcode: true,
       sku: true,
+      supplierSku: true,
       isPrimary: true,
       shareStock: true,
     },
   })
 
-  const result = new Map<number, Array<{ id: number; barcode: string | null; sku: string | null; isPrimary: boolean; shareStock: boolean }>>()
+  const result = new Map<
+    number,
+    Array<{
+      id: number
+      barcode: string | null
+      sku: string | null
+      supplierSku: string | null
+      isPrimary: boolean
+      shareStock: boolean
+    }>
+  >()
   for (const id of productIds) result.set(id, [])
   for (const r of rows) {
     result.get(r.productId)!.push({
       id: r.id,
       barcode: r.barcode,
       sku: r.sku,
+      supplierSku: r.supplierSku,
       isPrimary: r.isPrimary,
       shareStock: r.shareStock,
     })

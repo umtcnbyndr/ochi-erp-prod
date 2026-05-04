@@ -1150,13 +1150,18 @@ export async function buildExportExcel(
     } else {
       for (const l of tyListings) {
         const copy = [...row]
-        // gtin/barkod listing'in barkoduyla override (Mustela'nın 2. listing'i için XYZ789)
+        // Listing'deki 3 alanı Dopigo Excel kolonlarına yansıt:
+        //   barcode    → "barkod/gtin" kolonu (TY barkod, eşleştirme key'i)
+        //   sku        → "sku" kolonu (Dopigo internal SKU, ana eşleştirme key'i)
+        //   supplierSku → "Tedarikçi SKU" kolonu (distribütör barkod)
         if (l.barcode) {
           copy[headerIndex["barkod/gtin"]] = l.barcode
         }
-        // SKU listing'de varsa override (Dopigo merchant_sku)
         if (l.sku) {
           copy[headerIndex["sku"]] = l.sku
+        }
+        if (l.supplierSku) {
+          copy[headerIndex["Tedarikçi SKU"]] = l.supplierSku
         }
         // Stok davranışı: shareStock=false ise ve primary değilse 0 yaz
         if (options.fields.stock && !l.shareStock && !l.isPrimary) {

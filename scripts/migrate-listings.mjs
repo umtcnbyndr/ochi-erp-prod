@@ -40,86 +40,100 @@ async function main() {
 
   let tyAdded = 0
   let tyExtraAdded = 0
-  let dopigoAdded = 0
+  let backfilled = 0
   let skipped = 0
 
   for (const p of products) {
-    // Trendyol: primaryBarcode'u listing olarak ekle (isPrimary=true)
-    if (trendyol && p.primaryBarcode) {
+    if (!trendyol || !p.primaryBarcode) continue
+
+    // Trendyol primary listing — barcode + Dopigo sku + Dopigo supplier sku BERABER
+    // (her listing 1 Excel satırı: gtin + sku + Tedarikçi SKU)
+    try {
+      const created = await prisma.productMarketplaceListing.create({
+        data: {
+          productId: p.id,
+          marketplaceId: trendyol.id,
+          barcode: p.primaryBarcode,
+          sku: p.dopigoSku?.trim() || null,
+          supplierSku: p.dopigoBarcode?.trim() || null,
+          isPrimary: true,
+          isActive: true,
+          shareStock: true,
+          notes: "Migration: legacy alanlar → primary listing",
+        },
+      })
+      void created
+      tyAdded++
+    } catch {
+      // Zaten var → idempotent: sku/supplierSku boşsa doldur
+      try {
+        const existing = await prisma.productMarketplaceListing.findFirst({
+          where: {
+            productId: p.id,
+            marketplaceId: trendyol.id,
+            barcode: p.primaryBarcode,
+          },
+        })
+        if (existing) {
+          const patch = {}
+          if (!existing.sku && p.dopigoSku?.trim()) {
+            patch.sku = p.dopigoSku.trim()
+          }
+          if (!existing.supplierSku && p.dopigoBarcode?.trim()) {
+            patch.supplierSku = p.dopigoBarcode.trim()
+          }
+          if (Object.keys(patch).length > 0) {
+            await prisma.productMarketplaceListing.update({
+              where: { id: existing.id },
+              data: patch,
+            })
+            backfilled++
+          } else {
+            skipped++
+          }
+        } else {
+          skipped++
+        }
+      } catch {
+        skipped++
+      }
+    }
+
+    // Eğer trendyolBarcode primaryBarcode'dan farklıysa → ek listing (secondary)
+    if (
+      p.trendyolBarcode &&
+      p.trendyolBarcode.trim() &&
+      p.trendyolBarcode !== p.primaryBarcode
+    ) {
       try {
         await prisma.productMarketplaceListing.create({
           data: {
             productId: p.id,
             marketplaceId: trendyol.id,
-            barcode: p.primaryBarcode,
-            isPrimary: true,
+            barcode: p.trendyolBarcode,
+            // Secondary listing: sku/supplierSku ilk başta boş, kullanıcı doldurur
+            isPrimary: false,
             isActive: true,
             shareStock: true,
-            notes: "Migration: Product.primaryBarcode → TY primary listing",
+            notes: "Migration: Product.trendyolBarcode → secondary listing",
           },
         })
-        tyAdded++
-      } catch (e) {
-        // Zaten var (unique constraint)
-        skipped++
-      }
-
-      // Eğer trendyolBarcode primaryBarcode'dan farklıysa → ek listing
-      if (
-        p.trendyolBarcode &&
-        p.trendyolBarcode.trim() &&
-        p.trendyolBarcode !== p.primaryBarcode
-      ) {
-        try {
-          await prisma.productMarketplaceListing.create({
-            data: {
-              productId: p.id,
-              marketplaceId: trendyol.id,
-              barcode: p.trendyolBarcode,
-              isPrimary: false,
-              isActive: true,
-              shareStock: true,
-              notes: "Migration: Product.trendyolBarcode → TY secondary listing",
-            },
-          })
-          tyExtraAdded++
-        } catch {
-          skipped++
-        }
-      }
-    }
-
-    // Dopigo: marketplace'i varsa listing ekle
-    if (dopigoLike && (p.dopigoBarcode || p.dopigoSku)) {
-      const dpBarcode = (p.dopigoBarcode && p.dopigoBarcode.trim()) || p.primaryBarcode
-      try {
-        await prisma.productMarketplaceListing.create({
-          data: {
-            productId: p.id,
-            marketplaceId: dopigoLike.id,
-            barcode: dpBarcode,
-            sku: p.dopigoSku?.trim() || null,
-            isPrimary: true,
-            isActive: true,
-            shareStock: true,
-            notes: "Migration: Product.dopigoBarcode/Sku → Dopigo primary listing",
-          },
-        })
-        dopigoAdded++
+        tyExtraAdded++
       } catch {
         skipped++
       }
     }
   }
+  void dopigoLike
 
   const totalListings = await prisma.productMarketplaceListing.count()
 
   console.log(
     `[migrate-listings] ${products.length} ürün tarandı.\n` +
-      `  ✓ Trendyol primary  : ${tyAdded}\n` +
-      `  ✓ Trendyol secondary: ${tyExtraAdded}\n` +
-      `  ✓ Dopigo primary    : ${dopigoAdded}\n` +
-      `  ⤳ Skip (zaten var)  : ${skipped}\n` +
+      `  ✓ Trendyol primary    : ${tyAdded}\n` +
+      `  ✓ Trendyol secondary  : ${tyExtraAdded}\n` +
+      `  ⟳ sku/supplierSku fill: ${backfilled}\n` +
+      `  ⤳ Skip (zaten dolu)   : ${skipped}\n` +
       `  Toplam ProductMarketplaceListing: ${totalListings}`,
   )
 }
