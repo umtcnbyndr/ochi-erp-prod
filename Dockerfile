@@ -59,6 +59,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 
 # Entrypoint script runs migrations then starts app
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
+COPY --chown=nextjs:nodejs scripts ./scripts
 RUN chmod +x docker-entrypoint.sh
 
 USER nextjs

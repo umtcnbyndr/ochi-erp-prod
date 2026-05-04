@@ -7,5 +7,8 @@ npx prisma migrate deploy || {
   npx prisma db push --skip-generate || true
 }
 
+echo "[ochi-erp] Seeding admin user (idempotent)..."
+node scripts/seed-admin.js || echo "[ochi-erp] Admin seed warning (non-fatal)"
+
 echo "[ochi-erp] Starting Next.js server..."
 exec "$@"
