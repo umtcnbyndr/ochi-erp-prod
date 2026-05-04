@@ -1,7 +1,7 @@
 "use client"
 
 import { type ReactNode } from "react"
-import { Megaphone } from "lucide-react"
+import { Megaphone, ShieldHalf } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 
@@ -10,6 +10,7 @@ interface Props {
   activeCampaignCount: number
   aktarFlow: ReactNode
   campaignSection: ReactNode
+  tyFloorSection: ReactNode
 }
 
 export function AktarTabs({
@@ -17,6 +18,7 @@ export function AktarTabs({
   activeCampaignCount,
   aktarFlow,
   campaignSection,
+  tyFloorSection,
 }: Props) {
   return (
     <Tabs defaultValue="urun-aktar">
@@ -38,10 +40,15 @@ export function AktarTabs({
             </Badge>
           )}
         </TabsTrigger>
+        <TabsTrigger value="ty-floor" className="gap-1.5">
+          <ShieldHalf className="h-3.5 w-3.5" />
+          TY-Floor
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="urun-aktar">{aktarFlow}</TabsContent>
       <TabsContent value="kampanyalar">{campaignSection}</TabsContent>
+      <TabsContent value="ty-floor">{tyFloorSection}</TabsContent>
     </Tabs>
   )
 }

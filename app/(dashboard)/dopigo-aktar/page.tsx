@@ -3,6 +3,7 @@ import { AktarFlow } from "./aktar-flow"
 import { CampaignReminderBanner } from "./campaign-reminder-banner"
 import { CampaignExportSection } from "./campaign-export-section"
 import { AktarTabs } from "./aktar-tabs"
+import { TyFloorFlow } from "./ty-floor-flow"
 import {
   listBrandsAction,
   listLowStockAlertsCountAction,
@@ -56,6 +57,7 @@ export default async function DopigoAktarPage() {
           />
         }
         campaignSection={<CampaignExportSection />}
+        tyFloorSection={<TyFloorFlow brands={brands} />}
       />
     </div>
   )

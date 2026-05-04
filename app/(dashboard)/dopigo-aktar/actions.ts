@@ -15,6 +15,12 @@ import {
 } from "@/lib/services/price-recommendation"
 import { getCampaign, getCampaignProducts, listCampaigns } from "@/lib/services/campaign"
 import { requirePermission } from "@/lib/permissions"
+import {
+  getFloorsForBrand,
+  saveFloorsForBrand,
+  type FloorRow,
+} from "@/lib/services/brand-marketplace-floor"
+import { SaveFloorsForBrandSchema } from "@/lib/validators/brand-marketplace-floor"
 
 export interface BrandOption {
   id: number
@@ -367,6 +373,49 @@ export async function exportCampaignAction(input: {
     return {
       success: false as const,
       error: err instanceof Error ? err.message : "Excel oluşturulamadı",
+    }
+  }
+}
+
+// ============== TY-Floor (Trendyol-Relative Floor) ==============
+
+export async function getFloorsForBrandAction(brandId: number): Promise<{
+  success: true
+  data: FloorRow[]
+} | {
+  success: false
+  error: string
+}> {
+  try {
+    await requirePermission("dopigo-aktar", "view")
+    const rows = await getFloorsForBrand(brandId)
+    return { success: true, data: rows }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Floor verisi okunamadı",
+    }
+  }
+}
+
+export async function saveFloorsForBrandAction(input: {
+  brandId: number
+  rows: Array<{
+    marketplaceId: number
+    multiplier: number
+    isEnabled: boolean
+    notes?: string | null
+  }>
+}) {
+  try {
+    await requirePermission("dopigo-aktar", "edit")
+    const parsed = SaveFloorsForBrandSchema.parse(input)
+    const result = await saveFloorsForBrand(parsed.brandId, parsed.rows)
+    return { success: true as const, data: result }
+  } catch (err) {
+    return {
+      success: false as const,
+      error: err instanceof Error ? err.message : "Kaydedilemedi",
     }
   }
 }

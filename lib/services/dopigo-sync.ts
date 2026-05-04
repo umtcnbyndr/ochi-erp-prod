@@ -26,7 +26,9 @@ import {
   calculateSalePrice,
   calculatePharmacyStockPrice,
   InvalidPricingError,
+  applyTrendyolFloor,
 } from "@/lib/pricing"
+import { TRENDYOL_NAME } from "@/lib/services/brand-marketplace-floor"
 
 // ============== Excel Sütun Yapısı (Dopigo formatı, sıralı) ==============
 
@@ -391,6 +393,7 @@ export type PriceSource =
   | "GIFT_MIN"
   | "OOS"
   | "CAMPAIGN"
+  | "TY_FLOOR" // TY-relative floor devreye girdi (formula/recommendation çok düşüktü)
   | "NO_DATA"
 
 /** Stok yokken fiyatı yüksek tutmak için çarpan (komisyon tarifesi koruma) */
@@ -413,6 +416,12 @@ export function calculateMarketplacePricesFor(
   product: ProductForCalc,
   marketplaces: MarketplaceConfig[],
   activeCampaign?: ActiveCampaignContext | null,
+  /**
+   * Brand × Marketplace TY-floor map (marketplaceId → multiplier).
+   * null/undefined ise floor uygulanmaz (geri uyumlu).
+   * Sadece SINGLE/SET ürünler için (GIFT'lerde TY referansı anlamsız).
+   */
+  floorMap?: Map<number, number> | null,
 ): Record<string, MarketplacePriceCell | null> {
   const result: Record<string, MarketplacePriceCell | null> = {}
   const baseRealPurchase = calculateEffectivePurchasePrice(product)
@@ -621,6 +630,37 @@ export function calculateMarketplacePricesFor(
     }
   }
 
+  // ========== Pass 2: TY-Floor uygulama ==========
+  // GIFT ürünler hariç (TY referansı anlamsız), MANUAL_OVERRIDE'lara dokunulmaz.
+  // TY fiyatı yoksa veya floorMap boşsa hiçbir şey yapılmaz.
+  if (floorMap && floorMap.size > 0 && product.productType !== "GIFT") {
+    const tyCell = result[TRENDYOL_NAME]
+    const trendyolPrice = tyCell?.sale ?? null
+    if (trendyolPrice != null && trendyolPrice > 0) {
+      for (const m of marketplaces) {
+        if (m.name === TRENDYOL_NAME) continue // TY kendine floor uygulamaz
+        const cell = result[m.name]
+        if (!cell) continue
+        if (cell.source === "MANUAL_OVERRIDE") continue // kullanıcı bilinçli
+        const multiplier = floorMap.get(m.id)
+        if (!multiplier || multiplier <= 0) continue
+
+        const floorRes = applyTrendyolFloor({
+          formulaPrice: cell.sale,
+          trendyolPrice,
+          multiplier,
+        })
+        if (floorRes.floorApplied) {
+          result[m.name] = {
+            sale: round2(floorRes.finalPrice),
+            list: round2(floorRes.finalPrice * LIST_PRICE_MULTIPLIER),
+            source: "TY_FLOOR",
+          }
+        }
+      }
+    }
+  }
+
   return result
 }
 
@@ -748,12 +788,18 @@ export async function buildExportPreview(
     })(),
   ])
 
+  // TY-floor map'ini brand bazlı toplu çek (N+1 önlemi)
+  const brandIds = Array.from(new Set(products.map((p) => p.brand.id)))
+  const { getFloorMapsForBrands } = await import("./brand-marketplace-floor")
+  const floorMapsByBrand = await getFloorMapsForBrands(brandIds)
+
   const rows: ExportPreviewRow[] = []
   for (const p of products) {
     const purchase = calculateEffectivePurchasePrice(p)
     const stockInfo = calculateEffectiveStock(p)
     const activeCampaign = activeCampaignMap.get(p.id) ?? null
-    const marketplacePrices = calculateMarketplacePricesFor(p, marketplaces, activeCampaign)
+    const floorMap = floorMapsByBrand.get(p.brand.id) ?? null
+    const marketplacePrices = calculateMarketplacePricesFor(p, marketplaces, activeCampaign, floorMap)
 
     let warning: string | undefined
     if (purchase == null) warning = "Alış fiyatı yok"

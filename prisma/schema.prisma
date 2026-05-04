@@ -146,6 +146,7 @@ model Brand {
   products Product[]
   priceListItems BrandPriceList[]
   campaigns      Campaign[]
+  marketplaceFloors BrandMarketplaceFloor[]
 
   @@index([pharmacyId])
 }
@@ -198,6 +199,48 @@ model Marketplace {
   updatedAt      DateTime @updatedAt
 
   prices ProductMarketplacePrice[]
+  brandFloors BrandMarketplaceFloor[]
+}
+
+/**
+ * Trendyol-relative price floor (marka × marketplace)
+ *
+ * Mantık: Trendyol fiyatı her marketplace için referans/zemin görevi görür.
+ * Bir markanın bir marketplace'teki fiyatı, TY fiyatının belirli bir oranının
+ * altına inmemeli. Skinceuticals + Hepsiburada için multiplier=0.9375 → HB fiyatı
+ * en az TY×0.9375 olur. TY=8000 ise HB minimum 7500 TL.
+ *
+ * Trendyol için ayrıca kayıt tutulmaz (kendi referans). Diğer marketplace'ler
+ * için kayıt yoksa floor uygulanmaz (klasik formül kazanır).
+ *
+ * Multiplier > 1.0 → premium (TY üstü, ör 1.05 = TY'nin %5 üstü)
+ * Multiplier = 1.0 → eşit
+ * Multiplier < 1.0 → kontrollü indirim (ör 0.9375 = TY'nin %93.75'i)
+ *
+ * Kullanım yeri: dopigo-sync.ts (Dopigo Excel export). İleride
+ * price-recommendation.ts'e de eklenebilir.
+ */
+model BrandMarketplaceFloor {
+  id            Int @id @default(autoincrement())
+  brandId       Int
+  marketplaceId Int
+
+  // TY fiyatına göre minimum çarpan (örn 0.9375 → TY × 0.9375 floor).
+  // Bu marketplace için fiyat bu değerin altına inmez.
+  multiplier Decimal @db.Decimal(6, 4)
+
+  isEnabled Boolean @default(true)
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brand       Brand       @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  marketplace Marketplace @relation(fields: [marketplaceId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, marketplaceId])
+  @@index([brandId])
+  @@index([marketplaceId])
 }
 
 model Product {

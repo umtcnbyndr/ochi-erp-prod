@@ -16,5 +16,8 @@ node scripts/import-sc-seed.js || echo "[ochi-erp] SC seed warning (non-fatal)"
 echo "[ochi-erp] Backfilling ProductBarcode (primary barcodes)..."
 node scripts/backfill-product-barcodes.js || echo "[ochi-erp] Barcode backfill warning (non-fatal)"
 
+echo "[ochi-erp] Seeding Skinceuticals TY-Floor multipliers (idempotent)..."
+node scripts/seed-sc-floor.mjs || echo "[ochi-erp] SC floor seed warning (non-fatal)"
+
 echo "[ochi-erp] Starting Next.js server..."
 exec "$@"

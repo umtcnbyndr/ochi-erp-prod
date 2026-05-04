@@ -783,6 +783,7 @@ type PriceSourceLabel =
   | "GIFT_MIN"
   | "OOS"
   | "CAMPAIGN"
+  | "TY_FLOOR"
   | "NO_DATA"
 
 const SOURCE_BADGE: Record<
@@ -818,6 +819,11 @@ const SOURCE_BADGE: Record<
     color: "bg-pink-500",
     label: "K",
     tooltip: "Aktif kampanya — alış indirimli, satış formülle hesaplandı",
+  },
+  TY_FLOOR: {
+    color: "bg-amber-500",
+    label: "T",
+    tooltip: "TY-Floor devreye girdi — Trendyol fiyatına göre minimuma yükseltildi",
   },
   NO_DATA: { color: "bg-rose-500", label: "?", tooltip: "Hesaplanamadı" },
 }
