@@ -10,5 +10,8 @@ npx prisma migrate deploy || {
 echo "[ochi-erp] Seeding admin user (idempotent)..."
 node scripts/seed-admin.js || echo "[ochi-erp] Admin seed warning (non-fatal)"
 
+echo "[ochi-erp] Importing Skinceuticals seed (idempotent)..."
+node scripts/import-sc-seed.js || echo "[ochi-erp] SC seed warning (non-fatal)"
+
 echo "[ochi-erp] Starting Next.js server..."
 exec "$@"
