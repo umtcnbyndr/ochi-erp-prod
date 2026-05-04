@@ -1,6 +1,9 @@
 import { auth } from "@/auth"
-import { Sidebar } from "@/components/layout/sidebar"
-import { Topbar } from "@/components/layout/topbar"
+import { prisma } from "@/lib/db"
+import { DashboardShell } from "@/components/layout/dashboard-shell"
+import { getUserPermissions, type UserPermissionMap } from "@/lib/permissions"
+
+export const dynamic = "force-dynamic"
 
 export default async function DashboardLayout({
   children,
@@ -9,27 +12,38 @@ export default async function DashboardLayout({
 }) {
   const session = await auth()
 
-  return (
-    <div className="flex min-h-dvh">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:block lg:w-64 lg:shrink-0">
-        <div className="fixed inset-y-0 left-0 w-64">
-          <Sidebar />
-        </div>
-      </div>
+  // Bekleyen takas özeti (sidebar badge + uyarı için)
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
-      {/* Main area */}
-      <div className="flex min-h-dvh flex-1 flex-col">
-        <Topbar
-          userName={session?.user?.name}
-          userEmail={session?.user?.email}
-        />
-        <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[1600px]">
-            {children}
-          </div>
-        </main>
-      </div>
-    </div>
+  // Kullanıcı izinlerini çek (ADMIN ise null — tüm menüler açık)
+  let permissions: UserPermissionMap | null = null
+  const userId = session?.user?.id
+  const userRole = (session?.user as { role?: string } | undefined)?.role
+
+  const [pendingTakasCount, overdueTakasCount] = await Promise.all([
+    prisma.exchange.count({ where: { status: "PENDING" } }),
+    prisma.exchange.count({
+      where: { status: "PENDING", createdAt: { lte: sevenDaysAgo } },
+    }),
+  ]).catch(() => [0, 0] as const)
+
+  const hasOverdueTakas = overdueTakasCount > 0
+
+  // ADMIN olmayan kullanıcılar için izinleri yükle
+  if (userId && userRole !== "ADMIN") {
+    permissions = await getUserPermissions(userId)
+  }
+
+  return (
+    <DashboardShell
+      userName={session?.user?.name}
+      userEmail={session?.user?.email}
+      pendingTakasCount={pendingTakasCount}
+      hasOverdueTakas={hasOverdueTakas}
+      permissions={permissions}
+    >
+      {children}
+    </DashboardShell>
   )
 }

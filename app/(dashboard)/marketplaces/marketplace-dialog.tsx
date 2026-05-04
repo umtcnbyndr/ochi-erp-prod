@@ -23,8 +23,12 @@ interface MarketplaceData {
   name?: string
   commissionRate?: number | string
   shippingCost?: number | string
+  extraCost?: number | string
   withholdingTax?: number | string
   targetProfit?: number | string
+  defaultUndercutBuffer?: number | string | null
+  defaultUndercutBufferPct?: number | string | null
+  minProfitFloor?: number | string | null
   isActive?: boolean
 }
 
@@ -43,6 +47,7 @@ export function MarketplaceDialog({
   // Live preview state
   const [commission, setCommission] = useState(Number(initialData?.commissionRate ?? 0))
   const [shipping, setShipping] = useState(Number(initialData?.shippingCost ?? 0))
+  const [extra, setExtra] = useState(Number(initialData?.extraCost ?? 0))
   const [stopaj, setStopaj] = useState(Number(initialData?.withholdingTax ?? 0))
   const [profit, setProfit] = useState(Number(initialData?.targetProfit ?? 20))
 
@@ -55,6 +60,7 @@ export function MarketplaceDialog({
         marketplace: {
           commissionRate: commission,
           shippingCost: shipping,
+          extraCost: extra,
           withholdingTax: stopaj,
           targetProfit: profit,
         },
@@ -128,6 +134,22 @@ export function MarketplaceDialog({
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="extraCost">Ek Maliyet (TL)</Label>
+              <Input
+                id="extraCost"
+                name="extraCost"
+                type="number"
+                step="0.01"
+                min="0"
+                value={extra}
+                onChange={(e) => setExtra(Number(e.target.value))}
+                placeholder="0"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Formülde kargoyla birlikte paya eklenir (ambalaj, return işlem ücreti vs.)
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="withholdingTax">Stopaj (%)</Label>
               <Input
                 id="withholdingTax"
@@ -160,6 +182,73 @@ export function MarketplaceDialog({
               Örnek: 100 TL alışlı bir ürünün bu pazar yerindeki satış fiyatı
             </p>
             <p className="mt-1 font-semibold tabular-nums">{preview}</p>
+          </div>
+
+          <div className="space-y-3 rounded-lg border bg-amber-500/5 p-3">
+            <p className="text-xs font-semibold text-amber-700">
+              BuyBox Tabanlı Akıllı Fiyat Önerisi (opsiyonel)
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="defaultUndercutBufferPct" className="text-xs">
+                  Tampon (%) — önerilen
+                </Label>
+                <Input
+                  id="defaultUndercutBufferPct"
+                  name="defaultUndercutBufferPct"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="50"
+                  defaultValue={
+                    initialData?.defaultUndercutBufferPct != null
+                      ? Number(initialData.defaultUndercutBufferPct)
+                      : ""
+                  }
+                  placeholder="5"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="defaultUndercutBuffer" className="text-xs">
+                  Tampon (TL) — fallback
+                </Label>
+                <Input
+                  id="defaultUndercutBuffer"
+                  name="defaultUndercutBuffer"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={
+                    initialData?.defaultUndercutBuffer != null
+                      ? Number(initialData.defaultUndercutBuffer)
+                      : ""
+                  }
+                  placeholder="Yüzde yoksa"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="minProfitFloor" className="text-xs">
+                  Min Kar Tabanı (%)
+                </Label>
+                <Input
+                  id="minProfitFloor"
+                  name="minProfitFloor"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="99"
+                  defaultValue={
+                    initialData?.minProfitFloor != null
+                      ? Number(initialData.minProfitFloor)
+                      : ""
+                  }
+                  placeholder="Boşsa hedef kar"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              BuyBox altına inerken bu kar tabanından aşağı düşmez. Tampon ve floor sadece &quot;Fiyat Önerileri&quot; sayfasında devreye girer.
+            </p>
           </div>
 
           <div className="flex items-center gap-2">

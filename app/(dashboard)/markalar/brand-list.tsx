@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { MoreVertical, Pencil, Trash2, Tag } from "lucide-react"
+import Link from "next/link"
+import { MoreVertical, Pencil, Trash2, Tag, FileSpreadsheet } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +29,7 @@ import { formatNumber, formatPercent } from "@/lib/utils"
 interface Brand {
   id: number
   name: string
+  aliases: string[]
   invoiceDiscount1: string | number
   invoiceDiscount2: string | number
   invoiceDiscount3: string | number
@@ -36,6 +38,9 @@ interface Brand {
   yearEndDiscount3: string | number
   pharmacyMargin: string | number
   pharmacyStockRule: number
+  targetProfit?: string | number | null
+  priceUndercutBuffer?: string | number
+  priceUndercutBufferPct?: string | number
   distributorInfo: string | null
   contactInfo: string | null
   _count?: { products: number }
@@ -80,7 +85,22 @@ export function BrandList({ brands }: { brands: Brand[] }) {
                 .filter((n) => n > 0)
               return (
                 <TableRow key={b.id}>
-                  <TableCell className="font-medium">{b.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{b.name}</span>
+                      {b.aliases.length > 0 &&
+                        b.aliases.map((a) => (
+                          <Badge
+                            key={a}
+                            variant="outline"
+                            className="text-[10px] font-normal text-muted-foreground"
+                            title="Eski isim / alternatif yazım"
+                          >
+                            {a}
+                          </Badge>
+                        ))}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-sm">
                     {inv.length > 0
                       ? inv.map((n) => formatPercent(n)).join(" + ")
@@ -101,11 +121,23 @@ export function BrandList({ brands }: { brands: Brand[] }) {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <RowMenu
-                      onEdit={() => setEditing(b)}
-                      onDelete={() => onDelete(b.id, b.name)}
-                      disabled={pending}
-                    />
+                    <div className="flex items-center justify-end gap-1">
+                      <Link href={`/markalar/${b.id}/liste-fiyat`}>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Liste Fiyatı"
+                          aria-label="Liste fiyatı"
+                        >
+                          <FileSpreadsheet className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                      <RowMenu
+                        onEdit={() => setEditing(b)}
+                        onDelete={() => onDelete(b.id, b.name)}
+                        disabled={pending}
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               )
@@ -126,6 +158,19 @@ export function BrandList({ brands }: { brands: Brand[] }) {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{b.name}</p>
+                    {b.aliases.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                        {b.aliases.map((a) => (
+                          <Badge
+                            key={a}
+                            variant="outline"
+                            className="text-[10px] font-normal text-muted-foreground"
+                          >
+                            {a}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {(b._count?.products ?? 0)} ürün
                     </p>
@@ -153,6 +198,7 @@ export function BrandList({ brands }: { brands: Brand[] }) {
           initialData={{
             id: editing.id,
             name: editing.name,
+            aliases: editing.aliases,
             invoiceDiscount1: Number(editing.invoiceDiscount1),
             invoiceDiscount2: Number(editing.invoiceDiscount2),
             invoiceDiscount3: Number(editing.invoiceDiscount3),
@@ -161,6 +207,10 @@ export function BrandList({ brands }: { brands: Brand[] }) {
             yearEndDiscount3: Number(editing.yearEndDiscount3),
             pharmacyMargin: Number(editing.pharmacyMargin),
             pharmacyStockRule: editing.pharmacyStockRule,
+            targetProfit:
+              editing.targetProfit != null ? Number(editing.targetProfit) : null,
+            priceUndercutBuffer: Number(editing.priceUndercutBuffer ?? 0),
+            priceUndercutBufferPct: Number(editing.priceUndercutBufferPct ?? 0),
             distributorInfo: editing.distributorInfo,
             contactInfo: editing.contactInfo,
           }}

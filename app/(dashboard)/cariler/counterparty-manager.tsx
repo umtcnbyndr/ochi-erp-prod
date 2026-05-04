@@ -99,66 +99,68 @@ export function CounterpartyList({ list }: { list: Counterparty[] }) {
 
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="rounded-xl border bg-card divide-y">
         {list.map((c) => {
           const Icon = TYPE_ICON[c.type]
+          const exchangeCount = c._count?.exchanges ?? 0
           return (
-            <Card key={c.id}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold truncate">{c.name}</p>
-                      <Badge variant="outline" className="mt-1">
-                        {TYPE_LABEL[c.type]}
-                      </Badge>
-                    </div>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon-sm" disabled={pending}>
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setEditing(c)}>
-                        <Pencil className="h-4 w-4" /> Düzenle
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => onDelete(c.id, c.name)}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" /> Sil
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <div className="mt-3 space-y-1.5 text-sm">
-                  {c.phone && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Phone className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{c.phone}</span>
-                    </div>
-                  )}
-                  {c.address && (
-                    <div className="flex items-start gap-2 text-muted-foreground">
-                      <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      <span className="line-clamp-2">{c.address}</span>
-                    </div>
-                  )}
-                </div>
-                {(c._count?.exchanges ?? 0) > 0 && (
-                  <div className="mt-3 border-t pt-3">
-                    <Badge variant="secondary">
-                      {c._count?.exchanges} takas işlemi
+            <div
+              key={c.id}
+              className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Icon className="h-4 w-4 text-muted-foreground" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-medium truncate">{c.name}</p>
+                  <Badge variant="outline" className="h-5 text-[10px] px-1.5">
+                    {TYPE_LABEL[c.type]}
+                  </Badge>
+                  {exchangeCount > 0 && (
+                    <Badge variant="secondary" className="h-5 text-[10px] px-1.5">
+                      {exchangeCount} takas
                     </Badge>
+                  )}
+                </div>
+                {(c.phone || c.address) && (
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                    {c.phone && (
+                      <span className="inline-flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {c.phone}
+                      </span>
+                    )}
+                    {c.address && (
+                      <span className="inline-flex items-center gap-1 max-w-md truncate">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{c.address}</span>
+                      </span>
+                    )}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" disabled={pending}>
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setEditing(c)}>
+                    <Pencil className="h-4 w-4" /> Düzenle
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => onDelete(c.id, c.name)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" /> Sil
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )
         })}
       </div>

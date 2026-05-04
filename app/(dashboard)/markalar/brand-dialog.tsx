@@ -20,6 +20,7 @@ import { createBrand, updateBrand } from "./actions"
 interface BrandInitialData {
   id?: number
   name?: string
+  aliases?: string[]
   invoiceDiscount1?: number | string
   invoiceDiscount2?: number | string
   invoiceDiscount3?: number | string
@@ -28,6 +29,9 @@ interface BrandInitialData {
   yearEndDiscount3?: number | string
   pharmacyMargin?: number | string
   pharmacyStockRule?: number
+  targetProfit?: number | string | null
+  priceUndercutBuffer?: number | string
+  priceUndercutBufferPct?: number | string
   distributorInfo?: string | null
   contactInfo?: string | null
 }
@@ -79,6 +83,21 @@ export function BrandDialog({ open, onOpenChange, initialData }: BrandDialogProp
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="aliases">Eski isimler / Alternatif yazımlar</Label>
+            <Textarea
+              id="aliases"
+              name="aliases"
+              rows={2}
+              defaultValue={(initialData?.aliases ?? []).join(", ")}
+              placeholder="Virgülle ayırın — örn: CAUDALIE, Caudalie Fransa"
+              className="resize-none text-sm"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Excel yüklemesinde bu isimlerle gelen satırlar da bu markaya bağlanır. İsmi değiştirirsen eski isim otomatik buraya eklenir.
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <h3 className="text-sm font-semibold">Fatura Altı İskontolar (%)</h3>
             <div className="grid grid-cols-3 gap-3">
               <PercentField name="invoiceDiscount1" label="1" defaultValue={initialData?.invoiceDiscount1} />
@@ -122,6 +141,85 @@ export function BrandDialog({ open, onOpenChange, initialData }: BrandDialogProp
                 defaultValue={initialData?.pharmacyStockRule ?? 0}
               />
             </div>
+          </div>
+
+          <div className="space-y-2 rounded-lg border bg-blue-500/5 p-3">
+            <p className="text-sm font-semibold text-blue-700">
+              Pazaryeri Hedef Kar Marjı (opsiyonel)
+            </p>
+            <div className="space-y-1">
+              <Label htmlFor="targetProfit" className="text-xs">
+                Hedef Kar (%)
+              </Label>
+              <Input
+                id="targetProfit"
+                name="targetProfit"
+                type="number"
+                step="0.01"
+                min="0"
+                max="99"
+                defaultValue={
+                  initialData?.targetProfit != null
+                    ? Number(initialData.targetProfit)
+                    : ""
+                }
+                placeholder="Boş bırakılırsa marketplace değeri kullanılır"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Doluysa <strong>tüm pazar yerlerinde</strong> bu marka için marketplace
+                hedef karını <strong>ezer</strong>. Boş bırakılırsa marketplace&apos;in
+                kendi hedef karı kullanılır. <em>Eczane Kar Marjı ile karıştırılmamalı —
+                bu pazaryeri satış fiyatı için.</em>
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-lg border bg-amber-500/5 p-3">
+            <p className="text-sm font-semibold text-amber-700">
+              BuyBox Tampon — Rakibin Altına Ne Kadar İnecek
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="priceUndercutBufferPct" className="text-xs">
+                  Yüzde Tampon (%) — önerilen
+                </Label>
+                <Input
+                  id="priceUndercutBufferPct"
+                  name="priceUndercutBufferPct"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="50"
+                  defaultValue={Number(initialData?.priceUndercutBufferPct ?? 0)}
+                  placeholder="5"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Orantılı: BuyBox 1000 → 950, BuyBox 5000 → 4750
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="priceUndercutBuffer" className="text-xs">
+                  TL Tampon (sabit) — fallback
+                </Label>
+                <Input
+                  id="priceUndercutBuffer"
+                  name="priceUndercutBuffer"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={Number(initialData?.priceUndercutBuffer ?? 0)}
+                  placeholder="0"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Sabit: BuyBox − bu değer (% varsa atlanır)
+                </p>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Yüzde &gt; TL &gt; Pazaryeri default. <strong>%5 önerilir</strong> — orantılı
+              koruma. BuyBox 1000 ise 950, BuyBox 5000 (rakip yanılsa bile) 4750 — agresif
+              ama orantılı.
+            </p>
           </div>
 
           <div className="space-y-2">

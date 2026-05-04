@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -34,6 +35,7 @@ import {
 interface Subcategory {
   id: number
   name: string
+  aliases: string[]
   categoryId: number
   _count?: { products: number }
 }
@@ -41,6 +43,7 @@ interface Subcategory {
 interface Category {
   id: number
   name: string
+  aliases: string[]
   subcategories: Subcategory[]
   _count?: { products: number }
 }
@@ -95,7 +98,23 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
                   </Button>
                   <Folder className="h-4 w-4 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{cat.name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="truncate font-medium">{cat.name}</p>
+                      {cat.aliases.length > 0 && (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {cat.aliases.map((a) => (
+                            <Badge
+                              key={a}
+                              variant="outline"
+                              className="text-[10px] text-muted-foreground"
+                              title="Eski isim — import sırasında bu isimle de eşleşir"
+                            >
+                              {a}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       {cat.subcategories.length} alt kategori · {cat._count?.products ?? 0} ürün
                     </p>
@@ -137,7 +156,20 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
                           key={sub.id}
                           className="flex items-center justify-between gap-2 rounded-md bg-background px-3 py-2 text-sm"
                         >
-                          <span className="truncate">{sub.name}</span>
+                          <div className="min-w-0 flex-1 flex items-center gap-1.5 flex-wrap">
+                            <span className="truncate">{sub.name}</span>
+                            {sub.aliases.length > 0 &&
+                              sub.aliases.map((a) => (
+                                <Badge
+                                  key={a}
+                                  variant="outline"
+                                  className="text-[10px] text-muted-foreground"
+                                  title="Eski isim"
+                                >
+                                  {a}
+                                </Badge>
+                              ))}
+                          </div>
                           <div className="flex items-center gap-1">
                             <Badge variant="outline" className="tabular-nums text-xs">
                               {sub._count?.products ?? 0}
@@ -219,6 +251,7 @@ function CategoryDialog({
   const isCategory = activeState.kind === "category"
   const existingId = activeState.data?.id
   const existingName = activeState.data?.name ?? ""
+  const existingAliases = activeState.data?.aliases ?? []
   const existingCategoryId =
     activeState.kind === "subcategory"
       ? activeState.data?.categoryId ?? activeState.categoryId
@@ -266,6 +299,20 @@ function CategoryDialog({
               defaultValue={existingName}
               placeholder="Örn: Cilt Bakımı"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="aliases">Eski isimler / Alternatif yazımlar</Label>
+            <Textarea
+              id="aliases"
+              name="aliases"
+              rows={2}
+              defaultValue={existingAliases.join(", ")}
+              placeholder="Virgülle ayırın — örn: KOZMETİK, Kozmetikler"
+              className="resize-none text-sm"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Excel yüklemesinde bu isimlerle gelen satırlar da bu {isCategory ? "kategoriye" : "alt kategoriye"} bağlanır. İsmi değiştirirsen eski isim otomatik buraya eklenir.
+            </p>
           </div>
           {!isCategory && existingCategoryId !== undefined && (
             <div className="space-y-2">

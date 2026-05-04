@@ -48,3 +48,54 @@ export async function recalculateMarketplacePrices(productId: number): Promise<v
   })
   await Promise.all(ops)
 }
+
+/**
+ * Belirli bir marketplace için TÜM ürünlerin satış fiyatlarını yeniden hesaplar.
+ * Marketplace ayarları değiştiğinde (komisyon, kargo, stopaj, hedef kar) veya
+ * yeni marketplace oluşturulduğunda çağrılır.
+ *
+ * Marketplace pasifleştirildiyse ProductMarketplacePrice kayıtları silinir.
+ */
+export async function recalculatePricesForMarketplace(marketplaceId: number): Promise<void> {
+  const marketplace = await prisma.marketplace.findUnique({
+    where: { id: marketplaceId },
+  })
+  if (!marketplace) return
+
+  // Pasif ise kayıtları temizle
+  if (!marketplace.isActive) {
+    await prisma.productMarketplacePrice.deleteMany({ where: { marketplaceId } })
+    return
+  }
+
+  // Alış fiyatı olan aktif ürünler
+  const products = await prisma.product.findMany({
+    where: { mainPurchasePrice: { not: null }, status: "ACTIVE" },
+    select: { id: true, mainPurchasePrice: true },
+  })
+
+  const ops = products.map(async (p) => {
+    if (!p.mainPurchasePrice) return
+    try {
+      const calculated = calculateSalePrice({
+        netPurchasePrice: p.mainPurchasePrice,
+        marketplace: {
+          commissionRate: marketplace.commissionRate,
+          shippingCost: marketplace.shippingCost,
+          withholdingTax: marketplace.withholdingTax,
+          targetProfit: marketplace.targetProfit,
+        },
+      })
+      await prisma.productMarketplacePrice.upsert({
+        where: {
+          productId_marketplaceId: { productId: p.id, marketplaceId },
+        },
+        create: { productId: p.id, marketplaceId, calculatedPrice: calculated },
+        update: { calculatedPrice: calculated, lastCalculatedAt: new Date() },
+      })
+    } catch (err) {
+      if (!(err instanceof InvalidPricingError)) throw err
+    }
+  })
+  await Promise.all(ops)
+}

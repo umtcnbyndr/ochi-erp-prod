@@ -6,12 +6,14 @@ declare module "next-auth" {
       id: string
       role?: "ADMIN" | "MANAGER" | "STAFF"
       pharmacyId?: number
+      username?: string
     } & DefaultSession["user"]
   }
 
   interface User {
     role?: "ADMIN" | "MANAGER" | "STAFF"
     pharmacyId?: number
+    username?: string
   }
 }
 
@@ -19,5 +21,6 @@ declare module "next-auth/jwt" {
   interface JWT {
     role?: "ADMIN" | "MANAGER" | "STAFF"
     pharmacyId?: number
+    username?: string
   }
 }

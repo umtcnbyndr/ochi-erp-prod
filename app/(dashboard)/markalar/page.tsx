@@ -23,6 +23,9 @@ export default async function MarkalarPage() {
     yearEndDiscount2: b.yearEndDiscount2.toString(),
     yearEndDiscount3: b.yearEndDiscount3.toString(),
     pharmacyMargin: b.pharmacyMargin.toString(),
+    targetProfit: b.targetProfit?.toString() ?? null,
+    priceUndercutBuffer: b.priceUndercutBuffer.toString(),
+    priceUndercutBufferPct: b.priceUndercutBufferPct.toString(),
   }))
 
   return (

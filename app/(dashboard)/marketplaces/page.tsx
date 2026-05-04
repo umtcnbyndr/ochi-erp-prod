@@ -15,8 +15,12 @@ export default async function MarketplacesPage() {
     ...m,
     commissionRate: m.commissionRate.toString(),
     shippingCost: m.shippingCost.toString(),
+    extraCost: m.extraCost.toString(),
     withholdingTax: m.withholdingTax.toString(),
     targetProfit: m.targetProfit.toString(),
+    defaultUndercutBuffer: m.defaultUndercutBuffer?.toString() ?? null,
+    defaultUndercutBufferPct: m.defaultUndercutBufferPct?.toString() ?? null,
+    minProfitFloor: m.minProfitFloor?.toString() ?? null,
   }))
 
   return (

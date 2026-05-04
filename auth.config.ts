@@ -37,12 +37,16 @@ export const authConfig = {
       if (token.pharmacyId !== undefined && session.user) {
         ;(session.user as { pharmacyId?: number }).pharmacyId = token.pharmacyId as number
       }
+      if (token.username && session.user) {
+        ;(session.user as { username?: string }).username = token.username as string
+      }
       return session
     },
     jwt({ token, user }) {
       if (user) {
         token.role = (user as { role?: string }).role
         token.pharmacyId = (user as { pharmacyId?: number }).pharmacyId
+        token.username = (user as { username?: string }).username
       }
       return token
     },

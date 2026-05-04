@@ -34,6 +34,17 @@
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
+    /* Status soft backgrounds — semantic, dark-mode aware */
+    --info: 199 89% 48%;
+    --info-soft: 199 89% 96%;
+    --success-soft: 142 71% 95%;
+    --warning-soft: 38 92% 95%;
+    --danger-soft: 0 84% 96%;
+
+    /* Campaign accent (pink) */
+    --accent-campaign: 330 81% 60%;
+    --accent-campaign-soft: 330 81% 96%;
+
     --border: 214 32% 91%;
     --input: 214 32% 91%;
     --ring: 222 47% 11%;
@@ -71,6 +82,15 @@
 
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
+
+    /* Dark mode soft backgrounds — koyu tonlar */
+    --info: 199 89% 48%;
+    --info-soft: 199 89% 16%;
+    --success-soft: 142 71% 12%;
+    --warning-soft: 38 92% 14%;
+    --danger-soft: 0 62% 16%;
+    --accent-campaign: 330 81% 60%;
+    --accent-campaign-soft: 330 81% 16%;
 
     --border: 217 32% 17%;
     --input: 217 32% 17%;

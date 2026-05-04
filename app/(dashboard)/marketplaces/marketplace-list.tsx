@@ -21,8 +21,12 @@ interface Marketplace {
   name: string
   commissionRate: string | number
   shippingCost: string | number
+  extraCost?: string | number
   withholdingTax: string | number
   targetProfit: string | number
+  defaultUndercutBuffer?: string | number | null
+  defaultUndercutBufferPct?: string | number | null
+  minProfitFloor?: string | number | null
   isActive: boolean
 }
 
@@ -112,8 +116,21 @@ export function MarketplaceList({ marketplaces }: { marketplaces: Marketplace[] 
             name: editing.name,
             commissionRate: Number(editing.commissionRate),
             shippingCost: Number(editing.shippingCost),
+            extraCost: Number(editing.extraCost ?? 0),
             withholdingTax: Number(editing.withholdingTax),
             targetProfit: Number(editing.targetProfit),
+            defaultUndercutBuffer:
+              editing.defaultUndercutBuffer != null
+                ? Number(editing.defaultUndercutBuffer)
+                : null,
+            defaultUndercutBufferPct:
+              editing.defaultUndercutBufferPct != null
+                ? Number(editing.defaultUndercutBufferPct)
+                : null,
+            minProfitFloor:
+              editing.minProfitFloor != null
+                ? Number(editing.minProfitFloor)
+                : null,
             isActive: editing.isActive,
           }}
         />

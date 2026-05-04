@@ -1,22 +1,27 @@
 /**
  * Eczane (Cadde) Stok → Ana Stok Fiyat Dönüşümü
  *
- * Mantık (kullanıcı tarafından verildi):
- *   - Cadde alış fiyatı: KDV hariç, fatura altı iskonto zaten dahil
- *   - Yıl sonu iskonto 1, 2, 3: sırayla cumulatif uygula
- *   - Eczane kar marjı: markup olarak ekle
- *   - KDV: en sonda ekle
+ * Mantık:
+ *   - Cadde alış fiyatı: KDV hariç, yıl sonu iskonto HARİÇ (henüz uygulanmamış)
+ *   - Yıl sonu iskonto 1, 2, 3: sırayla bölme ile uygula (fiyatı düşürür)
+ *     Neden bölme? Çünkü eczane faturası iskontoyu içermiyor,
+ *     yıl sonunda toplu alıma karşı fatura kesilecek.
+ *     %16 iskonto → / 1.16 (gerçek maliyeti bulmak için)
+ *   - KDV: ekle (× 1.20)
+ *   - Eczane kar marjı: ekle (× 1.05)
  *
- * Örnek (kullanıcı doğrulaması):
- *   cadde_alış=100, yıl_sonu_1=%10, kar_marjı=%5, KDV=%20
- *   100 × 0.90 × 1.05 × 1.20 = 113.40 TL ✓
+ * Örnek:
+ *   cadde_alış=4942, yıl_sonu_1=%16, KDV=%20, kar_marjı=%5
+ *   4942 / 1.16 = 4260.80 (iskonto sonrası gerçek maliyet)
+ *   4260.80 × 1.20 = 5112.96 (KDV ekle)
+ *   5112.96 × 1.05 = 5368.61 (eczane kar marjı)
  */
 
 import type { BrandPricingConfig } from "./types"
 import { round4, toNumber, type NumericInput } from "./utils"
 
 export interface PharmacyStockPriceInput {
-  streetPurchasePrice: NumericInput      // KDV hariç, fatura altı iskonto dahil
+  streetPurchasePrice: NumericInput      // KDV hariç, yıl sonu iskonto HARİÇ
   vatRate: NumericInput                  // % (örn: 20 = %20)
   brand: {
     yearEndDiscount1: NumericInput
@@ -34,16 +39,21 @@ export function calculatePharmacyStockPrice({
   let p = toNumber(streetPurchasePrice)
   if (p <= 0) return 0
 
-  // Yıl sonu iskontolar (sırayla cumulatif)
-  p *= 1 - toNumber(brand.yearEndDiscount1) / 100
-  p *= 1 - toNumber(brand.yearEndDiscount2) / 100
-  p *= 1 - toNumber(brand.yearEndDiscount3) / 100
+  // Yıl sonu iskontolar (sırayla bölme — fiyat iskonto öncesi geliyor)
+  const yed1 = toNumber(brand.yearEndDiscount1)
+  if (yed1 > 0) p /= 1 + yed1 / 100
+
+  const yed2 = toNumber(brand.yearEndDiscount2)
+  if (yed2 > 0) p /= 1 + yed2 / 100
+
+  const yed3 = toNumber(brand.yearEndDiscount3)
+  if (yed3 > 0) p /= 1 + yed3 / 100
+
+  // KDV ekle
+  p *= 1 + toNumber(vatRate) / 100
 
   // Eczane kar marjı (markup)
   p *= 1 + toNumber(brand.pharmacyMargin) / 100
-
-  // KDV (en sonda)
-  p *= 1 + toNumber(vatRate) / 100
 
   return round4(p)
 }

@@ -4,8 +4,23 @@ import {
   calculateUsablePharmacyStock,
 } from "@/lib/pricing/pharmacy-stock-price"
 
-describe("calculatePharmacyStockPrice — kullanıcı 113.4 örneği", () => {
-  it("100 TL cadde alış × yıl sonu %10 × kar %5 × KDV %20 = 113.40 TL", () => {
+describe("calculatePharmacyStockPrice — bölme formülü", () => {
+  it("4942 TL cadde alış / yıl sonu %16 × KDV %20 × kar %5 = 5368.61", () => {
+    const result = calculatePharmacyStockPrice({
+      streetPurchasePrice: 4942.53,
+      vatRate: 20,
+      brand: {
+        yearEndDiscount1: 16,
+        yearEndDiscount2: 0,
+        yearEndDiscount3: 0,
+        pharmacyMargin: 5,
+      },
+    })
+    // 4942.53 / 1.16 × 1.20 × 1.05 = 5368.61
+    expect(result).toBeCloseTo(5368.61, 0)
+  })
+
+  it("100 TL cadde alış / yıl sonu %10 × KDV %20 × kar %5", () => {
     const result = calculatePharmacyStockPrice({
       streetPurchasePrice: 100,
       vatRate: 20,
@@ -16,8 +31,8 @@ describe("calculatePharmacyStockPrice — kullanıcı 113.4 örneği", () => {
         pharmacyMargin: 5,
       },
     })
-    // 100 × 0.9 × 1.05 × 1.2 = 113.4
-    expect(result).toBeCloseTo(113.4, 2)
+    // 100 / 1.10 × 1.20 × 1.05 = 114.5454...
+    expect(result).toBeCloseTo(114.55, 1)
   })
 
   it("iskonto yok, kar yok, sadece KDV", () => {
@@ -34,8 +49,8 @@ describe("calculatePharmacyStockPrice — kullanıcı 113.4 örneği", () => {
     expect(result).toBe(120)
   })
 
-  it("3 yıl sonu iskonto cumulatif", () => {
-    // 100 × 0.9 × 0.9 × 0.9 × 1.0 × 1.0 = 72.9
+  it("3 yıl sonu iskonto cumulatif bölme", () => {
+    // 100 / 1.10 / 1.10 / 1.10 = 75.1315
     const result = calculatePharmacyStockPrice({
       streetPurchasePrice: 100,
       vatRate: 0,
@@ -46,7 +61,7 @@ describe("calculatePharmacyStockPrice — kullanıcı 113.4 örneği", () => {
         pharmacyMargin: 0,
       },
     })
-    expect(result).toBeCloseTo(72.9, 2)
+    expect(result).toBeCloseTo(75.13, 1)
   })
 
   it("0 fiyat → 0 döner", () => {

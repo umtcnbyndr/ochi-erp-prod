@@ -33,15 +33,15 @@ export function LoginForm() {
   return (
     <form action={onSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="email">E-posta</Label>
+        <Label htmlFor="username">Kullanıcı Adı</Label>
         <Input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
+          id="username"
+          name="username"
+          type="text"
+          autoComplete="username"
           required
           disabled={pending}
-          placeholder="ornek@eczane.com"
+          placeholder="admin"
         />
       </div>
       <div className="space-y-2">

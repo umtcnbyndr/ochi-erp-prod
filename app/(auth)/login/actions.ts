@@ -8,14 +8,14 @@ export async function loginAction(
 ): Promise<{ error?: string } | void> {
   try {
     await signIn("credentials", {
-      email: formData.get("email"),
+      username: formData.get("username"),
       password: formData.get("password"),
       redirect: false,
     })
   } catch (err) {
     if (err instanceof AuthError) {
       if (err.type === "CredentialsSignin") {
-        return { error: "E-posta veya şifre hatalı." }
+        return { error: "Kullanıcı adı veya şifre hatalı." }
       }
       return { error: "Giriş sırasında bir hata oluştu." }
     }

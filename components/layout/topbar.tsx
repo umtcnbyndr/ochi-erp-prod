@@ -2,30 +2,77 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Menu, Search, Bell, User, LogOut, Settings } from "lucide-react"
+import { usePathname } from "next/navigation"
+import { Menu, PanelLeft, PanelLeftClose, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Sidebar } from "./sidebar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { navGroups } from "./nav-items"
+import type { UserPermissionMap } from "@/lib/permissions"
 
 interface TopbarProps {
   userName?: string | null
   userEmail?: string | null
+  pendingTakasCount?: number
+  hasOverdueTakas?: boolean
+  permissions?: UserPermissionMap | null
+  sidebarCollapsed?: boolean
+  onToggleSidebar?: () => void
 }
 
-export function Topbar({ userName, userEmail }: TopbarProps) {
+export function Topbar({
+  userName,
+  userEmail,
+  pendingTakasCount,
+  hasOverdueTakas,
+  permissions,
+  sidebarCollapsed,
+  onToggleSidebar,
+}: TopbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const pathname = usePathname()
+
+  // Tüm nav item'ları href -> label haritasına çevir
+  const allItems = navGroups.flatMap((g) => g.items)
+  const labelByHref = new Map(allItems.map((i) => [i.href, i.label]))
+
+  // Statik segment label'ları (rota dışı, sadece breadcrumb için)
+  const staticSegmentLabels: Record<string, string> = {
+    yeni: "Yeni",
+    "ice-aktar": "İçe Aktar",
+    kullanicilar: "Kullanıcılar",
+    "trendyol-form": "Trendyol Ayarları",
+  }
+
+  // Pathname'i kümülatif segment'lere böl
+  // /urunler/123 -> [{ href: "/urunler", label: "Ürünler" }, { href: "/urunler/123", label: "Detay" }]
+  type Crumb = { href: string; label: string; isLast: boolean }
+  const crumbs: Crumb[] = (() => {
+    if (pathname === "/panel" || pathname === "/") return []
+    const segments = pathname.split("/").filter(Boolean)
+    const list: Crumb[] = []
+    let acc = ""
+    segments.forEach((seg, idx) => {
+      acc += `/${seg}`
+      const isLast = idx === segments.length - 1
+      const navLabel = labelByHref.get(acc)
+      if (navLabel) {
+        list.push({ href: acc, label: navLabel, isLast })
+        return
+      }
+      const staticLabel = staticSegmentLabels[seg]
+      if (staticLabel) {
+        list.push({ href: acc, label: staticLabel, isLast })
+        return
+      }
+      // Dinamik segment (ID, slug vb.) → "Detay"
+      list.push({ href: acc, label: "Detay", isLast })
+    })
+    return list
+  })()
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 px-3 backdrop-blur-md sm:px-4 lg:px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur-md sm:px-4 lg:px-6">
       {/* Mobile menu */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetTrigger asChild>
@@ -39,75 +86,63 @@ export function Topbar({ userName, userEmail }: TopbarProps) {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-72 p-0">
-          <Sidebar onNavigate={() => setMobileOpen(false)} />
+          <Sidebar
+            onNavigate={() => setMobileOpen(false)}
+            userName={userName}
+            userEmail={userEmail}
+            pendingTakasCount={pendingTakasCount}
+            hasOverdueTakas={hasOverdueTakas}
+            permissions={permissions}
+          />
         </SheetContent>
       </Sheet>
 
-      {/* Search */}
-      <div className="relative flex-1 max-w-md">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          placeholder="Barkod, ürün adı, marka ara..."
-          className="h-9 pl-9 bg-muted/40"
-          aria-label="Arama"
-        />
-      </div>
-
-      {/* Right actions */}
-      <div className="ml-auto flex items-center gap-1 sm:gap-2">
+      {/* Desktop sidebar toggle */}
+      {onToggleSidebar && (
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Bildirimler"
-          className="hidden sm:inline-flex"
+          className="hidden lg:inline-flex"
+          onClick={onToggleSidebar}
+          aria-label={sidebarCollapsed ? "Menüyü aç" : "Menüyü kapat"}
         >
-          <Bell className="h-4 w-4" />
+          {sidebarCollapsed ? (
+            <PanelLeft className="h-4 w-4" />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" />
+          )}
         </Button>
+      )}
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Kullanıcı menüsü">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                <User className="h-4 w-4" />
-              </div>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>
-              <div className="flex flex-col">
-                <span className="truncate text-sm font-medium">
-                  {userName ?? "Kullanıcı"}
-                </span>
-                {userEmail && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {userEmail}
-                  </span>
-                )}
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/ayarlar" className="cursor-pointer">
-                <Settings className="h-4 w-4" />
-                Ayarlar
+      {/* Breadcrumb */}
+      <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm">
+        <Link
+          href="/panel"
+          className="text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Ana Sayfa
+        </Link>
+        {crumbs.map((crumb) => (
+          <span key={crumb.href} className="flex items-center gap-1.5">
+            <ChevronRight
+              aria-hidden="true"
+              className="h-3.5 w-3.5 text-muted-foreground"
+            />
+            {crumb.isLast ? (
+              <span aria-current="page" className="font-medium">
+                {crumb.label}
+              </span>
+            ) : (
+              <Link
+                href={crumb.href}
+                className="text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {crumb.label}
               </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <form action="/api/auth/signout" method="post" className="w-full">
-                <button
-                  type="submit"
-                  className="flex w-full items-center gap-2 text-destructive"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Çıkış yap
-                </button>
-              </form>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+            )}
+          </span>
+        ))}
+      </nav>
     </header>
   )
 }

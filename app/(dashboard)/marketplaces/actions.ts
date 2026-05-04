@@ -3,6 +3,14 @@
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/db"
 import { marketplaceSchema } from "@/lib/validators/marketplace"
+import { recalculatePricesForMarketplace } from "@/lib/services/marketplace-price"
+import { requirePermission } from "@/lib/permissions"
+
+function revalidateRelatedPaths() {
+  revalidatePath("/marketplaces")
+  revalidatePath("/urunler")
+  revalidatePath("/urunler/[id]", "page")
+}
 
 export type ActionResult = { success: true } | { success: false; error: string }
 
@@ -20,8 +28,11 @@ export async function createMarketplace(formData: FormData): Promise<ActionResul
     return { success: false, error: parsed.error.issues[0]?.message ?? "Geçersiz" }
   }
   try {
-    await prisma.marketplace.create({ data: parsed.data })
-    revalidatePath("/marketplaces")
+    await requirePermission("marketplaces", "edit")
+    const created = await prisma.marketplace.create({ data: parsed.data })
+    // Yeni marketplace eklendi → tüm ürünler için fiyat hesapla
+    await recalculatePricesForMarketplace(created.id)
+    revalidateRelatedPaths()
     return { success: true }
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("Unique")) {
@@ -37,29 +48,28 @@ export async function updateMarketplace(id: number, formData: FormData): Promise
     return { success: false, error: parsed.error.issues[0]?.message ?? "Geçersiz" }
   }
   try {
+    await requirePermission("marketplaces", "edit")
     await prisma.marketplace.update({ where: { id }, data: parsed.data })
-    revalidatePath("/marketplaces")
+    // Ayarlar değişti (komisyon/kargo/stopaj/kar/aktiflik) → ürün fiyatlarını yenile
+    await recalculatePricesForMarketplace(id)
+    revalidateRelatedPaths()
     return { success: true }
-  } catch {
-    return { success: false, error: "Güncellenemedi" }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Güncellenemedi" }
   }
 }
 
 export async function deleteMarketplace(id: number): Promise<ActionResult> {
-  const priceCount = await prisma.productMarketplacePrice.count({
-    where: { marketplaceId: id },
-  })
-  if (priceCount > 0) {
-    return {
-      success: false,
-      error: `${priceCount} ürün fiyatında kullanılıyor, silinemez. Önce pasife alabilirsiniz.`,
-    }
-  }
   try {
+    await requirePermission("marketplaces", "edit")
+    // ProductMarketplacePrice kayıtları cascade ile silinir
     await prisma.marketplace.delete({ where: { id } })
-    revalidatePath("/marketplaces")
+    revalidateRelatedPaths()
     return { success: true }
-  } catch {
-    return { success: false, error: "Silinemedi" }
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes("Foreign key")) {
+      return { success: false, error: "Bu pazar yeri kullanımda, silinemez" }
+    }
+    return { success: false, error: err instanceof Error ? err.message : "Silinemedi" }
   }
 }

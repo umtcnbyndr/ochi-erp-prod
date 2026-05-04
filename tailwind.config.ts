@@ -66,6 +66,18 @@ const config: Config = {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
         },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          soft: "hsl(var(--info-soft))",
+        },
+        // Soft backgrounds (semantic, dark-mode aware)
+        "success-soft": "hsl(var(--success-soft))",
+        "warning-soft": "hsl(var(--warning-soft))",
+        "danger-soft": "hsl(var(--danger-soft))",
+        campaign: {
+          DEFAULT: "hsl(var(--accent-campaign))",
+          soft: "hsl(var(--accent-campaign-soft))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -1,13 +1,16 @@
 import Link from "next/link"
 import { Plus, Package, Upload } from "lucide-react"
 import { prisma } from "@/lib/db"
-import { listProducts } from "@/lib/services/product"
-import { PageHeader } from "@/components/common/page-header"
+import { listProducts, type ProductSortBy, type ProductListFilters } from "@/lib/services/product"
+import { calculatePharmacyStockPrice } from "@/lib/pricing"
+import { buildActiveCampaignMap } from "@/lib/services/campaign"
 import { EmptyState } from "@/components/common/empty-state"
+import { PageHeader } from "@/components/common/page-header"
 import { Button } from "@/components/ui/button"
 import { ProductFilters } from "./filters"
 import { ProductList } from "./product-list"
 import { Pagination } from "./pagination"
+import { TrendyolSyncButton } from "./trendyol-sync-button"
 
 export const dynamic = "force-dynamic"
 
@@ -16,6 +19,17 @@ function parseInt0(v: string | undefined | null, def?: number): number | undefin
   const n = Number(v)
   return Number.isFinite(n) ? n : def
 }
+
+const VALID_SORT: ProductSortBy[] = [
+  "name",
+  "mainStock",
+  "streetStock",
+  "mainPurchasePrice",
+  "streetPurchasePrice",
+  "psf",
+  "createdAt",
+  "updatedAt",
+]
 
 export default async function UrunlerPage({
   searchParams,
@@ -28,18 +42,33 @@ export default async function UrunlerPage({
   const pageSizeRaw = (sp.ps as string | undefined) ?? "50"
   const pageSize: number | "all" = pageSizeRaw === "all" ? "all" : parseInt0(pageSizeRaw, 50)!
 
-  const filters = {
+  const sortByRaw = (sp.sort as string | undefined) ?? "name"
+  const sortBy: ProductSortBy = (VALID_SORT as string[]).includes(sortByRaw)
+    ? (sortByRaw as ProductSortBy)
+    : "name"
+  const sortDir: "asc" | "desc" = sp.dir === "desc" ? "desc" : "asc"
+
+  const filters: ProductListFilters = {
     search: (sp.q as string | undefined)?.trim() || undefined,
     brandId: parseInt0(sp.brand as string | undefined),
     categoryId: parseInt0(sp.cat as string | undefined),
     subcategoryId: parseInt0(sp.sub as string | undefined),
     productType: (sp.tip as string | undefined) as "SINGLE" | "SET" | "GIFT" | undefined,
+    status: (sp.status as string | undefined) as "ACTIVE" | "PASSIVE" | undefined,
     minStock: parseInt0(sp.minStock as string | undefined),
     maxStock: parseInt0(sp.maxStock as string | undefined),
+    // Hızlı filtre chip'leri
+    psfMissing: sp.psfMissing === "1",
+    mainPriceMissing: sp.mainPriceMissing === "1",
+    streetPriceMissing: sp.streetPriceMissing === "1",
+    hasStreet: sp.hasStreet === "1",
+    hasExchange: sp.hasExchange === "1",
+    pharmacyStockOnly: sp.pharmacyStockOnly === "1",
+    lowStock: sp.lowStock === "1",
   }
 
-  const [data, brands, categories] = await Promise.all([
-    listProducts({ filters, page, pageSize }),
+  const [data, brands, categories, campaignMap] = await Promise.all([
+    listProducts({ filters, page, pageSize, sortBy, sortDir }),
     prisma.brand.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.category.findMany({
       orderBy: { name: "asc" },
@@ -49,45 +78,125 @@ export default async function UrunlerPage({
         subcategories: { orderBy: { name: "asc" }, select: { id: true, name: true } },
       },
     }),
+    buildActiveCampaignMap(),
   ])
 
-  // Serialize Decimals
-  const items = data.items.map((p) => ({
-    ...p,
-    vatRate: p.vatRate.toString(),
-    mainPurchasePrice: p.mainPurchasePrice?.toString() ?? null,
-    streetPurchasePrice: p.streetPurchasePrice?.toString() ?? null,
-    psf: p.psf?.toString() ?? null,
-    setExtraDiscount: p.setExtraDiscount?.toString() ?? null,
-  }))
+  // Serialize Decimals + cadde KDV dahil hesaplanmış fiyat
+  const items = data.items.map((p) => {
+    const calculatedStreetPrice =
+      p.streetPurchasePrice != null
+        ? calculatePharmacyStockPrice({
+            streetPurchasePrice: p.streetPurchasePrice,
+            vatRate: p.vatRate,
+            brand: {
+              yearEndDiscount1: p.brand.yearEndDiscount1,
+              yearEndDiscount2: p.brand.yearEndDiscount2,
+              yearEndDiscount3: p.brand.yearEndDiscount3,
+              pharmacyMargin: p.brand.pharmacyMargin,
+            },
+          })
+        : null
 
-  const isEmpty = data.total === 0 && !filters.search && !filters.brandId && !filters.categoryId
+    // Kampanya bilgisi
+    const campInfo = campaignMap.get(p.id)
+    let activeCampaign: {
+      campaignId: number
+      campaignName: string
+      discountRate: number
+      campaignPurchasePrice: number | null
+    } | null = null
+
+    if (campInfo && p.psf != null) {
+      const psf = Number(p.psf)
+      const mainPurch = p.mainPurchasePrice != null ? Number(p.mainPurchasePrice) : null
+      const discountTL = (psf * campInfo.discountRate) / 100
+      const campaignPurchase =
+        mainPurch != null ? Math.max(0, mainPurch - discountTL) : null
+      activeCampaign = {
+        campaignId: campInfo.campaignId,
+        campaignName: campInfo.campaignName,
+        discountRate: campInfo.discountRate,
+        campaignPurchasePrice:
+          campaignPurchase != null
+            ? Math.round(campaignPurchase * 100) / 100
+            : null,
+      }
+    }
+
+    return {
+      ...p,
+      vatRate: p.vatRate.toString(),
+      mainPurchasePrice: p.mainPurchasePrice?.toString() ?? null,
+      streetPurchasePrice: p.streetPurchasePrice?.toString() ?? null,
+      calculatedStreetPrice: calculatedStreetPrice?.toString() ?? null,
+      psf: p.psf?.toString() ?? null,
+      setExtraDiscount: p.setExtraDiscount?.toString() ?? null,
+      virtualPsf: p.virtualPsf != null ? p.virtualPsf.toFixed(2) : null,
+      virtualMainPurchasePrice:
+        p.virtualMainPurchasePrice != null
+          ? p.virtualMainPurchasePrice.toFixed(2)
+          : null,
+      brand: p.brand ? { id: p.brand.id, name: p.brand.name } : null,
+      activeCampaign,
+    }
+  })
+
+  const hasAnyFilter =
+    !!filters.search ||
+    !!filters.brandId ||
+    !!filters.categoryId ||
+    !!filters.subcategoryId ||
+    !!filters.productType ||
+    !!filters.status ||
+    !!filters.psfMissing ||
+    !!filters.mainPriceMissing ||
+    !!filters.streetPriceMissing ||
+    !!filters.hasStreet ||
+    !!filters.hasExchange ||
+    !!filters.lowStock ||
+    filters.minStock != null ||
+    filters.maxStock != null
+
+  const isEmpty = data.total === 0 && !hasAnyFilter
+
+  // Son Trendyol senkron zamanı
+  const lastTySync = await prisma.trendyolSyncRun.findFirst({
+    orderBy: { startedAt: "desc" },
+    select: { startedAt: true, finishedAt: true, totalFetched: true, status: true },
+  })
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Ürünler"
-        description={`${data.total} ürün · barkod, marka, kategori, stok ile filtrele`}
+        description="Ürün kataloğunu yönetin"
         actions={
-          <div className="flex items-center gap-2">
+          <>
+            <TrendyolSyncButton lastSync={lastTySync} />
             <Button variant="outline" asChild>
               <Link href="/urunler/ice-aktar">
                 <Upload className="h-4 w-4" />
-                <span className="hidden sm:inline">Excel</span>
+                <span className="hidden sm:inline">Excel'den İçe Aktar</span>
+                <span className="sm:hidden">Excel</span>
               </Link>
             </Button>
             <Button asChild>
               <Link href="/urunler/yeni">
                 <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Yeni Ürün</span>
-                <span className="sm:hidden">Ekle</span>
+                Yeni Ürün
               </Link>
             </Button>
-          </div>
+          </>
         }
       />
 
-      <ProductFilters brands={brands} categories={categories} />
+      <ProductFilters
+        brands={brands}
+        categories={categories}
+        pageSize={pageSize}
+        total={data.total}
+        loaded={items.length}
+      />
 
       {isEmpty ? (
         <EmptyState
@@ -119,7 +228,12 @@ export default async function UrunlerPage({
         />
       ) : (
         <>
-          <ProductList products={items} />
+          <ProductList
+            products={items}
+            sortBy={sortBy}
+            sortDir={sortDir}
+            categories={categories}
+          />
           <Pagination total={data.total} page={page} pageSize={pageSize} />
         </>
       )}

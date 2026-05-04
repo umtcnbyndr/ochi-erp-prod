@@ -24,11 +24,12 @@ async function main() {
 
   // Admin user
   const adminEmail = "admin@ochi-erp.local"
-  const passwordHash = await bcrypt.hash("admin123", 10)
+  const passwordHash = await bcrypt.hash("admin123", 12)
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },
     update: {},
     create: {
+      username: "admin",
       email: adminEmail,
       name: "Admin",
       passwordHash,
@@ -93,6 +94,23 @@ async function main() {
     },
   })
   console.log(`  ✓ Sample brand: ${sampleBrand.name}`)
+
+  // Default counterparty — Eczane (takas Senaryo A/B için varsayılan)
+  const existingPharmacy = await prisma.counterparty.findFirst({
+    where: { name: "Eczane", type: "PHARMACY" },
+  })
+  if (!existingPharmacy) {
+    await prisma.counterparty.create({
+      data: {
+        name: "Eczane",
+        type: "PHARMACY",
+        notes: "Varsayılan eczane — takas giriş/çıkış için",
+      },
+    })
+    console.log(`  ✓ Default counterparty: Eczane`)
+  } else {
+    console.log(`  · Eczane carisi zaten var`)
+  }
 
   console.log("✅ Seed tamamlandı!")
 }

@@ -1,186 +1,192 @@
+import { redirect } from "next/navigation"
 import Link from "next/link"
 import {
-  Package,
   PackagePlus,
   PackageMinus,
   Repeat2,
-  Upload,
-  ArrowRight,
-  Store,
-  Tags,
+  Sparkles,
+  Download,
+  ArrowUpRight,
+  AlertTriangle,
+  TrendingDown,
+  Megaphone,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { prisma } from "@/lib/db"
+import { getAuthUser } from "@/lib/permissions"
+import { getDashboardSnapshot } from "@/lib/services/dashboard-data"
+import { MetricCard } from "@/components/ui/metric-card"
+import { FreshnessRow } from "@/components/panel/freshness-row"
+import { CriticalStockWidget } from "@/components/panel/critical-stock-widget"
+import { BuyboxLostWidget } from "@/components/panel/buybox-lost-widget"
+import { PendingCampaignsWidget } from "@/components/panel/pending-campaigns-widget"
+import {
+  TrendingWidget,
+  ExpiringWidget,
+  PassiveCandidateWidget,
+} from "@/components/panel/info-widgets"
+import { NotesWidget } from "@/components/panel/notes-widget"
 
 export const dynamic = "force-dynamic"
 
-async function getStats() {
-  const [productCount, brandCount, marketplaceCount, lowStockCount] =
-    await Promise.all([
-      prisma.product.count({ where: { status: "ACTIVE" } }).catch(() => 0),
-      prisma.brand.count().catch(() => 0),
-      prisma.marketplace.count({ where: { isActive: true } }).catch(() => 0),
-      prisma.product
-        .count({
-          where: {
-            status: "ACTIVE",
-            AND: [{ minStock: { gt: 0 } }],
-          },
-        })
-        .catch(() => 0),
-    ])
-  return { productCount, brandCount, marketplaceCount, lowStockCount }
+function getGreeting(): string {
+  const h = new Date().getHours()
+  if (h < 6) return "İyi geceler"
+  if (h < 12) return "Günaydın"
+  if (h < 18) return "İyi günler"
+  return "İyi akşamlar"
 }
 
-export default async function DashboardPage() {
-  const stats = await getStats()
+export default async function PanelPage() {
+  const user = await getAuthUser()
+  if (!user) redirect("/login")
 
+  const data = await getDashboardSnapshot(user.id)
+  const greeting = getGreeting()
+  const today = new Date().toLocaleDateString("tr-TR", {
+    day: "numeric",
+    month: "long",
+    weekday: "long",
+  })
+
+  // Quick action shortcuts (header sağında pill bar)
   const quickActions = [
-    { href: "/urun-giris", icon: PackagePlus, label: "Ürün Giriş", color: "bg-emerald-500" },
-    { href: "/urun-cikis", icon: PackageMinus, label: "Ürün Çıkış", color: "bg-rose-500" },
-    { href: "/takas", icon: Repeat2, label: "Takas", color: "bg-amber-500" },
-    { href: "/eczane-yukleme", icon: Upload, label: "Eczane Yükle", color: "bg-sky-500" },
+    { href: "/urun-giris", icon: PackagePlus, label: "Giriş" },
+    { href: "/urun-cikis", icon: PackageMinus, label: "Çıkış" },
+    { href: "/takas", icon: Repeat2, label: "Takas" },
+    { href: "/fiyat-onerileri", icon: Sparkles, label: "Fiyat" },
+    { href: "/dopigo-aktar", icon: Download, label: "Dopigo" },
   ]
 
-  const statCards = [
-    { label: "Aktif Ürün", value: stats.productCount, icon: Package, href: "/urunler" },
-    { label: "Marka", value: stats.brandCount, icon: Tags, href: "/markalar" },
-    { label: "Pazar Yeri", value: stats.marketplaceCount, icon: Store, href: "/marketplaces" },
-    { label: "Düşük Stok", value: stats.lowStockCount, icon: Package, href: "/urunler?filter=low-stock" },
-  ]
+  // Üst KPI özeti (acil eylem öncesi büyük metric card grid)
+  const criticalCount = Array.isArray(data.criticalStock)
+    ? data.criticalStock.length
+    : data.criticalStock.total
+  const criticalUrgent = Array.isArray(data.criticalStock) ? 0 : data.criticalStock.urgent
+  const buyboxLostCount = data.buyboxLost.total
+  const pendingCount = data.pendingCampaigns.length
+  const pendingAlertCount = data.pendingCampaigns.filter((c) => c.priceRevertAlert).length
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Panel</h1>
-          <p className="text-sm text-muted-foreground">
-            Ochi ERP — Eczane yönetim paneli
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{greeting}</h1>
+          <p className="text-xs text-muted-foreground mt-1 capitalize">{today}</p>
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
+          {quickActions.map((qa) => {
+            const Icon = qa.icon
+            return (
+              <Link
+                key={qa.href}
+                href={qa.href}
+                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {qa.label}
+              </Link>
+            )
+          })}
         </div>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
-        {statCards.map((stat) => {
-          const Icon = stat.icon
-          return (
-            <Link key={stat.label} href={stat.href}>
-              <Card className="transition-shadow hover:shadow-md">
-                <CardContent className="flex items-center justify-between p-4 sm:p-5">
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-medium text-muted-foreground sm:text-sm">
-                      {stat.label}
-                    </p>
-                    <p className="mt-1 text-2xl font-bold tabular-nums sm:text-3xl">
-                      {stat.value}
-                    </p>
-                  </div>
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted sm:h-12 sm:w-12">
-                    <Icon className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          )
-        })}
-      </div>
+      {/* SECTION 1: Sabah Rutini — 4 status MetricCard */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Sabah Rutini
+          </h2>
+          <p className="text-xs text-muted-foreground">Bugün yüklenen veriler</p>
+        </div>
+        <FreshnessRow
+          pharmacy={data.freshness.pharmacy}
+          dopigo={data.freshness.dopigo}
+          favorite={data.freshness.favorite}
+          buybox={data.freshness.buybox}
+        />
+      </section>
 
-      {/* Quick actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base sm:text-lg">Hızlı İşlemler</CardTitle>
-          <CardDescription>
-            Sık kullanılan işlemlere tek tıkla erişin
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {quickActions.map((action) => {
-              const Icon = action.icon
-              return (
-                <Link key={action.href} href={action.href}>
-                  <div className="group flex flex-col items-center gap-2 rounded-xl border p-4 transition-all hover:border-primary/40 hover:shadow-sm sm:gap-3 sm:p-6">
-                    <div
-                      className={`flex h-11 w-11 items-center justify-center rounded-lg ${action.color} text-white shadow-sm sm:h-12 sm:w-12`}
-                    >
-                      <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
-                    </div>
-                    <span className="text-center text-xs font-medium sm:text-sm">
-                      {action.label}
-                    </span>
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
+      {/* SECTION 2: Günün Özeti — 3 KPI MetricCard (kritik durum sayıları) */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Günün Özeti
+          </h2>
+          <Link
+            href="/raporlar"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Tüm raporlar
+            <ArrowUpRight className="h-3 w-3" />
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <MetricCard
+            label="Kritik Stok"
+            value={criticalCount}
+            subtitle={criticalCount > 0 ? "ürün sipariş bekliyor" : "stok kritikliği yok"}
+            icon={AlertTriangle}
+            tone={criticalUrgent > 0 ? "danger" : criticalCount > 0 ? "warning" : "success"}
+            href="/siparisler/yeni"
+            delta={
+              criticalUrgent > 0
+                ? { value: criticalUrgent, label: "acil", direction: "down" }
+                : undefined
+            }
+          />
+          <MetricCard
+            label="BuyBox Kayıp"
+            value={buyboxLostCount}
+            subtitle={
+              buyboxLostCount > 0
+                ? "rakipten pahalı görünüyor"
+                : "BuyBox kaybı yok"
+            }
+            icon={TrendingDown}
+            tone={buyboxLostCount > 0 ? "info" : "success"}
+            href="/fiyat-onerileri"
+          />
+          <MetricCard
+            label="Bekleyen Kampanya"
+            value={pendingCount}
+            subtitle={
+              pendingAlertCount > 0
+                ? `${pendingAlertCount} kampanya 24+ saattir bekliyor`
+                : pendingCount > 0
+                  ? "tahsilat bekleniyor"
+                  : "bekleyen yok"
+            }
+            icon={Megaphone}
+            tone={pendingAlertCount > 0 ? "warning" : pendingCount > 0 ? "campaign" : "success"}
+            href="/kampanyalar"
+          />
+        </div>
+      </section>
 
-      {/* Next steps */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base sm:text-lg">Sonraki Adımlar</CardTitle>
-          <CardDescription>Sistem kurulumu için yapılması gerekenler</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <StepItem
-            step={1}
-            title="Markaları tanımla"
-            description="İskonto oranları, eczane stok kuralı, distribütör bilgileri"
-            href="/markalar"
-          />
-          <StepItem
-            step={2}
-            title="Kategori yapısını kur"
-            description="2 seviye: Kategori + Alt Kategori"
-            href="/kategoriler"
-          />
-          <StepItem
-            step={3}
-            title="Pazar yerlerini yapılandır"
-            description="Trendyol, Hepsiburada, Kendi Site — komisyon, kargo, stopaj, hedef kar"
-            href="/marketplaces"
-          />
-          <StepItem
-            step={4}
-            title="Cari listesini oluştur"
-            description="Takas için karşı taraf kayıtları"
-            href="/cariler"
-          />
-        </CardContent>
-      </Card>
+      {/* SECTION 3: Acil Eylem — detaylı widget'lar */}
+      <section className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Detay
+        </h2>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <CriticalStockWidget data={data.criticalStock} />
+          <BuyboxLostWidget data={data.buyboxLost} />
+          <PendingCampaignsWidget campaigns={data.pendingCampaigns} />
+        </div>
+      </section>
+
+      {/* SECTION 4: Bilgi widget'ları + Notlar (4 sütun grid) */}
+      <section className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Bilgilendirme
+        </h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <TrendingWidget items={data.trending} />
+          <ExpiringWidget items={data.expiring} />
+          <PassiveCandidateWidget items={data.passiveCandidates} />
+          <NotesWidget notes={data.notes} />
+        </div>
+      </section>
     </div>
-  )
-}
-
-function StepItem({
-  step,
-  title,
-  description,
-  href,
-}: {
-  step: number
-  title: string
-  description: string
-  href: string
-}) {
-  return (
-    <Link href={href}>
-      <div className="group flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-accent sm:gap-4 sm:p-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground sm:h-10 sm:w-10">
-          {step}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium sm:text-base">{title}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground sm:text-sm">
-            {description}
-          </p>
-        </div>
-        <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-      </div>
-    </Link>
   )
 }

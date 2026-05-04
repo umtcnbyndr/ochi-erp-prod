@@ -26,6 +26,10 @@ const vatRate = z.coerce
 export const productSchema = z.object({
   name: z.string().trim().min(1, "Ürün adı zorunlu").max(300),
   primaryBarcode: z.string().trim().min(1, "Ana barkod zorunlu").max(100),
+  supplierBarcode: optionalString,
+  trendyolBarcode: optionalString,
+  dopigoBarcode: optionalString,
+  dopigoSku: optionalString,
   additionalBarcodes: z
     .array(z.string().trim().min(1).max(100))
     .optional()
@@ -55,6 +59,14 @@ export const productSchema = z.object({
     .transform((v) => (v == null || v === "" ? null : new Date(v))),
   paoMonths: z
     .union([z.coerce.number().int().min(0), z.literal("").transform(() => null), z.null()])
+    .optional()
+    .nullable(),
+  giftMinSalePrice: z
+    .union([
+      z.coerce.number().min(0),
+      z.literal("").transform(() => null),
+      z.null(),
+    ])
     .optional()
     .nullable(),
   notes: optionalString,
