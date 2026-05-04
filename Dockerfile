@@ -35,7 +35,8 @@ RUN pnpm run build
 
 # ---- Stage 3: runner ----
 FROM node:20-alpine AS runner
-RUN apk add --no-cache libc6-compat openssl tini
+# wget = healthcheck, openssl = prisma engine, tini = pid 1, libc6-compat = native deps
+RUN apk add --no-cache libc6-compat openssl tini wget
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -65,6 +66,10 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+
+# Container-level healthcheck — Coolify bunu otomatik kullanir (custom_healthcheck_found=true)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--", "./docker-entrypoint.sh"]
 CMD ["node", "server.js"]
