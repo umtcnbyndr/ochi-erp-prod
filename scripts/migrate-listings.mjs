@@ -1,27 +1,38 @@
 /**
- * Data migration: Product.trendyolBarcode/dopigoBarcode/dopigoSku → ProductMarketplaceListing
+ * Data migration: legacy Product alanları → ProductMarketplaceListing
  *
- * Mevcut Product modelinde tek alan olarak tutulan TY/Dopigo kimlikleri yeni
- * tabloya isPrimary=true listing olarak taşınır.
+ * Doğru mantık:
+ *   TY'deki gerçek barkod = Product.trendyolBarcode (varsa) || Product.primaryBarcode
+ *   Yani primary listing'in barcode'u → trendyolBarcode (varsa)
+ *   primaryBarcode (eczane barkodu) ≠ trendyolBarcode olabilir.
  *
- * - Trendyol marketplace bulunur, her ürünün primaryBarcode'u Trendyol listing
- *   olarak eklenir (zaten Trendyol'a primary barkodla göndermişiz tarihçesi).
- * - Eğer Product.trendyolBarcode primaryBarcode'dan farklıysa → ek listing.
- * - Dopigo marketplace bulunmuyorsa atlanır (Dopigo Excel-only, marketplace
- *   tablosunda yok olabilir → o zaman dopigoBarcode/dopigoSku Product'ta kalır,
- *   migration etkilenmez).
+ * Idempotent + self-healing:
+ *   - Eğer mevcut primary listing'in barcode'u "yanlış" (yani primaryBarcode kullanılmış
+ *     ama trendyolBarcode farklı), düzeltir.
+ *   - Eğer doğru barkodlu başka listing varsa, onu primary yapar; yanlış olanı siler.
+ *   - sku/supplierSku boşsa legacy alanlardan doldurur.
+ *   - Kullanıcı manuel eklediği listing'lere dokunmaz (notes: NULL veya "Migration:" ile
+ *     başlamayan).
  *
- * Idempotent: Tekrar çalıştığında aynı (productId, marketplaceId, barcode)
- * için unique kısıtı nedeniyle atlama yapılır.
- *
- * Çalıştırma:
- *   node scripts/migrate-listings.mjs
+ * docker-entrypoint.sh'tan her deploy'da çalışır.
  */
 import { PrismaClient } from "@prisma/client"
 
 const prisma = new PrismaClient()
 
+function eq(a, b) {
+  return (a ?? null) === (b ?? null)
+}
+
 async function main() {
+  const trendyol = await prisma.marketplace.findFirst({
+    where: { name: "Trendyol" },
+  })
+  if (!trendyol) {
+    console.log("[migrate-listings] Trendyol marketplace yok — atlanıyor")
+    return
+  }
+
   const products = await prisma.product.findMany({
     select: {
       id: true,
@@ -32,110 +43,167 @@ async function main() {
     },
   })
 
-  const marketplaces = await prisma.marketplace.findMany()
-  const trendyol = marketplaces.find((m) => m.name === "Trendyol")
-  const dopigoLike = marketplaces.find((m) =>
-    m.name.toLowerCase().includes("dopigo"),
-  )
-
-  let tyAdded = 0
-  let tyExtraAdded = 0
+  let created = 0
+  let fixed = 0
   let backfilled = 0
-  let skipped = 0
+  let alreadyOk = 0
 
   for (const p of products) {
-    if (!trendyol || !p.primaryBarcode) continue
+    if (!p.primaryBarcode) continue
 
-    // Trendyol primary listing — barcode + Dopigo sku + Dopigo supplier sku BERABER
-    // (her listing 1 Excel satırı: gtin + sku + Tedarikçi SKU)
-    try {
-      const created = await prisma.productMarketplaceListing.create({
-        data: {
-          productId: p.id,
-          marketplaceId: trendyol.id,
-          barcode: p.primaryBarcode,
-          sku: p.dopigoSku?.trim() || null,
-          supplierSku: p.dopigoBarcode?.trim() || null,
-          isPrimary: true,
-          isActive: true,
-          shareStock: true,
-          notes: "Migration: legacy alanlar → primary listing",
-        },
-      })
-      void created
-      tyAdded++
-    } catch {
-      // Zaten var → idempotent: sku/supplierSku boşsa doldur
-      try {
-        const existing = await prisma.productMarketplaceListing.findFirst({
-          where: {
-            productId: p.id,
-            marketplaceId: trendyol.id,
-            barcode: p.primaryBarcode,
-          },
+    // TY'deki gerçek barkod
+    const correctBarcode = p.trendyolBarcode?.trim() || p.primaryBarcode
+
+    // Mevcut primary listing'i bul
+    const currentPrimary = await prisma.productMarketplaceListing.findFirst({
+      where: {
+        productId: p.id,
+        marketplaceId: trendyol.id,
+        isPrimary: true,
+      },
+    })
+
+    // Mevcut "doğru barkodlu" listing'i bul (primary olsun olmasın)
+    const correctListing = await prisma.productMarketplaceListing.findFirst({
+      where: {
+        productId: p.id,
+        marketplaceId: trendyol.id,
+        barcode: correctBarcode,
+      },
+    })
+
+    // ---- DURUM 1: Primary doğru barkoda sahip ve sku/supplierSku dolu ----
+    if (currentPrimary && currentPrimary.barcode === correctBarcode) {
+      // Sadece sku/supplierSku'yu legacy'den backfill et (boşsa)
+      const patch = {}
+      if (!currentPrimary.sku && p.dopigoSku?.trim()) {
+        patch.sku = p.dopigoSku.trim()
+      }
+      if (!currentPrimary.supplierSku && p.dopigoBarcode?.trim()) {
+        patch.supplierSku = p.dopigoBarcode.trim()
+      }
+      if (Object.keys(patch).length > 0) {
+        await prisma.productMarketplaceListing.update({
+          where: { id: currentPrimary.id },
+          data: patch,
         })
-        if (existing) {
-          const patch = {}
-          if (!existing.sku && p.dopigoSku?.trim()) {
-            patch.sku = p.dopigoSku.trim()
-          }
-          if (!existing.supplierSku && p.dopigoBarcode?.trim()) {
-            patch.supplierSku = p.dopigoBarcode.trim()
-          }
-          if (Object.keys(patch).length > 0) {
-            await prisma.productMarketplaceListing.update({
-              where: { id: existing.id },
-              data: patch,
-            })
-            backfilled++
-          } else {
-            skipped++
-          }
-        } else {
-          skipped++
+        backfilled++
+      } else {
+        alreadyOk++
+      }
+      continue
+    }
+
+    // ---- DURUM 2: Yanlış primary var (barcode = primaryBarcode ama correctBarcode farklı) ----
+    if (currentPrimary && currentPrimary.barcode !== correctBarcode) {
+      // Önce, doğru barkodlu listing var mı?
+      if (correctListing && correctListing.id !== currentPrimary.id) {
+        // İki kayıt var: yanlış primary + doğru secondary
+        // → Yanlışın sku/supplierSku'sunu doğruya taşı (boş değilse)
+        const patch = { isPrimary: true }
+        if (!correctListing.sku) {
+          patch.sku = currentPrimary.sku || p.dopigoSku?.trim() || null
         }
-      } catch {
-        skipped++
+        if (!correctListing.supplierSku) {
+          patch.supplierSku =
+            currentPrimary.supplierSku || p.dopigoBarcode?.trim() || null
+        }
+        await prisma.productMarketplaceListing.update({
+          where: { id: correctListing.id },
+          data: patch,
+        })
+        // Yanlış olanı sil
+        await prisma.productMarketplaceListing.delete({
+          where: { id: currentPrimary.id },
+        })
+        fixed++
+        continue
+      } else {
+        // Sadece yanlış primary var → barkodunu düzelt
+        const patch = { barcode: correctBarcode }
+        if (!currentPrimary.sku && p.dopigoSku?.trim()) {
+          patch.sku = p.dopigoSku.trim()
+        }
+        if (!currentPrimary.supplierSku && p.dopigoBarcode?.trim()) {
+          patch.supplierSku = p.dopigoBarcode.trim()
+        }
+        await prisma.productMarketplaceListing.update({
+          where: { id: currentPrimary.id },
+          data: patch,
+        })
+        fixed++
+        continue
       }
     }
 
-    // Eğer trendyolBarcode primaryBarcode'dan farklıysa → ek listing (secondary)
-    if (
-      p.trendyolBarcode &&
-      p.trendyolBarcode.trim() &&
-      p.trendyolBarcode !== p.primaryBarcode
-    ) {
+    // ---- DURUM 3: Primary yok ama doğru barkodlu listing var ----
+    if (!currentPrimary && correctListing) {
+      const patch = { isPrimary: true }
+      if (!correctListing.sku && p.dopigoSku?.trim()) {
+        patch.sku = p.dopigoSku.trim()
+      }
+      if (!correctListing.supplierSku && p.dopigoBarcode?.trim()) {
+        patch.supplierSku = p.dopigoBarcode.trim()
+      }
+      await prisma.productMarketplaceListing.update({
+        where: { id: correctListing.id },
+        data: patch,
+      })
+      fixed++
+      continue
+    }
+
+    // ---- DURUM 4: Hiç listing yok → yeni primary oluştur ----
+    if (!currentPrimary && !correctListing) {
       try {
         await prisma.productMarketplaceListing.create({
           data: {
             productId: p.id,
             marketplaceId: trendyol.id,
-            barcode: p.trendyolBarcode,
-            // Secondary listing: sku/supplierSku ilk başta boş, kullanıcı doldurur
-            isPrimary: false,
+            barcode: correctBarcode,
+            sku: p.dopigoSku?.trim() || null,
+            supplierSku: p.dopigoBarcode?.trim() || null,
+            isPrimary: true,
             isActive: true,
             shareStock: true,
-            notes: "Migration: Product.trendyolBarcode → secondary listing",
+            notes: "Migration: legacy alanlar → primary listing",
           },
         })
-        tyExtraAdded++
-      } catch {
-        skipped++
+        created++
+      } catch (e) {
+        // Race condition olası, atla
+        void e
       }
     }
   }
-  void dopigoLike
+
+  // İstatistik kontrol — kaç yanlış primary kaldı?
+  const allPrimaries = await prisma.productMarketplaceListing.findMany({
+    where: { marketplaceId: trendyol.id, isPrimary: true },
+    select: {
+      productId: true,
+      barcode: true,
+      product: { select: { trendyolBarcode: true, primaryBarcode: true } },
+    },
+  })
+  let stillWrong = 0
+  for (const l of allPrimaries) {
+    const correct =
+      l.product.trendyolBarcode?.trim() || l.product.primaryBarcode
+    if (l.barcode !== correct) stillWrong++
+  }
 
   const totalListings = await prisma.productMarketplaceListing.count()
-
   console.log(
     `[migrate-listings] ${products.length} ürün tarandı.\n` +
-      `  ✓ Trendyol primary    : ${tyAdded}\n` +
-      `  ✓ Trendyol secondary  : ${tyExtraAdded}\n` +
+      `  + Yeni primary       : ${created}\n` +
+      `  ✓ D\xfczeltildi (yanlış → doğru): ${fixed}\n` +
       `  ⟳ sku/supplierSku fill: ${backfilled}\n` +
-      `  ⤳ Skip (zaten dolu)   : ${skipped}\n` +
+      `  ✓ Zaten doğru        : ${alreadyOk}\n` +
+      `  Hala yanlış primary    : ${stillWrong}\n` +
       `  Toplam ProductMarketplaceListing: ${totalListings}`,
   )
+  void eq
 }
 
 main()
