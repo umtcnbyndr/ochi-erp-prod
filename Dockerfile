@@ -27,6 +27,8 @@ COPY . .
 RUN corepack enable pnpm && corepack prepare pnpm@10.30.3 --activate
 
 # Generate Prisma client + build
+# Public klasoru yoksa olustur (Next.js standalone COPY hata verir)
+RUN mkdir -p public
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm prisma generate
 RUN pnpm run build
@@ -50,8 +52,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Prisma needs the schema at runtime for migrations
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
+# pnpm structure: Prisma client is under node_modules/.pnpm — copy entire node_modules from builder
+# (standalone output already includes traced production deps; we need full prisma cli for migrate deploy)
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 
 # Entrypoint script runs migrations then starts app
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
