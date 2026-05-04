@@ -587,6 +587,74 @@ export async function deleteProduct(id: number) {
 }
 
 /**
+ * Toplu ürün silme — admin-only.
+ *
+ * Üzerinde stok hareketi olan ürünleri atlayarak siler. Her ürünü tek başına dener:
+ * - Başarılı silinenler: silenler listesinde
+ * - Stok hareketi olduğu için silinemeyenler: skipped listesinde (mesajla)
+ *
+ * Cascade davranışı:
+ *   - ProductBarcode, ProductMarketplacePrice, SetComponent, CompetitorPriceObservation,
+ *     CampaignProduct, CampaignSale, TrendyolFavoriteSnapshot → silinir (FK cascade)
+ *   - ProductMergeHistory → silinir
+ *   - StockMovement → BLOK (yukarıda kontrol)
+ */
+export async function bulkDeleteProducts(productIds: number[]): Promise<{
+  deleted: number[]
+  skipped: Array<{ id: number; reason: string }>
+}> {
+  if (productIds.length === 0) return { deleted: [], skipped: [] }
+
+  // Hangi ürünlerde stok hareketi var?
+  const movements = await prisma.stockMovement.groupBy({
+    by: ["productId"],
+    where: { productId: { in: productIds } },
+    _count: { id: true },
+  })
+  const movementCount = new Map(movements.map((m) => [m.productId, m._count.id]))
+
+  const deleted: number[] = []
+  const skipped: Array<{ id: number; reason: string }> = []
+
+  // Önce silinebilenleri belirle
+  const deletable = productIds.filter((id) => !movementCount.has(id))
+  for (const id of productIds) {
+    if (movementCount.has(id)) {
+      const count = movementCount.get(id)!
+      skipped.push({
+        id,
+        reason: `${count} stok hareketi var, önce pasife al`,
+      })
+    }
+  }
+
+  // Tek transaction'da silebilenleri sil
+  if (deletable.length > 0) {
+    try {
+      await prisma.$transaction(
+        deletable.map((id) => prisma.product.delete({ where: { id } })),
+      )
+      deleted.push(...deletable)
+    } catch (err) {
+      // Bir tanesi fail ederse hepsi rollback — tek tek de
+      for (const id of deletable) {
+        try {
+          await prisma.product.delete({ where: { id } })
+          deleted.push(id)
+        } catch (e) {
+          skipped.push({
+            id,
+            reason: e instanceof Error ? e.message.substring(0, 100) : "Silinemedi",
+          })
+        }
+      }
+    }
+  }
+
+  return { deleted, skipped }
+}
+
+/**
  * Ürün birleştirme: kaynak ürünlerin barkodları, stok hareketleri, fiyat geçmişi hedef ürüne taşınır.
  * Kaynaklar silinir. Hedef ürünün stokları kaynaklarla toplanır.
  * Her birleştirme ProductMergeHistory'ye kayıt edilir (geri alma için snapshot tutulur).

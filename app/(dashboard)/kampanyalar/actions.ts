@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
-import { requirePermission } from "@/lib/permissions"
+import { requirePermission, requireAdmin } from "@/lib/permissions"
 import {
   createCampaign,
   updateCampaign,
   endCampaign,
   cancelCampaign,
   collectCampaign,
+  deleteCampaign,
   type CreateCampaignInput,
 } from "@/lib/services/campaign"
 import { writeAuditLog } from "@/lib/services/audit-log"
@@ -114,6 +115,38 @@ export async function updateCampaignAction(
     })
     revalidatePath("/kampanyalar")
     revalidatePath(`/kampanyalar/${parsed.id}`)
+    return ok(result)
+  } catch (err) {
+    return fail(err)
+  }
+}
+
+/**
+ * Kampanyayı tamamen sil — ADMIN-ONLY.
+ * CampaignProduct + CampaignSale CASCADE ile birlikte silinir.
+ * Tahsil edilmiş kampanyalar silinemez (service layer kontrol eder).
+ */
+export async function deleteCampaignAction(id: number) {
+  try {
+    const actor = await requireAdmin()
+
+    const { prisma } = await import("@/lib/db")
+    const snapshot = await prisma.campaign.findUnique({
+      where: { id },
+      select: { id: true, name: true, status: true, brandId: true, discountRate: true },
+    })
+
+    const result = await deleteCampaign(id)
+
+    await writeAuditLog({
+      userId: actor.id,
+      action: "CAMPAIGN_DELETE",
+      entityType: "Campaign",
+      entityId: id,
+      before: snapshot ?? undefined,
+    })
+
+    revalidatePath("/kampanyalar")
     return ok(result)
   } catch (err) {
     return fail(err)

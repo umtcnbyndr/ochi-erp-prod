@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { Plus } from "lucide-react"
-import { requirePermission } from "@/lib/permissions"
+import { requirePermission, getAuthUser } from "@/lib/permissions"
 import { listCampaigns, autoEndExpiredCampaigns } from "@/lib/services/campaign"
 import { PageHeader } from "@/components/common/page-header"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic"
 
 export default async function KampanyalarPage() {
   await requirePermission("kampanyalar", "view")
+  const user = await getAuthUser()
+  const isAdmin = user?.role === "ADMIN"
 
   // Otomatik: bitiş tarihi geçmiş ACTIVE kampanyalar → ENDED
   await autoEndExpiredCampaigns()
@@ -57,7 +59,7 @@ export default async function KampanyalarPage() {
           </Link>
         }
       />
-      <CampaignList campaigns={serialized} />
+      <CampaignList campaigns={serialized} isAdmin={isAdmin} />
     </div>
   )
 }

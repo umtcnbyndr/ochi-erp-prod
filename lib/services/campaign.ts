@@ -224,6 +224,28 @@ export async function cancelCampaign(id: number) {
   })
 }
 
+/**
+ * Kampanyayı tamamen sil (admin-only).
+ *
+ * CampaignProduct + CampaignSale kayıtları onDelete: Cascade ile otomatik silinir.
+ * Geri alınamaz işlem — yalnızca admin yetkisi olan kullanıcı silebilir.
+ *
+ * Tahsilat tamamlanmış (COLLECTED) kampanyalar muhasebe izi nedeniyle silinemez.
+ */
+export async function deleteCampaign(id: number) {
+  const existing = await prisma.campaign.findUnique({
+    where: { id },
+    select: { id: true, status: true, name: true },
+  })
+  if (!existing) throw new Error("Kampanya bulunamadı")
+  if (existing.status === "COLLECTED") {
+    throw new Error(
+      "Tahsil edilmiş kampanya silinemez (muhasebe izi). Önce kayıt onayını kaldırın.",
+    )
+  }
+  return prisma.campaign.delete({ where: { id } })
+}
+
 export async function collectCampaign(id: number, input: CollectInput) {
   const existing = await prisma.campaign.findUnique({ where: { id } })
   if (!existing) throw new Error("Kampanya bulunamadı")

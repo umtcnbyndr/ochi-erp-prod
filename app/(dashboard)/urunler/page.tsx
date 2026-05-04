@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { Plus, Package, Upload } from "lucide-react"
 import { prisma } from "@/lib/db"
+import { getAuthUser } from "@/lib/permissions"
 import { listProducts, type ProductSortBy, type ProductListFilters } from "@/lib/services/product"
 import { calculatePharmacyStockPrice } from "@/lib/pricing"
 import { buildActiveCampaignMap } from "@/lib/services/campaign"
@@ -37,6 +38,8 @@ export default async function UrunlerPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const sp = await searchParams
+  const user = await getAuthUser()
+  const isAdmin = user?.role === "ADMIN"
 
   const page = parseInt0(sp.page as string | undefined, 1)!
   const pageSizeRaw = (sp.ps as string | undefined) ?? "50"
@@ -233,6 +236,7 @@ export default async function UrunlerPage({
             sortBy={sortBy}
             sortDir={sortDir}
             categories={categories}
+            isAdmin={isAdmin}
           />
           <Pagination total={data.total} page={page} pageSize={pageSize} />
         </>

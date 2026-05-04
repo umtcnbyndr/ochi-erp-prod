@@ -1,16 +1,20 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { toast } from "sonner"
 import {
   Megaphone,
   CheckCircle2,
   AlertCircle,
   Clock,
   TrendingUp,
+  Trash2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { deleteCampaignAction } from "./actions"
 import {
   Table,
   TableBody,
@@ -48,6 +52,7 @@ interface Campaign {
 
 interface Props {
   campaigns: Campaign[]
+  isAdmin: boolean
 }
 
 const STATUS_LABELS: Record<
@@ -60,8 +65,29 @@ const STATUS_LABELS: Record<
   CANCELLED: { label: "İptal", variant: "destructive" },
 }
 
-export function CampaignList({ campaigns }: Props) {
+export function CampaignList({ campaigns, isAdmin }: Props) {
+  const router = useRouter()
   const [tab, setTab] = useState<Tab>("active")
+  const [pending, startTransition] = useTransition()
+
+  function handleDelete(e: React.MouseEvent, c: Campaign) {
+    e.stopPropagation()
+    if (
+      !confirm(
+        `"${c.name}" kampanyası ve bağlı tüm kayıtlar (${c.saleCount} satış, ${c.productCount} ürün) kalıcı olarak silinecek.\n\nBu işlem GERİ ALINAMAZ.`,
+      )
+    )
+      return
+    startTransition(async () => {
+      const result = await deleteCampaignAction(c.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(`"${c.name}" silindi`)
+      router.refresh()
+    })
+  }
 
   const grouped = useMemo(() => {
     const active = campaigns.filter((c) => c.status === "ACTIVE")
@@ -257,15 +283,29 @@ export function CampaignList({ campaigns }: Props) {
                         </TableCell>
                       )}
                       <TableCell>
-                        <Link
-                          href={`/kampanyalar/${c.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Button variant="ghost" size="sm" className="h-7 text-xs">
-                            <TrendingUp className="h-3 w-3 mr-1" />
-                            Detay
-                          </Button>
-                        </Link>
+                        <div className="flex items-center gap-1 justify-end">
+                          <Link
+                            href={`/kampanyalar/${c.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Button variant="ghost" size="sm" className="h-7 text-xs">
+                              <TrendingUp className="h-3 w-3 mr-1" />
+                              Detay
+                            </Button>
+                          </Link>
+                          {isAdmin && c.status !== "COLLECTED" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                              onClick={(e) => handleDelete(e, c)}
+                              disabled={pending}
+                              title="Kalıcı sil (admin)"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   )

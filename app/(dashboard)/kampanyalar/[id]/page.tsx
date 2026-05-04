@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
-import { requirePermission } from "@/lib/permissions"
+import { requirePermission, getAuthUser } from "@/lib/permissions"
 import { getCampaign, getCampaignProducts } from "@/lib/services/campaign"
 import { PageHeader } from "@/components/common/page-header"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,9 @@ interface Props {
 
 export default async function KampanyaDetayPage({ params }: Props) {
   await requirePermission("kampanyalar", "view")
+  const user = await getAuthUser()
+  const isAdmin = user?.role === "ADMIN"
+
   const { id } = await params
   const campaignId = Number(id)
   if (isNaN(campaignId)) notFound()
@@ -84,7 +87,7 @@ export default async function KampanyaDetayPage({ params }: Props) {
           </Link>
         }
       />
-      <CampaignDetailFlow campaign={serialized} products={productsSerialized} />
+      <CampaignDetailFlow campaign={serialized} products={productsSerialized} isAdmin={isAdmin} />
     </div>
   )
 }

@@ -47,6 +47,7 @@ import {
   bulkUpdateProductStatus,
   bulkUpdateProductCategory,
   exportProductsToExcel,
+  bulkDeleteProductsAction,
 } from "./actions"
 import { formatCurrency, formatNumber, cn } from "@/lib/utils"
 import { checkPsfSanity } from "@/lib/pricing"
@@ -114,6 +115,7 @@ interface ProductListProps {
   sortBy: ProductSortBy
   sortDir: "asc" | "desc"
   categories?: CategoryOption[]
+  isAdmin?: boolean
 }
 
 export function ProductList({
@@ -121,6 +123,7 @@ export function ProductList({
   sortBy,
   sortDir,
   categories = [],
+  isAdmin = false,
 }: ProductListProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -181,6 +184,36 @@ export function ProductList({
         return
       }
       toast.success(`${r.data?.updatedCount} ürün ${label}ındı`)
+      setSelected(new Set())
+    })
+  }
+
+  function onBulkDelete() {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    const msg =
+      `${ids.length} ürün KALICI olarak silinecek.\n\n` +
+      `Cascade ile silinecek bağlı kayıtlar:\n` +
+      `• Barkodlar, marketplace fiyatları, BuyBox gözlemleri\n` +
+      `• Kampanya satışları, favorilenme snapshot'ları\n` +
+      `• Birleştirme geçmişi\n\n` +
+      `Stok hareketi olan ürünler ATLANIR (önce pasife al).\n\n` +
+      `Bu işlem GERİ ALINAMAZ. Emin misin?`
+    if (!confirm(msg)) return
+    startTransition(async () => {
+      const r = await bulkDeleteProductsAction(ids)
+      if (!r.success) {
+        toast.error(r.error ?? "Silme başarısız")
+        return
+      }
+      const { deleted, skipped } = r.data!
+      if (skipped.length === 0) {
+        toast.success(`${deleted.length} ürün silindi`)
+      } else {
+        toast.warning(
+          `${deleted.length} silindi, ${skipped.length} atlandı (stok hareketi var)`,
+        )
+      }
       setSelected(new Set())
     })
   }
@@ -326,6 +359,18 @@ export function ProductList({
                 <GitMerge className="h-4 w-4" />
                 Birleştir ({selected.size})
               </Button>
+              {isAdmin && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={onBulkDelete}
+                  disabled={pending}
+                  title="Seçili ürünleri kalıcı olarak sil (admin)"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Sil ({selected.size})
+                </Button>
+              )}
             </>
           )}
           <Button size="sm" variant="outline" onClick={onExport} disabled={exporting}>

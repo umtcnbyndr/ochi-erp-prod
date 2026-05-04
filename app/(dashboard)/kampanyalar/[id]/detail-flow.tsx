@@ -10,6 +10,7 @@ import {
   Package,
   Receipt,
   AlertCircle,
+  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,6 +39,7 @@ import { EmptyState } from "@/components/common/empty-state"
 import {
   endCampaignAction,
   cancelCampaignAction,
+  deleteCampaignAction,
   collectCampaignAction,
 } from "../actions"
 
@@ -85,9 +87,10 @@ interface Product {
 interface Props {
   campaign: Campaign
   products: Product[]
+  isAdmin: boolean
 }
 
-export function CampaignDetailFlow({ campaign, products }: Props) {
+export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
@@ -147,6 +150,24 @@ export function CampaignDetailFlow({ campaign, products }: Props) {
       }
       toast.success("Kampanya bitirildi — Dopigo aktarımdan eski fiyatlara döndür Excel'i indir")
       router.refresh()
+    })
+  }
+
+  function handleDelete() {
+    if (
+      !confirm(
+        `"${campaign.name}" kampanyası tamamen silinecek.\n\nBuna bağlı tüm satış kayıtları (CampaignSale) ve ürün bağlantıları (CampaignProduct) da silinir.\n\nBu işlem GERİ ALINAMAZ.\n\nDevam etmek için tamam'a bas.`,
+      )
+    )
+      return
+    startTransition(async () => {
+      const result = await deleteCampaignAction(campaign.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Kampanya silindi")
+      router.push("/kampanyalar")
     })
   }
 
@@ -316,6 +337,21 @@ export function CampaignDetailFlow({ campaign, products }: Props) {
           >
             <Receipt className="h-4 w-4 mr-1.5" />
             Tahsilat Yap
+          </Button>
+        )}
+
+        {/* Admin-only kalıcı silme butonu — COLLECTED hariç her statüde gösterilir */}
+        {isAdmin && campaign.status !== "COLLECTED" && (
+          <Button
+            onClick={handleDelete}
+            disabled={pending}
+            variant="destructive"
+            size="sm"
+            className="ml-auto"
+            title="Bu kampanyayı tüm satış kayıtlarıyla birlikte kalıcı olarak sil"
+          >
+            <Trash2 className="h-4 w-4 mr-1.5" />
+            Kalıcı Sil
           </Button>
         )}
       </div>

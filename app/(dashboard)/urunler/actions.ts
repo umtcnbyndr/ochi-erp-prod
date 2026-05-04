@@ -13,12 +13,13 @@ import {
   listProductsForExport,
   bulkSetProductStatus,
   bulkSetProductCategory,
+  bulkDeleteProducts,
   type ProductListFilters,
 } from "@/lib/services/product"
 import { calculatePharmacyStockPrice } from "@/lib/pricing"
 import { syncAllTrendyolListings } from "@/lib/services/trendyol/products"
 import { prisma } from "@/lib/db"
-import { requirePermission } from "@/lib/permissions"
+import { requirePermission, requireAdmin } from "@/lib/permissions"
 
 export type ActionResult<T = unknown> =
   | { success: true; data?: T }
@@ -97,6 +98,33 @@ export async function bulkUpdateProductStatus(
     return { success: true, data: result }
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : "Güncellenemedi" }
+  }
+}
+
+/**
+ * Toplu ürün silme — ADMIN-ONLY.
+ * Stok hareketi olan ürünler atlanır. Geri kalanlar tek transaction'da silinir.
+ * CampaignSale, ProductBarcode, ProductMarketplacePrice, vs. cascade ile gider.
+ */
+export async function bulkDeleteProductsAction(
+  ids: number[],
+): Promise<
+  ActionResult<{ deleted: number[]; skipped: Array<{ id: number; reason: string }> }>
+> {
+  try {
+    await requireAdmin()
+    if (ids.length === 0) return { success: false, error: "Ürün seçilmedi" }
+    if (ids.length > 500) {
+      return {
+        success: false,
+        error: "Tek seferde max 500 ürün silinebilir, daha az seç",
+      }
+    }
+    const result = await bulkDeleteProducts(ids)
+    revalidatePath("/urunler")
+    return { success: true, data: result }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Silinemedi" }
   }
 }
 
