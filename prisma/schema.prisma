@@ -200,6 +200,62 @@ model Marketplace {
 
   prices ProductMarketplacePrice[]
   brandFloors BrandMarketplaceFloor[]
+  listings ProductMarketplaceListing[]
+}
+
+/**
+ * Aynı ürünün bir marketplace'teki çoklu listing'leri.
+ *
+ * Senaryo: Mustela aynı 50ml kremi için TY'de 2 farklı barkodla listelemiş —
+ * birinde 10 yorum (eski), birinde 500 yorum (yeni). Biz ERP'de tek ürün
+ * tutuyoruz, ama Dopigo Excel export'ta her listing için ayrı satır gerekli.
+ *
+ * Stok ortak (Product.mainStock). Fiyat ortak (ProductMarketplacePrice).
+ * Listing yalnız Dopigo Excel export'unda multi-row üretmek + BuyBox'ı
+ * ayrı çekmek için kullanılır.
+ *
+ * isPrimary: birden fazla varsa default/anchor olarak kullanılır
+ * (BuyBox sync, recommendation engine, vs).
+ *
+ * isActive=false: Excel'e gitmez ama silinmez (geçmiş kayıt).
+ *
+ * shareStock=true (default): Excel'de bu listing'e tam mainStock yazılır
+ *   (çoklu listing varsa her birine aynı stok → max satış, oversold riski).
+ * shareStock=false: Excel'de bu listing'e 0 yazılır (sadece primary listing
+ *   tam stok alır → eski listing dürüstçe ölür).
+ */
+model ProductMarketplaceListing {
+  id            Int @id @default(autoincrement())
+  productId     Int
+  marketplaceId Int
+
+  // Marketplace'teki kimlik
+  barcode       String?  // TY/HB/n11/Pazarama/PttAvm/Amazon için
+  sku           String?  // Dopigo merchant_sku için
+  externalCode  String?  // marketplace içsel ürün kodu (TY contentId vs)
+
+  // Davranış
+  isPrimary    Boolean @default(true)
+  isActive     Boolean @default(true)
+  shareStock   Boolean @default(true)
+
+  // Metadata (ileride scraping ile dolar — opsiyonel)
+  reviewCount  Int?
+  rating       Decimal? @db.Decimal(3, 2)
+
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  marketplace Marketplace @relation(fields: [marketplaceId], references: [id], onDelete: Cascade)
+
+  // Aynı ürünün aynı marketplace'te aynı barkodu 2 kez olamaz.
+  // Barkod null olabilir (sadece SKU ile listelenmiş Dopigo gibi).
+  @@unique([productId, marketplaceId, barcode])
+  @@index([productId])
+  @@index([marketplaceId])
+  @@index([barcode])
 }
 
 /**
@@ -313,6 +369,7 @@ model Product {
 
   barcodes                    ProductBarcode[]
   marketplacePrices           ProductMarketplacePrice[]
+  marketplaceListings         ProductMarketplaceListing[]
   priceHistory                PriceHistory[]
   stockMovements              StockMovement[]
   exchanges                   Exchange[]

@@ -139,6 +139,18 @@ export async function fetchAndStoreBuyboxForProducts(
         where: { marketplace: { name: "Trendyol" } },
         select: { calculatedPrice: true, manualOverride: true },
       },
+      // Çoklu listing: aynı ürünün TY'de N farklı barkodu olabilir
+      marketplaceListings: {
+        where: {
+          isActive: true,
+          marketplace: { name: "Trendyol" },
+        },
+        select: {
+          id: true,
+          barcode: true,
+          isPrimary: true,
+        },
+      },
     },
   })
 
@@ -146,13 +158,21 @@ export async function fetchAndStoreBuyboxForProducts(
     return { observed: 0, notFound: 0, errors: 0, durationMs: 0 }
   }
 
-  // KRITIK: Trendyol'a gercek GTIN gonderilmeli. trendyolBarcode varsa o kullanilir,
-  // yoksa primaryBarcode (ERP'nin kendi kodu) kullanilir. trendyolBarcode 12 urunumuzda
-  // primaryBarcode'dan farkli — bu ayrim olmadan BuyBox bos donuyor.
+  // Barkod → product map
+  // Listing varsa: tüm aktif listing barkodları
+  // Listing yoksa: eski mantık (trendyolBarcode || primaryBarcode)
   const barcodeToProduct = new Map<string, (typeof products)[0]>()
   for (const p of products) {
-    const lookupBarcode = p.trendyolBarcode?.trim() || p.primaryBarcode
-    barcodeToProduct.set(lookupBarcode, p)
+    if (p.marketplaceListings.length > 0) {
+      for (const l of p.marketplaceListings) {
+        if (l.barcode && l.barcode.trim()) {
+          barcodeToProduct.set(l.barcode.trim(), p)
+        }
+      }
+    } else {
+      const lookupBarcode = p.trendyolBarcode?.trim() || p.primaryBarcode
+      barcodeToProduct.set(lookupBarcode, p)
+    }
   }
 
   const { buybox, errors, durationMs } = await fetchBuyboxForBarcodes(
@@ -182,6 +202,8 @@ export async function fetchAndStoreBuyboxForProducts(
         )
       : null
 
+    // Aynı ürünün birden fazla listing'i varsa her birinin BuyBox'u ayrı satır olarak
+    // saklanır. Recommendation engine son N gün içinden en agresif (en düşük) rakibi alır.
     await prisma.competitorPriceObservation.create({
       data: {
         productId: product.id,

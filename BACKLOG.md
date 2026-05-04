@@ -20,7 +20,7 @@ Faz 2:          Dopigo API + AI bot (opsiyonel)
 
 ---
 
-## Mevcut Durum (Son güncelleme: 2026-04-30)
+## Mevcut Durum (Son güncelleme: 2026-05-04)
 
 ### ✅ Tamamlananlar
 - [x] **Birleştirme + geri alma** (madde 1) — `ProductMergeHistory` + `revertMerge` + UI
@@ -28,9 +28,28 @@ Faz 2:          Dopigo API + AI bot (opsiyonel)
 - [x] **Stok yokluğu fiyat çarpanı** (madde 5) — `OOS_PRICE_MULTIPLIER=1.5`, SET/GIFT dahil
 - [x] **Kullanıcı yönetimi + yetki** (madde 6) — User/UserPermission, requirePermission, /ayarlar
 - [x] **Ürünler / Set / Takas / Stok hareketleri** — tüm CRUD + raporlar
-- [x] **Eczane Excel yükleme** — kolon eşleme + çakışma çözümü
+- [x] **Eczane Excel yükleme** — kolon eşleme + çakışma çözümü + eczane kodu öncelikli eşleştirme
 - [x] **Trendyol** — BuyBox + 3-kanal eşleştirme (Faz 1) + öneri motoru
 - [x] **Dopigo** — Excel import/export
+- [x] **Production deploy** — Coolify + umuterp.testdevumut.cloud (2026-05-04)
+- [x] **Skinceuticals seed** — 46 ürün, 7 set, idempotent
+- [x] **Admin yetkileri** — kampanya silme + ürün toplu silme
+- [x] **TY-Floor (Trendyol-Relative Floor)** (2026-05-04, commit 5fc36c3)
+  - `BrandMarketplaceFloor` tablosu (brand × marketplace × multiplier)
+  - Dopigo aktarım iki-geçiş: TY önce hesaplanır, diğerleri TY × multiplier altına inmez
+  - Skinceuticals seed: HB/Amazon/N11/PttAvm 0.9375, Farmazon 0.8375, Pazarama 0.8875, Web Sitesi 0.875
+  - UI: Dopigo Aktarım'da "TY-Floor" sekmesi, marka bazlı edit
+  - manualOverride > TY-floor > formula > recommendation hierarşisi
+  - GIFT ürünler floor'dan etkilenmez
+
+### 🚧 Devam Eden (2026-05-04)
+- [ ] **ProductMarketplaceListing** — aynı ürünün TY/Dopigo'da çoklu listing (~3-4 saat)
+  - **Problem:** Mustela gibi markalar aynı ürün için 2 farklı barkod açmış, biri 10 yorum biri 500 yorum
+  - **Çözüm:** Ürün × marketplace için N listing tablosu, Excel export multi-row
+  - **Stok:** Her listing'e tam stok yazılır (toggle ile primary'e kısıtlanabilir)
+  - **BuyBox:** Her listing ayrı çekilir, en düşük rakip referans
+  - **Fiyat:** Ürün × marketplace tek fiyat, listing'lere yansır
+  - **Etki:** Sadece Dopigo aktarım — giriş/çıkış akışlarına dokunmaz
 
 ### ❌ Yapılacaklar
 - [ ] **Finans modülü** (madde 2, L 12h) — fatura + gider + gelir

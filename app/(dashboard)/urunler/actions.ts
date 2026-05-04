@@ -20,6 +20,18 @@ import { calculatePharmacyStockPrice } from "@/lib/pricing"
 import { syncAllTrendyolListings } from "@/lib/services/trendyol/products"
 import { prisma } from "@/lib/db"
 import { requirePermission, requireAdmin } from "@/lib/permissions"
+import {
+  getListingsForProduct,
+  createListing as createListingSvc,
+  updateListing as updateListingSvc,
+  deleteListing as deleteListingSvc,
+  type ListingRow,
+} from "@/lib/services/product-marketplace-listing"
+import {
+  CreateListingSchema,
+  UpdateListingSchema,
+  DeleteListingSchema,
+} from "@/lib/validators/product-marketplace-listing"
 
 export type ActionResult<T = unknown> =
   | { success: true; data?: T }
@@ -278,3 +290,102 @@ export async function revertMerge(
 }
 
 export { getMergeHistory }
+
+// ============== Marketplace Listings ==============
+
+export async function getProductListingsAction(
+  productId: number,
+): Promise<ActionResult<ListingRow[]>> {
+  try {
+    await requirePermission("urunler", "view")
+    const data = await getListingsForProduct(productId)
+    return { success: true, data }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Listing'ler okunamadı",
+    }
+  }
+}
+
+export async function createProductListingAction(input: unknown): Promise<ActionResult<{ id: number }>> {
+  try {
+    await requirePermission("urunler", "edit")
+    const parsed = CreateListingSchema.parse(input)
+    const created = await createListingSvc({
+      productId: parsed.productId,
+      marketplaceId: parsed.marketplaceId,
+      barcode: parsed.barcode ?? null,
+      sku: parsed.sku ?? null,
+      externalCode: parsed.externalCode ?? null,
+      isPrimary: parsed.isPrimary,
+      isActive: parsed.isActive,
+      shareStock: parsed.shareStock,
+      notes: parsed.notes ?? null,
+    })
+    revalidatePath(`/urunler/${parsed.productId}`)
+    return { success: true, data: { id: created.id } }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Listing oluşturulamadı",
+    }
+  }
+}
+
+export async function updateProductListingAction(input: unknown): Promise<ActionResult<{ id: number }>> {
+  try {
+    await requirePermission("urunler", "edit")
+    const parsed = UpdateListingSchema.parse(input)
+    const updated = await updateListingSvc({
+      id: parsed.id,
+      barcode: parsed.barcode ?? undefined,
+      sku: parsed.sku ?? undefined,
+      externalCode: parsed.externalCode ?? undefined,
+      isPrimary: parsed.isPrimary,
+      isActive: parsed.isActive,
+      shareStock: parsed.shareStock,
+      notes: parsed.notes ?? undefined,
+    })
+    revalidatePath(`/urunler/${updated.productId}`)
+    return { success: true, data: { id: updated.id } }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Listing güncellenemedi",
+    }
+  }
+}
+
+export async function deleteProductListingAction(input: unknown): Promise<ActionResult> {
+  try {
+    await requirePermission("urunler", "edit")
+    const parsed = DeleteListingSchema.parse(input)
+    await deleteListingSvc(parsed.id)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Listing silinemedi",
+    }
+  }
+}
+
+export async function listMarketplacesForListingAction(): Promise<
+  ActionResult<Array<{ id: number; name: string }>>
+> {
+  try {
+    await requirePermission("urunler", "view")
+    const ms = await prisma.marketplace.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    })
+    return { success: true, data: ms }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Marketplace'ler okunamadı",
+    }
+  }
+}

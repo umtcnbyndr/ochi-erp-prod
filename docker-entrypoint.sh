@@ -19,5 +19,8 @@ node scripts/backfill-product-barcodes.js || echo "[ochi-erp] Barcode backfill w
 echo "[ochi-erp] Seeding Skinceuticals TY-Floor multipliers (idempotent)..."
 node scripts/seed-sc-floor.mjs || echo "[ochi-erp] SC floor seed warning (non-fatal)"
 
+echo "[ochi-erp] Migrating listings (Product.trendyolBarcode → ProductMarketplaceListing)..."
+node scripts/migrate-listings.mjs || echo "[ochi-erp] Listings migration warning (non-fatal)"
+
 echo "[ochi-erp] Starting Next.js server..."
 exec "$@"

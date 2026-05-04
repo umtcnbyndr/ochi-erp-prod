@@ -199,6 +199,14 @@ export interface ExportOptions {
 export interface ExportPreviewRow {
   productId: number
   barcode: string
+  /** Çoklu listing'de kullanılan listing barkodu (varsa). Yoksa primaryBarcode = barcode. */
+  listingBarcode?: string | null
+  /** Çoklu listing'de kullanılan listing SKU'su (varsa, Dopigo merchant_sku için). */
+  listingSku?: string | null
+  /** Listing primary mi? (UI rozeti için) */
+  listingIsPrimary?: boolean
+  /** Bu ürünün toplamda kaç aktif TY listing'i olduğu (rozet/uyarı için). */
+  totalListingCount?: number
   name: string
   brandName: string | null
   effectivePurchasePrice: number | null
@@ -793,20 +801,35 @@ export async function buildExportPreview(
   const { getFloorMapsForBrands } = await import("./brand-marketplace-floor")
   const floorMapsByBrand = await getFloorMapsForBrands(brandIds)
 
+  // Çoklu listing: her ürünün TY listing'lerini topluca çek
+  const { getActiveListingsByMarketplaceBulk } = await import(
+    "./product-marketplace-listing"
+  )
+  const tyListingsByProduct = await getActiveListingsByMarketplaceBulk(
+    productIds,
+    "Trendyol",
+  )
+
   const rows: ExportPreviewRow[] = []
   for (const p of products) {
     const purchase = calculateEffectivePurchasePrice(p)
     const stockInfo = calculateEffectiveStock(p)
     const activeCampaign = activeCampaignMap.get(p.id) ?? null
     const floorMap = floorMapsByBrand.get(p.brand.id) ?? null
-    const marketplacePrices = calculateMarketplacePricesFor(p, marketplaces, activeCampaign, floorMap)
+    const marketplacePrices = calculateMarketplacePricesFor(
+      p,
+      marketplaces,
+      activeCampaign,
+      floorMap,
+    )
 
     let warning: string | undefined
     if (purchase == null) warning = "Alış fiyatı yok"
     else if (stockInfo.source === "ZERO" && p.streetStock > 0)
       warning = `Eczane stoğu kural altında (${p.streetStock}/${p.brand.pharmacyStockRule})`
 
-    rows.push({
+    const listings = tyListingsByProduct.get(p.id) ?? []
+    const baseRow: ExportPreviewRow = {
       productId: p.id,
       barcode: p.primaryBarcode,
       name: p.name,
@@ -817,7 +840,27 @@ export async function buildExportPreview(
       marketplacePrices,
       activeCampaign,
       warning,
-    })
+    }
+
+    if (listings.length === 0) {
+      // Listing yok → eski mantık (tek satır primary barkodla)
+      rows.push(baseRow)
+      continue
+    }
+
+    // Her aktif listing için ayrı satır
+    for (const l of listings) {
+      const listingStock = l.shareStock ? stockInfo.stock : l.isPrimary ? stockInfo.stock : 0
+      rows.push({
+        ...baseRow,
+        listingBarcode: l.barcode ?? p.primaryBarcode,
+        listingSku: l.sku ?? null,
+        listingIsPrimary: l.isPrimary,
+        totalListingCount: listings.length,
+        // shareStock=false ve primary değilse 0 → multi-row'da güvenli mod
+        effectiveStock: listingStock,
+      })
+    }
   }
 
   return rows
@@ -905,6 +948,15 @@ export async function buildExportExcel(
       return map
     })(),
   ])
+
+  // Çoklu listing: her ürünün TY aktif listing'lerini topluca çek
+  const { getActiveListingsByMarketplaceBulk } = await import(
+    "./product-marketplace-listing"
+  )
+  const tyListingsByProduct = await getActiveListingsByMarketplaceBulk(
+    productIds,
+    "Trendyol",
+  )
 
   // Dopigo lookup map: hem sku hem barcode ile
   const dopigoBySku = new Map<string, (typeof dopigoListings)[0]>()
@@ -1091,7 +1143,28 @@ export async function buildExportExcel(
       }
     }
 
-    matrix.push(row)
+    // Çoklu listing desteği: TY listing yoksa tek satır, varsa her listing için ayrı satır
+    const tyListings = tyListingsByProduct.get(p.id) ?? []
+    if (tyListings.length === 0) {
+      matrix.push(row)
+    } else {
+      for (const l of tyListings) {
+        const copy = [...row]
+        // gtin/barkod listing'in barkoduyla override (Mustela'nın 2. listing'i için XYZ789)
+        if (l.barcode) {
+          copy[headerIndex["barkod/gtin"]] = l.barcode
+        }
+        // SKU listing'de varsa override (Dopigo merchant_sku)
+        if (l.sku) {
+          copy[headerIndex["sku"]] = l.sku
+        }
+        // Stok davranışı: shareStock=false ise ve primary değilse 0 yaz
+        if (options.fields.stock && !l.shareStock && !l.isPrimary) {
+          copy[headerIndex["stok"]] = 0
+        }
+        matrix.push(copy)
+      }
+    }
   }
 
   // Excel oluştur

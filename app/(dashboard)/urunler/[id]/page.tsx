@@ -14,6 +14,7 @@ import { getProductById, getMergeHistory } from "@/lib/services/product"
 import { getLatestBuyboxForProduct } from "@/lib/services/price-recommendation"
 import { getActiveCampaignForProduct } from "@/lib/services/campaign"
 import { MergeHistorySection } from "./merge-history"
+import { ListingsSection } from "./listings-section"
 import { FavoriteWidget } from "@/components/products/favorite-widget"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -196,9 +197,14 @@ export default async function ProductDetailPage({
           <TabsTrigger value="genel">Genel</TabsTrigger>
           <TabsTrigger value="stok">Stok</TabsTrigger>
           <TabsTrigger value="fiyatlar">Fiyatlar</TabsTrigger>
+          <TabsTrigger value="listings">Listings</TabsTrigger>
           <TabsTrigger value="hareketler">Stok Hareketleri</TabsTrigger>
           <TabsTrigger value="gecmis">Fiyat Geçmişi</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="listings" className="mt-4">
+          <ListingsSection productId={product.id} />
+        </TabsContent>
 
         {/* --- BİLEŞENLER TAB (sadece SET) --- */}
         {product.productType === "SET" && (
