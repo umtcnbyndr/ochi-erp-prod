@@ -209,11 +209,36 @@ export function ProductList({
       const { deleted, skipped } = r.data!
       if (skipped.length === 0) {
         toast.success(`${deleted.length} ürün silindi`)
-      } else {
+        setSelected(new Set())
+        return
+      }
+
+      // Atlanan ürünler var → admin'e force-delete teklifi
+      const skippedIds = skipped.map((s) => s.id)
+      const force = confirm(
+        `${deleted.length} silindi, ${skipped.length} atlandı.\n\n` +
+          `Atlanan ${skipped.length} üründe stok hareketi var.\n` +
+          `(SADECE ADMIN) Stok hareketleriyle BİRLİKTE zorla silmek ister misin?\n\n` +
+          `⚠️ DİKKAT: Stok hareket geçmişi DE silinir. Audit izi kaybolur.\n` +
+          `Bu işlem GERİ ALINAMAZ.`,
+      )
+      if (!force) {
         toast.warning(
           `${deleted.length} silindi, ${skipped.length} atlandı (stok hareketi var)`,
         )
+        setSelected(new Set())
+        return
       }
+      const r2 = await bulkDeleteProductsAction(skippedIds, { force: true })
+      if (!r2.success) {
+        toast.error(r2.error ?? "Force silme başarısız")
+        return
+      }
+      const fdata = r2.data!
+      toast.success(
+        `Toplam ${deleted.length + fdata.deleted.length} ürün silindi` +
+          (fdata.forcedMovements ? ` (${fdata.forcedMovements} stok hareketi de temizlendi)` : ""),
+      )
       setSelected(new Set())
     })
   }

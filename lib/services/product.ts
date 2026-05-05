@@ -599,9 +599,13 @@ export async function deleteProduct(id: number) {
  *   - ProductMergeHistory → silinir
  *   - StockMovement → BLOK (yukarıda kontrol)
  */
-export async function bulkDeleteProducts(productIds: number[]): Promise<{
+export async function bulkDeleteProducts(
+  productIds: number[],
+  options: { force?: boolean } = {},
+): Promise<{
   deleted: number[]
   skipped: Array<{ id: number; reason: string }>
+  forcedMovements?: number
 }> {
   if (productIds.length === 0) return { deleted: [], skipped: [] }
 
@@ -615,8 +619,31 @@ export async function bulkDeleteProducts(productIds: number[]): Promise<{
 
   const deleted: number[] = []
   const skipped: Array<{ id: number; reason: string }> = []
+  let forcedMovements = 0
 
-  // Önce silinebilenleri belirle
+  // FORCE MODU (admin): stok hareketlerini de silsin
+  if (options.force) {
+    for (const id of productIds) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          // Önce stok hareketlerini sil (audit izi: silmeden önce sayısı log'a)
+          const m = await tx.stockMovement.deleteMany({ where: { productId: id } })
+          forcedMovements += m.count
+          // Sonra ürünü sil (FK cascade kalan ilişkileri temizler)
+          await tx.product.delete({ where: { id } })
+        })
+        deleted.push(id)
+      } catch (e) {
+        skipped.push({
+          id,
+          reason: e instanceof Error ? e.message.substring(0, 100) : "Silinemedi",
+        })
+      }
+    }
+    return { deleted, skipped, forcedMovements }
+  }
+
+  // NORMAL MOD: stok hareketi olanları atla
   const deletable = productIds.filter((id) => !movementCount.has(id))
   for (const id of productIds) {
     if (movementCount.has(id)) {

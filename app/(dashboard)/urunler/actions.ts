@@ -120,8 +120,13 @@ export async function bulkUpdateProductStatus(
  */
 export async function bulkDeleteProductsAction(
   ids: number[],
+  options: { force?: boolean } = {},
 ): Promise<
-  ActionResult<{ deleted: number[]; skipped: Array<{ id: number; reason: string }> }>
+  ActionResult<{
+    deleted: number[]
+    skipped: Array<{ id: number; reason: string }>
+    forcedMovements?: number
+  }>
 > {
   try {
     await requireAdmin()
@@ -132,7 +137,13 @@ export async function bulkDeleteProductsAction(
         error: "Tek seferde max 500 ürün silinebilir, daha az seç",
       }
     }
-    const result = await bulkDeleteProducts(ids)
+    // force=true → stok hareketlerini de sil (sadece admin, audit log)
+    if (options.force) {
+      console.warn(
+        `[bulkDelete] FORCE mode: admin ${ids.length} ürünü stok hareketleriyle birlikte silecek`,
+      )
+    }
+    const result = await bulkDeleteProducts(ids, { force: options.force })
     revalidatePath("/urunler")
     return { success: true, data: result }
   } catch (err: unknown) {
