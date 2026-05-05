@@ -958,12 +958,42 @@ export async function buildExportExcel(
     "Trendyol",
   )
 
-  // Dopigo lookup map: hem sku hem barcode ile
+  // Dopigo lookup map: hem sku hem barcode ile.
+  // KRİTİK: Dopigo'da aynı barkod/SKU için birden fazla kayıt olabilir
+  // (örn. eski PASİF kayıt + yeni AKTİF kayıt aynı barkodu paylaşır).
+  // Bu durumda AKTİF olanı tercih et — yoksa son gelen kazanır ve eski/pasif
+  // kaydın isim/aktif/açıklama bilgileri Excel'e yazılır.
+  function isActive(dl: (typeof dopigoListings)[0]): boolean {
+    const raw = dl.rawRowJson as Record<string, unknown> | null
+    const v = raw?.["aktif"]
+    if (v == null) return false
+    const s = String(v).trim().toLowerCase()
+    return s === "aktif" || s === "true" || s === "1" || s === "evet"
+  }
+  function preferActive(
+    existing: (typeof dopigoListings)[0] | undefined,
+    incoming: (typeof dopigoListings)[0],
+  ): (typeof dopigoListings)[0] {
+    if (!existing) return incoming
+    // Mevcut aktif değil ve gelen aktif → gelen kazanır
+    if (!isActive(existing) && isActive(incoming)) return incoming
+    // Mevcut aktif, gelen pasif → mevcut kalır
+    if (isActive(existing) && !isActive(incoming)) return existing
+    // İkisi de aynı durumda → son geleni al (eski davranış)
+    return incoming
+  }
   const dopigoBySku = new Map<string, (typeof dopigoListings)[0]>()
   const dopigoByBarcode = new Map<string, (typeof dopigoListings)[0]>()
   for (const dl of dopigoListings) {
-    if (dl.sku) dopigoBySku.set(dl.sku, dl)
-    if (dl.barcode) dopigoByBarcode.set(dl.barcode, dl)
+    if (dl.sku) {
+      dopigoBySku.set(dl.sku, preferActive(dopigoBySku.get(dl.sku), dl))
+    }
+    if (dl.barcode) {
+      dopigoByBarcode.set(
+        dl.barcode,
+        preferActive(dopigoByBarcode.get(dl.barcode), dl),
+      )
+    }
   }
 
   // Web Sitesi marketplace kaydını ayrı tutalım (genel "fiyat" + "liste fiyatı" için)
