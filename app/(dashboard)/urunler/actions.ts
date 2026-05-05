@@ -87,7 +87,14 @@ export async function deleteProduct(id: number): Promise<ActionResult> {
 export async function mergeProducts(
   targetId: number,
   sourceIds: number[]
-): Promise<ActionResult<{ mergedCount: number; newStock: number }>> {
+): Promise<
+  ActionResult<{
+    mergedCount: number
+    newStock: number
+    newMainPurchasePrice?: number | null
+    newStreetPurchasePrice?: number | null
+  }>
+> {
   try {
     await requirePermission("urunler", "edit")
     const result = await mergeProductsSvc(targetId, sourceIds)

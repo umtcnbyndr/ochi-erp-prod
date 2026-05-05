@@ -1172,12 +1172,28 @@ function MergeDialog({
 
   if (products.length < 2) return null
 
+  // Önizleme: birleştirme sonrası toplam stok + weighted average alış
+  const totalStock = products.reduce((s, p) => s + p.mainStock, 0)
+  const valueParts = products
+    .filter((p) => p.mainPurchasePrice != null && p.mainStock > 0)
+    .map((p) => ({ stock: p.mainStock, price: Number(p.mainPurchasePrice) }))
+  const totalValue = valueParts.reduce((s, i) => s + i.stock * i.price, 0)
+  const totalValidStock = valueParts.reduce((s, i) => s + i.stock, 0)
+  const avgPrice = totalValidStock > 0 ? totalValue / totalValidStock : null
+
   function onMerge() {
     if (!targetId) return
     const sourceIds = products.filter((p) => p.id !== targetId).map((p) => p.id)
     const targetName = products.find((p) => p.id === targetId)?.name
     if (
-      !confirm(`${sourceIds.length} ürün "${targetName}" ürünüyle birleştirilecek. Devam?`)
+      !confirm(
+        `${sourceIds.length} ürün "${targetName}" ürünüyle birleştirilecek.\n\n` +
+          `Yeni toplam stok: ${totalStock}\n` +
+          (avgPrice
+            ? `Yeni ortalama alış (weighted avg): ₺${avgPrice.toFixed(2)}\n`
+            : "") +
+          `\nDevam?`,
+      )
     )
       return
     startTransition(async () => {
@@ -1186,8 +1202,10 @@ function MergeDialog({
         toast.error(r.error)
         return
       }
+      const newP = r.data?.newMainPurchasePrice
       toast.success(
-        `${r.data?.mergedCount} ürün birleştirildi. Yeni toplam stok: ${r.data?.newStock}`
+        `${r.data?.mergedCount} ürün birleştirildi. Yeni stok: ${r.data?.newStock}` +
+          (newP ? `, Yeni ortalama alış: ₺${Number(newP).toFixed(2)}` : ""),
       )
       onMerged()
     })
@@ -1222,11 +1240,40 @@ function MergeDialog({
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{p.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {p.primaryBarcode} · stok: {p.mainStock} · barkod: {p.barcodes.length}
+                  {p.primaryBarcode} · stok: <strong>{p.mainStock}</strong> · alış:{" "}
+                  <strong>
+                    {p.mainPurchasePrice
+                      ? `₺${Number(p.mainPurchasePrice).toFixed(2)}`
+                      : "—"}
+                  </strong>{" "}
+                  · barkod: {p.barcodes.length}
                 </p>
               </div>
             </label>
           ))}
+        </div>
+        {/* Önizleme paneli — birleştirme sonrası ne olacak */}
+        <div className="mt-3 rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+          <div className="font-medium">Birleştirme sonrası:</div>
+          <div className="text-muted-foreground">
+            Toplam stok: <strong>{totalStock} adet</strong>
+            {avgPrice != null && (
+              <>
+                {" "}
+                · Ortalama alış (weighted avg):{" "}
+                <strong>₺{avgPrice.toFixed(2)}</strong>
+              </>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Hesap: {valueParts.map((i) => `${i.stock}×₺${i.price}`).join(" + ")}
+            {valueParts.length > 0 && (
+              <>
+                {" "}
+                = ₺{totalValue.toFixed(2)} / {totalValidStock} adet
+              </>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>

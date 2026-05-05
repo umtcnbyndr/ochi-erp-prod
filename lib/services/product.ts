@@ -737,6 +737,43 @@ export async function mergeProducts(targetId: number, sourceIds: number[]) {
     const totalStreetStock = sources.reduce((s, p) => s + p.streetStock, target.streetStock)
     const totalExchangeStock = sources.reduce((s, p) => s + p.exchangeStock, target.exchangeStock)
 
+    // ============== Weighted Average Alış Fiyatı ==============
+    // Senaryo: A(1 adet, 100 TL) + B(10 adet, 75 TL) → 11 adet, ortalama 77.27 TL
+    // Hiç fiyatı olmayan ürünler hesaba katılmaz (null bırakılır)
+
+    function weightedAvg(
+      items: Array<{ stock: number; price: number | null }>,
+    ): number | null {
+      const valid = items.filter((i) => i.price != null && i.stock > 0)
+      if (valid.length === 0) return null
+      const totalQ = valid.reduce((s, i) => s + i.stock, 0)
+      if (totalQ === 0) return null
+      const totalValue = valid.reduce((s, i) => s + i.stock * (i.price ?? 0), 0)
+      return Math.round((totalValue / totalQ) * 10000) / 10000
+    }
+
+    const mainItems = [
+      { stock: target.mainStock, price: target.mainPurchasePrice ? Number(target.mainPurchasePrice) : null },
+      ...sources.map((p) => ({
+        stock: p.mainStock,
+        price: p.mainPurchasePrice ? Number(p.mainPurchasePrice) : null,
+      })),
+    ]
+    const streetItems = [
+      { stock: target.streetStock, price: target.streetPurchasePrice ? Number(target.streetPurchasePrice) : null },
+      ...sources.map((p) => ({
+        stock: p.streetStock,
+        price: p.streetPurchasePrice ? Number(p.streetPurchasePrice) : null,
+      })),
+    ]
+
+    const newMainPrice = weightedAvg(mainItems)
+    const newStreetPrice = weightedAvg(streetItems)
+
+    // Fiyat değişti mi? PriceHistory'ye kaydet (audit)
+    const oldMainPrice = target.mainPurchasePrice ? Number(target.mainPurchasePrice) : null
+    const oldStreetPrice = target.streetPurchasePrice ? Number(target.streetPurchasePrice) : null
+
     // Kaynak barkodlarını hedefe taşı (çakışanları sil)
     const existingBarcodes = await tx.productBarcode.findMany({
       where: { productId: targetId },
@@ -798,19 +835,47 @@ export async function mergeProducts(targetId: number, sourceIds: number[]) {
     // Kaynakları sil (cascade: barcodes, marketplacePrices otomatik)
     await tx.product.deleteMany({ where: { id: { in: sourceIds } } })
 
-    // Hedefi güncelle
+    // Hedefi güncelle (stoklar + weighted average alış fiyatları)
     await tx.product.update({
       where: { id: targetId },
       data: {
         mainStock: totalMainStock,
         streetStock: totalStreetStock,
         exchangeStock: totalExchangeStock,
+        mainPurchasePrice: newMainPrice,
+        streetPurchasePrice: newStreetPrice,
       },
     })
+
+    // PriceHistory — alış fiyatı değiştiyse kaydet
+    if (newMainPrice != null && oldMainPrice !== newMainPrice) {
+      await tx.priceHistory.create({
+        data: {
+          productId: targetId,
+          priceType: "MAIN_PURCHASE",
+          oldValue: oldMainPrice,
+          newValue: newMainPrice,
+          reason: `Birleştirme: ${sources.length} ürün → weighted average`,
+        },
+      })
+    }
+    if (newStreetPrice != null && oldStreetPrice !== newStreetPrice) {
+      await tx.priceHistory.create({
+        data: {
+          productId: targetId,
+          priceType: "STREET_PURCHASE",
+          oldValue: oldStreetPrice,
+          newValue: newStreetPrice,
+          reason: `Birleştirme: ${sources.length} ürün → weighted average`,
+        },
+      })
+    }
 
     return {
       mergedCount: sources.length,
       newStock: totalMainStock,
+      newMainPurchasePrice: newMainPrice,
+      newStreetPurchasePrice: newStreetPrice,
     }
   })
 }
