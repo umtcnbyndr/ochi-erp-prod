@@ -141,6 +141,29 @@ export async function getSetById(id: number) {
 export async function createSet(data: SetProductFormValues) {
   const componentIds = data.components.map((c) => c.componentId)
 
+  // Önce: barkod / setSku zaten kullanılıyor mu? (Prisma unique constraint
+  // hatası yerine sade Türkçe mesaj göster)
+  const existingByBarcode = await prisma.product.findUnique({
+    where: { primaryBarcode: data.primaryBarcode },
+    select: { id: true, name: true },
+  })
+  if (existingByBarcode) {
+    throw new Error(
+      `Bu barkod zaten kullanılıyor: "${existingByBarcode.name}" (#${existingByBarcode.id}). Önce diğer ürünü düzenle veya farklı barkod kullan.`,
+    )
+  }
+  if (data.setSku) {
+    const existingBySku = await prisma.product.findFirst({
+      where: { setSku: data.setSku },
+      select: { id: true, name: true },
+    })
+    if (existingBySku) {
+      throw new Error(
+        `Bu set SKU zaten kullanılıyor: "${existingBySku.name}" (#${existingBySku.id}).`,
+      )
+    }
+  }
+
   // Bileşenler gerçekten var mı?
   const components = await prisma.product.findMany({
     where: { id: { in: componentIds } },
@@ -248,10 +271,35 @@ export async function updateSet(id: number, data: SetProductFormValues) {
       productType: true,
       mainPurchasePrice: true,
       primaryBarcode: true,
+      setSku: true,
     },
   })
   if (!current) throw new Error("Set bulunamadı")
   if (current.productType !== "SET") throw new Error("Bu ürün bir set değil")
+
+  // Barkod / setSku başka üründe kullanılıyor mu? (kendisi hariç)
+  if (current.primaryBarcode !== data.primaryBarcode) {
+    const conflict = await prisma.product.findUnique({
+      where: { primaryBarcode: data.primaryBarcode },
+      select: { id: true, name: true },
+    })
+    if (conflict && conflict.id !== id) {
+      throw new Error(
+        `Bu barkod zaten kullanılıyor: "${conflict.name}" (#${conflict.id}).`,
+      )
+    }
+  }
+  if (data.setSku && current.setSku !== data.setSku) {
+    const skuConflict = await prisma.product.findFirst({
+      where: { setSku: data.setSku, NOT: { id } },
+      select: { id: true, name: true },
+    })
+    if (skuConflict) {
+      throw new Error(
+        `Bu set SKU zaten kullanılıyor: "${skuConflict.name}" (#${skuConflict.id}).`,
+      )
+    }
+  }
 
   const componentIds = data.components.map((c) => c.componentId)
   const components = await prisma.product.findMany({

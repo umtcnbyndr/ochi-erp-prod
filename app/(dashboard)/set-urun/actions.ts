@@ -19,6 +19,28 @@ function parsePayload(payload: unknown) {
   return setProductSchema.safeParse(payload)
 }
 
+function humanizeError(err: unknown, fallback: string): string {
+  if (err instanceof Error) {
+    const m = err.message
+    // Prisma unique constraint hatasını yakala
+    if (m.includes("Unique constraint failed")) {
+      const fields = m.match(/fields:\s*\(`?([^`)]+)`?\)/)?.[1]
+      if (fields?.includes("primaryBarcode")) {
+        return "Bu barkod sistemde zaten kullanılıyor. Önce mevcut ürünü düzenle veya farklı barkod kullan."
+      }
+      if (fields?.includes("setSku")) {
+        return "Bu set SKU zaten kullanılıyor."
+      }
+      if (fields?.includes("pharmacyProductCode")) {
+        return "Bu eczane kodu başka bir üründe kullanılıyor."
+      }
+      return `Bu kayıt zaten var (${fields ?? "alan çakıştı"}).`
+    }
+    return m
+  }
+  return fallback
+}
+
 export async function createSet(payload: unknown): Promise<ActionResult<{ id: number }>> {
   const parsed = parsePayload(payload)
   if (!parsed.success) {
@@ -31,7 +53,7 @@ export async function createSet(payload: unknown): Promise<ActionResult<{ id: nu
     revalidatePath("/urunler")
     return { success: true, data: { id: s.id } }
   } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : "Set oluşturulamadı" }
+    return { success: false, error: humanizeError(err, "Set oluşturulamadı") }
   }
 }
 
@@ -48,7 +70,7 @@ export async function updateSet(id: number, payload: unknown): Promise<ActionRes
     revalidatePath("/urunler")
     return { success: true }
   } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : "Güncellenemedi" }
+    return { success: false, error: humanizeError(err, "Güncellenemedi") }
   }
 }
 
