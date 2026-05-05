@@ -503,6 +503,24 @@ export async function executePharmacyUpload(
           where: { id: row.decision.productId },
           data: streetData,
         })
+        // Eczane Excel'in barkodu sistemde yoksa otomatik ek barkod olarak ekle
+        // (Tria Kodu ile match olduysa, gelen barkod yeni bilgi → kaybetmeyelim)
+        if (row.barcode) {
+          const existingBc = await prisma.productBarcode.findUnique({
+            where: { barcode: row.barcode },
+          })
+          if (!existingBc) {
+            await prisma.productBarcode.create({
+              data: {
+                barcode: row.barcode,
+                productId: row.decision.productId,
+                isPrimary: false,
+                source: "MANUAL",
+                note: "Eczane Excel yüklemesinden otomatik",
+              },
+            })
+          }
+        }
         res.updated++
         continue
       }
