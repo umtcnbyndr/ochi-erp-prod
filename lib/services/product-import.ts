@@ -83,6 +83,10 @@ export function suggestMapping(columns: string[]): ColumnMapping {
     pharmacyProductCode: (() => {
       for (const col of columns) {
         const n = norm(col)
+        // "tria" anahtar kelimesi varsa eczane Tria kodu olarak tanı (içerikte
+        // "barkod" geçse bile — user'lar 'Tria Barkod' diye yazabiliyor ama değer
+        // gerçekte eczane Ürün kodu — pharmacyProductCode için doğru kaynak)
+        if (n.includes("tria")) return col
         if (n.includes("kod") && !n.includes("barkod")) return col
       }
       return undefined
