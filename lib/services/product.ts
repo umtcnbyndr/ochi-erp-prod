@@ -626,20 +626,28 @@ export async function bulkDeleteProducts(
     for (const id of productIds) {
       try {
         await prisma.$transaction(async (tx) => {
-          // 1. Stok hareketlerini sil
+          // 1. Stok hareketleri
           const m = await tx.stockMovement.deleteMany({ where: { productId: id } })
           forcedMovements += m.count
 
           // 2. Takas kayıtları
           await tx.exchange.deleteMany({ where: { productId: id } })
 
-          // 3. Sipariş kalemleri (PurchaseOrderItem)
+          // 3. Sipariş kalemleri
           await tx.purchaseOrderItem.deleteMany({ where: { productId: id } })
 
           // 4. Kampanya satışları
           await tx.campaignSale.deleteMany({ where: { productId: id } })
 
-          // 5. Trendyol listing/favori snapshot — productId nullable, NULL'a çevir
+          // 5. SetComponent — bu ürün BAŞKA setlerin bileşeni olabilir (componentId)
+          // Bu ürünü bileşen olarak kullanan SetComponent kayıtlarını sil
+          // (set Product CASCADE ile zaten gider, ama componentId NO CASCADE)
+          await tx.setComponent.deleteMany({ where: { componentId: id } })
+
+          // 6. ProductMergeHistory — bu ürün geçmiş bir birleştirmenin hedefi
+          await tx.productMergeHistory.deleteMany({ where: { targetProductId: id } })
+
+          // 7. Trendyol listing/favori snapshot — productId nullable, NULL'a çevir
           await tx.trendyolListing.updateMany({
             where: { productId: id },
             data: { productId: null },
@@ -649,14 +657,14 @@ export async function bulkDeleteProducts(
             data: { productId: null },
           })
 
-          // 6. Şimdi ürünü sil — kalan ilişkiler cascade ile gider
+          // 8. Şimdi ürünü sil — kalan ilişkiler cascade ile gider
           await tx.product.delete({ where: { id } })
         })
         deleted.push(id)
       } catch (e) {
         skipped.push({
           id,
-          reason: e instanceof Error ? e.message.substring(0, 150) : "Silinemedi",
+          reason: e instanceof Error ? e.message.substring(0, 200) : "Silinemedi",
         })
       }
     }

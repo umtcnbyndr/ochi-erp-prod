@@ -235,6 +235,19 @@ export function ProductList({
         return
       }
       const fdata = r2.data!
+      // Eğer force mode'da hala atlanan varsa hata sebeplerini göster
+      if (fdata.skipped.length > 0) {
+        const reasons = fdata.skipped
+          .slice(0, 3)
+          .map((s) => `#${s.id}: ${s.reason}`)
+          .join("\n")
+        toast.error(
+          `${fdata.deleted.length} silindi, ${fdata.skipped.length} hala silinemedi:\n${reasons}`,
+          { duration: 10000 },
+        )
+        setSelected(new Set())
+        return
+      }
       toast.success(
         `Toplam ${deleted.length + fdata.deleted.length} ürün silindi` +
           (fdata.forcedMovements ? ` (${fdata.forcedMovements} stok hareketi de temizlendi)` : ""),
