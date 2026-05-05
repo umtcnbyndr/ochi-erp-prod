@@ -159,21 +159,73 @@ export async function bulkDeleteProductsAction(
 }
 
 /**
- * Trendyol listing snapshot tazele — TY Stok kolonu için.
- * filterProducts API'sinden tüm onaylı ürünleri çeker, TrendyolListing'e yazar.
+ * Trendyol senkronu — iki adım:
+ *   1. filterProducts API ile tüm onaylı ürünleri çek (TrendyolListing tablosu, TY Stok kolonu için)
+ *   2. buybox-information API ile BuyBox/rakip fiyatları çek (CompetitorPriceObservation, BuyBox kolonu için)
+ *
+ * Sayfa üzerindeki "TY Senkron" butonu bunu çağırır. Tek tıkla iki API tazelenir.
  */
 export async function refreshTrendyolListingsAction(): Promise<
-  ActionResult<{ totalFetched: number; durationMs: number }>
+  ActionResult<{
+    totalFetched: number
+    durationMs: number
+    buyboxObserved?: number
+    buyboxNotFound?: number
+    buyboxErrors?: number
+  }>
 > {
   try {
     await requirePermission("urunler", "edit")
     const result = await syncAllTrendyolListings({})
+
+    // BuyBox tazeleme — Trendyol listing'i olan tüm ERP ürünleri için
+    let buyboxObserved = 0
+    let buyboxNotFound = 0
+    let buyboxErrors = 0
+    try {
+      const productsWithTyListing = await prisma.product.findMany({
+        where: {
+          status: "ACTIVE",
+          OR: [
+            { trendyolBarcode: { not: null } },
+            {
+              marketplaceListings: {
+                some: {
+                  isActive: true,
+                  marketplace: { name: "Trendyol" },
+                  barcode: { not: null },
+                },
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      })
+      if (productsWithTyListing.length > 0) {
+        const { fetchAndStoreBuyboxForProducts } = await import(
+          "@/lib/services/trendyol/buybox"
+        )
+        const bb = await fetchAndStoreBuyboxForProducts(
+          productsWithTyListing.map((p) => p.id),
+        )
+        buyboxObserved = bb.observed
+        buyboxNotFound = bb.notFound
+        buyboxErrors = bb.errors
+      }
+    } catch (buyErr) {
+      console.warn("[ty-sync] BuyBox tazeleme hatası:", buyErr)
+      // Listing senkronu başarılıysa yine de OK dön
+    }
+
     revalidatePath("/urunler")
     return {
       success: true,
       data: {
         totalFetched: result.totalFetched,
         durationMs: result.durationMs,
+        buyboxObserved,
+        buyboxNotFound,
+        buyboxErrors,
       },
     }
   } catch (err) {

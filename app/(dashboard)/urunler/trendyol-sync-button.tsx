@@ -34,7 +34,11 @@ export function TrendyolSyncButton({ lastSync }: Props) {
   function onClick() {
     if (
       !confirm(
-        "Trendyol listing snapshot'ını tazelemek istiyor musun? Tüm ürünler API'den çekilir, ~30-60 saniye sürebilir.",
+        "Trendyol senkronu başlatılsın mı?\n\n" +
+          "İki adım:\n" +
+          "1) Listing & stok tazele (TY kolonu)\n" +
+          "2) BuyBox & rakip fiyat tazele (BuyBox kolonu)\n\n" +
+          "~60-120 saniye sürebilir.",
       )
     ) {
       return
@@ -45,8 +49,17 @@ export function TrendyolSyncButton({ lastSync }: Props) {
         toast.error(result.error)
         return
       }
+      const d = result.data
+      const seconds = Math.round((d?.durationMs ?? 0) / 1000)
+      const buyboxPart =
+        d?.buyboxObserved != null
+          ? ` · BuyBox: ${d.buyboxObserved} gözlem` +
+            (d.buyboxNotFound ? `, ${d.buyboxNotFound} bulunamadı` : "") +
+            (d.buyboxErrors ? `, ${d.buyboxErrors} hata` : "")
+          : ""
       toast.success(
-        `${result.data?.totalFetched ?? 0} ürün senkronlandı (${Math.round((result.data?.durationMs ?? 0) / 1000)}s)`,
+        `${d?.totalFetched ?? 0} ürün senkronlandı (${seconds}s)${buyboxPart}`,
+        { duration: 8000 },
       )
     })
   }
@@ -63,7 +76,7 @@ export function TrendyolSyncButton({ lastSync }: Props) {
       onClick={onClick}
       disabled={pending}
       className="gap-2 h-auto py-1.5 items-center"
-      title="Trendyol'dan tüm ürünlerin stok ve durum bilgisini tazele"
+      title="Trendyol'dan listing/stok + BuyBox/rakip fiyat tazele (iki sync birden)"
     >
       <RefreshCw className={`h-4 w-4 ${pending ? "animate-spin" : ""}`} />
       <div className="flex flex-col items-start leading-tight">
