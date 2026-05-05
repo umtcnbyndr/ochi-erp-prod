@@ -22,5 +22,8 @@ node scripts/seed-sc-floor.mjs || echo "[ochi-erp] SC floor seed warning (non-fa
 echo "[ochi-erp] Migrating listings (Product.trendyolBarcode → ProductMarketplaceListing)..."
 node scripts/migrate-listings.mjs || echo "[ochi-erp] Listings migration warning (non-fatal)"
 
+echo "[ochi-erp] Backfilling Product.trendyolBarcode from primary listings..."
+node scripts/backfill-trendyol-barcode.mjs || echo "[ochi-erp] TY barcode backfill warning (non-fatal)"
+
 echo "[ochi-erp] Starting Next.js server..."
 exec "$@"

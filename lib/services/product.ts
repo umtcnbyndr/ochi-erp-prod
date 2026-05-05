@@ -525,6 +525,17 @@ export async function listProductsForExport(filters: ProductListFilters = {}) {
       barcodes: {
         select: { barcode: true, source: true, note: true },
       },
+      // Excel "Trendyol Barkod" kolonu için: Product.trendyolBarcode boşsa
+      // primary listing'in barcode'unu fallback olarak kullan
+      marketplaceListings: {
+        where: {
+          isActive: true,
+          isPrimary: true,
+          marketplace: { name: "Trendyol" },
+        },
+        select: { barcode: true },
+        take: 1,
+      },
     },
   })
 }

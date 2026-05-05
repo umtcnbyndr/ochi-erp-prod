@@ -271,10 +271,15 @@ export async function exportProductsToExcel(
         "Raf": p.shelf ?? "",
         "Durum": p.status === "ACTIVE" ? "Aktif" : "Pasif",
         "Notlar": p.notes ?? "",
-        // Pazaryeri kodları — direkt Product alanlarından
+        // Pazaryeri kodları — Trendyol Barkod için fallback: legacy field boşsa
+        // primary listing'in barcode'una düş (yeni multi-listing sistemi)
         "Dopigo Ürün Kod": p.dopigoSku ?? "",
         "Dopigo Tedarikçi Barkod": p.dopigoBarcode ?? "",
-        "Trendyol Barkod": p.trendyolBarcode ?? "",
+        "Trendyol Barkod":
+          p.trendyolBarcode ??
+          (p as { marketplaceListings?: Array<{ barcode: string | null }> })
+            .marketplaceListings?.[0]?.barcode ??
+          "",
       }
     })
 
