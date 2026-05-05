@@ -336,9 +336,19 @@ export async function analyzePharmacyUpload(
     // Eşleştirme: ÖNCE eczane kodu (pharmacyProductCode/streetPharmacyCode), SONRA barkod fallback
     // Eczane kendi iç kodu daha stabil — barkod farklı satırlarda tekrarlanabilir, eczane kodu unique.
     let existing = productCode ? productCodeMap.get(productCode.trim()) : undefined
-    if (!existing) existing = barcodeMap.get(barcode)
+    let matchedByCode = !!existing
+    if (!existing) {
+      existing = barcodeMap.get(barcode)
+      matchedByCode = false
+    }
     if (existing) {
-      if (norm(existing.productName) === norm(name)) {
+      // Match key güvenliği:
+      //   - Eczane KODU ile bulunduysa → kod 1-1 unique olduğu için isim farkı ÖNEMLİ DEĞİL
+      //     (ör. eczane "CERAVE NEMLENDIRICI KREM" — sistem "CeraVe Nemlendirici Krem" → aynı ürün)
+      //     Bu durumda isim farkına bakmadan UPDATE yap.
+      //   - BARKOD ile bulunduysa → barkod farklı ürünlerde tekrar edebilir, isim kontrolü yap.
+      const isSafeMatch = matchedByCode || norm(existing.productName) === norm(name)
+      if (isSafeMatch) {
         preview.rows.push({
           ...baseRow,
           decision: { kind: "update", productId: existing.productId, productName: existing.productName },
