@@ -321,11 +321,9 @@ export async function executeImport(
       }
       seenInFile.add(key)
 
-      const brandName = mapping.brandName ? toStr(row[mapping.brandName]) : null
-      if (!brandName) {
-        res.errors.push({ rowNumber, message: "Marka boş" })
-        continue
-      }
+      // Marka boşsa "Tanımsız" → eczane Excel sonradan güncelleyebilir
+      const brandName =
+        (mapping.brandName ? toStr(row[mapping.brandName]) : null) ?? "Tanımsız"
       const brandKey = brandName.toLocaleLowerCase("tr")
       let brandId = brandCache.get(brandKey)
       if (!brandId) {
@@ -333,11 +331,10 @@ export async function executeImport(
         brandCache.set(brandKey, brandId)
       }
 
-      const categoryName = mapping.categoryName ? toStr(row[mapping.categoryName]) : null
-      if (!categoryName) {
-        res.errors.push({ rowNumber, message: "Kategori boş" })
-        continue
-      }
+      // Kategori boşsa "Tanımsız" → eczane Excel sonradan günceller (Grubu kolonu)
+      const categoryName =
+        (mapping.categoryName ? toStr(row[mapping.categoryName]) : null) ??
+        "Tanımsız"
       const categoryKey = categoryName.toLocaleLowerCase("tr")
       let categoryId = categoryCache.get(categoryKey)
       if (!categoryId) {

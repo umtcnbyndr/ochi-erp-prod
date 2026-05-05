@@ -17,8 +17,8 @@ import type { ColumnMapping, PreviewResult, ImportResult } from "@/lib/services/
 const FIELD_LABELS: Array<{ key: keyof ColumnMapping; label: string; required?: boolean }> = [
   { key: "primaryBarcode", label: "Ana Barkod", required: true },
   { key: "name", label: "Ürün Adı", required: true },
-  { key: "brandName", label: "Marka", required: true },
-  { key: "categoryName", label: "Kategori", required: true },
+  { key: "brandName", label: "Marka (boşsa: Tanımsız)" },
+  { key: "categoryName", label: "Kategori (boşsa: Tanımsız)" },
   { key: "pharmacyProductCode", label: "Eczane Master Kodu" },
   { key: "vatRate", label: "KDV Oranı" },
   { key: "mainPurchasePrice", label: "Ana Alış Fiyatı (KDV dahil)" },
