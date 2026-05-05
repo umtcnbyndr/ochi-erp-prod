@@ -86,6 +86,32 @@ export async function listStockMovements(options: StockMovementListOptions = {})
 }
 
 /**
+ * Tek bir stok hareketini sil (admin only — audit izi kaybolur).
+ *
+ * UYARI: Bu işlem stok adetlerine DOKUNMAZ. Yani:
+ *   - IN hareketi (örn 50 adet giriş) silinirse → ürünün mainStock'ı 50 azalmaz
+ *   - OUT hareketi silinirse → mainStock 50 artmaz
+ * Admin bilinçli olarak yaptığı için bu sorumluluk admin'de.
+ */
+export async function deleteStockMovement(id: number): Promise<void> {
+  await prisma.stockMovement.delete({ where: { id } })
+}
+
+/**
+ * Toplu stok hareketi sil (admin only).
+ * Tek transaction'da tümü, deleteMany count döner.
+ */
+export async function bulkDeleteStockMovements(ids: number[]): Promise<{
+  deleted: number
+}> {
+  if (ids.length === 0) return { deleted: 0 }
+  const result = await prisma.stockMovement.deleteMany({
+    where: { id: { in: ids } },
+  })
+  return { deleted: result.count }
+}
+
+/**
  * Bekleyen eczane faturalarını aya göre grupla — "Fatura Bekleyenler" rapor ekranı için.
  */
 export async function listPendingInvoices() {

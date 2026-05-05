@@ -621,22 +621,42 @@ export async function bulkDeleteProducts(
   const skipped: Array<{ id: number; reason: string }> = []
   let forcedMovements = 0
 
-  // FORCE MODU (admin): stok hareketlerini de silsin
+  // FORCE MODU (admin): tüm bağımlı kayıtları sil (cascade olmayan ilişkiler dahil)
   if (options.force) {
     for (const id of productIds) {
       try {
         await prisma.$transaction(async (tx) => {
-          // Önce stok hareketlerini sil (audit izi: silmeden önce sayısı log'a)
+          // 1. Stok hareketlerini sil
           const m = await tx.stockMovement.deleteMany({ where: { productId: id } })
           forcedMovements += m.count
-          // Sonra ürünü sil (FK cascade kalan ilişkileri temizler)
+
+          // 2. Takas kayıtları
+          await tx.exchange.deleteMany({ where: { productId: id } })
+
+          // 3. Sipariş kalemleri (PurchaseOrderItem)
+          await tx.purchaseOrderItem.deleteMany({ where: { productId: id } })
+
+          // 4. Kampanya satışları
+          await tx.campaignSale.deleteMany({ where: { productId: id } })
+
+          // 5. Trendyol listing/favori snapshot — productId nullable, NULL'a çevir
+          await tx.trendyolListing.updateMany({
+            where: { productId: id },
+            data: { productId: null },
+          })
+          await tx.trendyolFavoriteSnapshot.updateMany({
+            where: { productId: id },
+            data: { productId: null },
+          })
+
+          // 6. Şimdi ürünü sil — kalan ilişkiler cascade ile gider
           await tx.product.delete({ where: { id } })
         })
         deleted.push(id)
       } catch (e) {
         skipped.push({
           id,
-          reason: e instanceof Error ? e.message.substring(0, 100) : "Silinemedi",
+          reason: e instanceof Error ? e.message.substring(0, 150) : "Silinemedi",
         })
       }
     }

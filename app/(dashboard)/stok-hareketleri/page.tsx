@@ -5,6 +5,7 @@ import { StockMovementFilters } from "./filters"
 import { StockMovementTable } from "./movement-table"
 import { Pagination } from "../urunler/pagination"
 import type { MovementTypeFilter } from "@/lib/services/stock-movement"
+import { getAuthUser } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -27,19 +28,22 @@ export default async function StokHareketleriPage({
     search: sp.q as string | undefined,
   }
 
-  const [data, counterparties] = await Promise.all([
+  const [data, counterparties, user] = await Promise.all([
     listStockMovements({ filters, page, pageSize }),
     prisma.counterparty.findMany({
       where: { type: "PHARMACY" },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    getAuthUser(),
   ])
 
   const items = data.items.map((i) => ({
     ...i,
     unitPrice: i.unitPrice?.toString() ?? null,
   }))
+
+  const isAdmin = user?.role === "ADMIN"
 
   return (
     <div className="space-y-4">
@@ -48,7 +52,7 @@ export default async function StokHareketleriPage({
         description="Tüm giriş, çıkış ve takas kayıtları"
       />
       <StockMovementFilters counterparties={counterparties} />
-      <StockMovementTable items={items} />
+      <StockMovementTable items={items} isAdmin={isAdmin} />
       <Pagination total={data.total} page={page} pageSize={pageSize} />
     </div>
   )
