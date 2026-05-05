@@ -779,6 +779,16 @@ export async function buildExportPreview(
             },
           },
         },
+        // Listings tab'ından girilen Dopigo SKU + Tedarikçi Barkod fallback için
+        marketplaceListings: {
+          where: {
+            isActive: true,
+            isPrimary: true,
+            marketplace: { name: "Trendyol" },
+          },
+          select: { sku: true, supplierSku: true },
+          take: 1,
+        },
       },
       orderBy: { name: "asc" },
     }),
@@ -922,6 +932,16 @@ export async function buildExportExcel(
             },
           },
         },
+        // Listings tab'ından girilen Dopigo SKU + Tedarikçi Barkod fallback için
+        marketplaceListings: {
+          where: {
+            isActive: true,
+            isPrimary: true,
+            marketplace: { name: "Trendyol" },
+          },
+          select: { sku: true, supplierSku: true },
+          take: 1,
+        },
       },
       orderBy: { name: "asc" },
     }),
@@ -1009,11 +1029,19 @@ export async function buildExportExcel(
   let unmatchedDopigo = 0
 
   for (const p of products) {
+    // Effective dopigo identifiers — legacy Product field'ı veya Listings tab'ından
+    // girilen primary listing değerleri.
+    const listingPrimary = (
+      p as { marketplaceListings?: Array<{ sku: string | null; supplierSku: string | null }> }
+    ).marketplaceListings?.[0]
+    const effDopigoSku = p.dopigoSku || listingPrimary?.sku || null
+    const effDopigoBarcode = p.dopigoBarcode || listingPrimary?.supplierSku || null
+
     // Once Dopigo snapshot'tan eslesme bul (sku > dopigoBarcode > primaryBarcode)
     let dopigoMatch: (typeof dopigoListings)[0] | undefined
-    if (p.dopigoSku) dopigoMatch = dopigoBySku.get(p.dopigoSku)
-    if (!dopigoMatch && p.dopigoBarcode) {
-      dopigoMatch = dopigoByBarcode.get(p.dopigoBarcode)
+    if (effDopigoSku) dopigoMatch = dopigoBySku.get(effDopigoSku)
+    if (!dopigoMatch && effDopigoBarcode) {
+      dopigoMatch = dopigoByBarcode.get(effDopigoBarcode)
     }
     if (!dopigoMatch) dopigoMatch = dopigoByBarcode.get(p.primaryBarcode)
 
@@ -1035,15 +1063,15 @@ export async function buildExportExcel(
     } else {
       unmatchedDopigo++
       // Snapshot'ta yok — minimum match key'leri yazalim
-      if (p.dopigoSku) row[headerIndex["sku"]] = p.dopigoSku
-      row[headerIndex["barkod/gtin"]] = p.dopigoBarcode || p.primaryBarcode
+      if (effDopigoSku) row[headerIndex["sku"]] = effDopigoSku
+      row[headerIndex["barkod/gtin"]] = effDopigoBarcode || p.primaryBarcode
     }
 
     // Match key'leri ERP'deki guncel degerlerle override et (snapshot eski olabilir)
-    if (p.dopigoSku) {
-      row[headerIndex["sku"]] = p.dopigoSku
+    if (effDopigoSku) {
+      row[headerIndex["sku"]] = effDopigoSku
     }
-    row[headerIndex["barkod/gtin"]] = p.dopigoBarcode || p.primaryBarcode
+    row[headerIndex["barkod/gtin"]] = effDopigoBarcode || p.primaryBarcode
 
     const baseRealPurchase = calculateEffectivePurchasePrice(p)
     const stockInfo = calculateEffectiveStock(p)
