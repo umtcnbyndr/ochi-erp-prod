@@ -33,9 +33,29 @@ async function main() {
     create: { name: "Ochi Eczane", code: "OCHI-001" },
   })
 
+  // FORCE_ADMIN_RESET=1 → mevcut admin'in şifresini güncelle (idempotent değil)
+  const forceReset = process.env.FORCE_ADMIN_RESET === "1"
+
   // Admin var mı?
   const existing = await prisma.user.findUnique({ where: { username } })
   if (existing) {
+    if (forceReset) {
+      const passwordHash = await bcrypt.hash(password, 12)
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          passwordHash,
+          name, // env'deki güncel ada al
+          email, // env'deki güncel maile al
+          isActive: true,
+          role: "ADMIN",
+        },
+      })
+      console.log(
+        `[seed-admin] ✓ FORCE_RESET: Admin (${username}) şifresi güncellendi`,
+      )
+      return
+    }
     console.log(`[seed-admin] Admin zaten var (${username}) — atlanıyor`)
     return
   }
