@@ -86,7 +86,7 @@ export async function createListing(input: CreateListingInput): Promise<ProductM
       })
     }
 
-    return tx.productMarketplaceListing.create({
+    const created = await tx.productMarketplaceListing.create({
       data: {
         productId: input.productId,
         marketplaceId: input.marketplaceId,
@@ -100,6 +100,26 @@ export async function createListing(input: CreateListingInput): Promise<ProductM
         notes: input.notes?.trim() || null,
       },
     })
+
+    // Trendyol primary ise legacy Product alanlarını senkron et
+    if (input.isPrimary && created.barcode) {
+      const mp = await tx.marketplace.findUnique({
+        where: { id: input.marketplaceId },
+        select: { name: true },
+      })
+      if (mp?.name === "Trendyol") {
+        await tx.product.update({
+          where: { id: input.productId },
+          data: {
+            trendyolBarcode: created.barcode,
+            dopigoSku: created.sku,
+            dopigoBarcode: created.supplierSku,
+          },
+        })
+      }
+    }
+
+    return created
   })
 }
 
@@ -119,6 +139,7 @@ export async function updateListing(input: UpdateListingInput): Promise<ProductM
   return prisma.$transaction(async (tx) => {
     const existing = await tx.productMarketplaceListing.findUniqueOrThrow({
       where: { id: input.id },
+      include: { marketplace: { select: { name: true } } },
     })
 
     // Primary değişiyorsa diğerlerini düşür
@@ -134,7 +155,7 @@ export async function updateListing(input: UpdateListingInput): Promise<ProductM
       })
     }
 
-    return tx.productMarketplaceListing.update({
+    const updated = await tx.productMarketplaceListing.update({
       where: { id: input.id },
       data: {
         barcode: input.barcode !== undefined ? input.barcode?.trim() || null : undefined,
@@ -149,6 +170,25 @@ export async function updateListing(input: UpdateListingInput): Promise<ProductM
         notes: input.notes !== undefined ? input.notes?.trim() || null : undefined,
       },
     })
+
+    // Listings = source of truth. Trendyol primary listing değişirse legacy
+    // Product alanlarını da senkron et (migrate-listings ve diğer servisler
+    // legacy alanlara bakar — biri değişip diğeri değişmezse listing rollback olur).
+    const isTrendyolPrimary =
+      existing.marketplace.name === "Trendyol" &&
+      (input.isPrimary === true || (input.isPrimary === undefined && existing.isPrimary))
+    if (isTrendyolPrimary) {
+      await tx.product.update({
+        where: { id: existing.productId },
+        data: {
+          trendyolBarcode: updated.barcode,
+          dopigoSku: updated.sku,
+          dopigoBarcode: updated.supplierSku,
+        },
+      })
+    }
+
+    return updated
   })
 }
 
