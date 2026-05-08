@@ -139,6 +139,11 @@ export async function buildThreeWayMatch(opts?: {
         mainStock: true,
         brand: { select: { name: true } },
         barcodes: { select: { barcode: true } },
+        // Pazaryeri kayıtları (Listings tab) — yeni eklenen TY barkodu burada
+        marketplaceListings: {
+          where: { isActive: true },
+          select: { barcode: true, sku: true, supplierSku: true },
+        },
       },
     }),
     prisma.trendyolListing.findMany({
@@ -192,6 +197,12 @@ export async function buildThreeWayMatch(opts?: {
     if (p.dopigoBarcode) s.add(p.dopigoBarcode)
     if (p.dopigoSku) s.add(p.dopigoSku)
     for (const b of p.barcodes) s.add(b.barcode)
+    // Listings tab'ından girilen değerler (Trendyol Barkod, Dopigo SKU, Tedarikçi Barkod)
+    for (const l of p.marketplaceListings) {
+      if (l.barcode) s.add(l.barcode)
+      if (l.sku) s.add(l.sku)
+      if (l.supplierSku) s.add(l.supplierSku)
+    }
     return s
   }
 
