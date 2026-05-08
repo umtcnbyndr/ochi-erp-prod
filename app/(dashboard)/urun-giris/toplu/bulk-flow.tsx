@@ -303,12 +303,15 @@ export function BulkEntryFlow({ counterparties }: { counterparties: Counterparty
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Cari (opsiyonel)</Label>
-              <Select value={counterpartyId} onValueChange={setCounterpartyId}>
+              <Select
+                value={counterpartyId || "none"}
+                onValueChange={(v) => setCounterpartyId(v === "none" ? "" : v)}
+              >
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="—" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— Yok —</SelectItem>
+                  <SelectItem value="none">— Yok —</SelectItem>
                   {counterparties.map((c) => (
                     <SelectItem key={c.id} value={c.id.toString()}>
                       {c.name}
