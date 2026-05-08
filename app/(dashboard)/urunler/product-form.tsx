@@ -61,6 +61,8 @@ interface ProductFormProps {
     subcategories: { id: number; name: string }[]
   }[]
   initialData?: InitialData
+  /** Tria Ürün Kodu (pharmacyProductCode) sadece admin'e gösterilir */
+  isAdmin?: boolean
 }
 
 function FieldError({ message }: { message?: string }) {
@@ -68,7 +70,7 @@ function FieldError({ message }: { message?: string }) {
   return <p className="text-xs text-destructive mt-1">{message}</p>
 }
 
-export function ProductForm({ brands, categories, initialData }: ProductFormProps) {
+export function ProductForm({ brands, categories, initialData, isAdmin = false }: ProductFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const isEdit = Boolean(initialData)
@@ -207,6 +209,28 @@ export function ProductForm({ brands, categories, initialData }: ProductFormProp
                   </p>
                   <FieldError message={errors.supplierBarcode?.message} />
                 </div>
+
+                {/* Tria Ürün Kodu — sadece admin */}
+                {isAdmin && (
+                  <div className="sm:col-span-2 rounded-md border bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                    <Label htmlFor="pharmacyProductCode">
+                      Tria Ürün Kodu (Eczane Sistem Kodu)
+                      <span className="ml-2 text-[10px] font-normal text-amber-700 dark:text-amber-400">
+                        🔒 sadece admin
+                      </span>
+                    </Label>
+                    <Input
+                      id="pharmacyProductCode"
+                      {...form.register("pharmacyProductCode")}
+                      placeholder="Tria sistemindeki ürün kodu (örn 105807)"
+                      className="font-mono text-sm mt-1"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Eczane Excel yüklemesinde ürünleri eşleştirmek için kullanılan kod. Yanlış girilirse eczane verisi yanlış ürünle eşleşir, dikkat.
+                    </p>
+                    <FieldError message={errors.pharmacyProductCode?.message} />
+                  </div>
+                )}
 
                 {/* Pazar yeri kayıtları (Listings) — düzenleme modunda göster */}
                 {isEdit && initialData?.id && (
@@ -509,16 +533,6 @@ export function ProductForm({ brands, categories, initialData }: ProductFormProp
                     <FieldError message={errors.giftMinSalePrice?.message} />
                   </div>
                 )}
-
-                <div>
-                  <Label htmlFor="pharmacyProductCode">Eczane Ürün Kodu</Label>
-                  <Input
-                    id="pharmacyProductCode"
-                    {...form.register("pharmacyProductCode")}
-                    placeholder="Eczane kodu"
-                  />
-                  <FieldError message={errors.pharmacyProductCode?.message} />
-                </div>
 
                 <div>
                   <Label htmlFor="minStock">Min. Stok</Label>

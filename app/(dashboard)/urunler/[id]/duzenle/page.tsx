@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { getProductById } from "@/lib/services/product"
 import { ProductForm } from "../../product-form"
 import { PageHeader } from "@/components/common/page-header"
+import { getAuthUser } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -15,7 +16,7 @@ export default async function EditProductPage({
   const productId = Number(id)
   if (!Number.isFinite(productId)) notFound()
 
-  const [product, brands, categories] = await Promise.all([
+  const [product, brands, categories, user] = await Promise.all([
     getProductById(productId),
     prisma.brand.findMany({
       orderBy: { name: "asc" },
@@ -32,9 +33,11 @@ export default async function EditProductPage({
         },
       },
     }),
+    getAuthUser(),
   ])
 
   if (!product) notFound()
+  const isAdmin = user?.role === "ADMIN"
 
   const initialData = {
     id: product.id,
@@ -74,7 +77,7 @@ export default async function EditProductPage({
         title={`Ürün Düzenle: ${product.name}`}
         description={product.primaryBarcode}
       />
-      <ProductForm brands={brands} categories={categories} initialData={initialData} />
+      <ProductForm brands={brands} categories={categories} initialData={initialData} isAdmin={isAdmin} />
     </div>
   )
 }
