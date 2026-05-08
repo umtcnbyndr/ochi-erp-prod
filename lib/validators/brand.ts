@@ -27,6 +27,15 @@ export const brandSchema = z.object({
   yearEndDiscount3: percent.default(0),
   pharmacyMargin: percent.default(0),
   pharmacyStockRule: z.coerce.number().int().min(0).default(0),
+  // Boş = "tümünü aç" (mevcut). Sayı = "kural üstünden en çok N aç" (cap).
+  pharmacyOpenAmount: z
+    .union([
+      z.coerce.number().int().min(0),
+      z.literal("").transform(() => null),
+      z.null(),
+    ])
+    .optional()
+    .nullable(),
   targetProfit: z
     .union([
       z.coerce.number().min(0).max(99),

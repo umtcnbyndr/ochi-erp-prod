@@ -38,6 +38,7 @@ interface Brand {
   yearEndDiscount3: string | number
   pharmacyMargin: string | number
   pharmacyStockRule: number
+  pharmacyOpenAmount?: number | null
   targetProfit?: string | number | null
   priceUndercutBuffer?: string | number
   priceUndercutBufferPct?: string | number
@@ -207,6 +208,7 @@ export function BrandList({ brands }: { brands: Brand[] }) {
             yearEndDiscount3: Number(editing.yearEndDiscount3),
             pharmacyMargin: Number(editing.pharmacyMargin),
             pharmacyStockRule: editing.pharmacyStockRule,
+            pharmacyOpenAmount: editing.pharmacyOpenAmount,
             targetProfit:
               editing.targetProfit != null ? Number(editing.targetProfit) : null,
             priceUndercutBuffer: Number(editing.priceUndercutBuffer ?? 0),

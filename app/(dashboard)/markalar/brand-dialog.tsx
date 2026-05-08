@@ -29,6 +29,7 @@ interface BrandInitialData {
   yearEndDiscount3?: number | string
   pharmacyMargin?: number | string
   pharmacyStockRule?: number
+  pharmacyOpenAmount?: number | null
   targetProfit?: number | string | null
   priceUndercutBuffer?: number | string
   priceUndercutBufferPct?: number | string
@@ -140,6 +141,27 @@ export function BrandDialog({ open, onOpenChange, initialData }: BrandDialogProp
                 min="0"
                 defaultValue={initialData?.pharmacyStockRule ?? 0}
               />
+              <p className="text-[11px] text-muted-foreground">
+                Eczane'de bu sayının altına düşmesin (koruma).
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pharmacyOpenAmount">
+                Açılacak Maks. Adet (opsiyonel)
+              </Label>
+              <Input
+                id="pharmacyOpenAmount"
+                name="pharmacyOpenAmount"
+                type="number"
+                step="1"
+                min="0"
+                placeholder="Boş = tümünü aç"
+                defaultValue={initialData?.pharmacyOpenAmount ?? ""}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Boş: kural üstündeki <strong>tüm</strong> stok açılır (mevcut).<br />
+                Sayı: kural üstünden <strong>en çok bu kadar</strong> aç (örn 1 → tek tek).
+              </p>
             </div>
           </div>
 

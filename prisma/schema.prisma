@@ -124,6 +124,10 @@ model Brand {
 
   pharmacyMargin    Decimal @default(0) @db.Decimal(5, 2)
   pharmacyStockRule Int     @default(0)
+  // Açılacak maksimum miktar — null = "üstünün TAMAMINI aç" (mevcut davranış)
+  // Sayı = "kural üstünden EN ÇOK bu kadar aç" (örn 1 → sadece 1 aç).
+  // Az hareketli ürünlerde gereksiz açma yapmamak için.
+  pharmacyOpenAmount Int?
 
   // Pazaryeri hedef kar marjı (opsiyonel, % — örn. 30 = %30).
   // Doluysa marketplace.targetProfit'i override eder. Tüm pazar yerlerinde geçerli.

@@ -249,6 +249,7 @@ interface ProductForCalc {
     yearEndDiscount3: import("@prisma/client/runtime/library").Decimal | string | number
     pharmacyMargin: import("@prisma/client/runtime/library").Decimal | string | number
     pharmacyStockRule: number
+    pharmacyOpenAmount?: number | null
     targetProfit?: import("@prisma/client/runtime/library").Decimal | string | number | null
   }
   // 3-tier fiyat onceligi icin: manualOverride > recommendedPrice > formula
@@ -356,7 +357,10 @@ export function calculateEffectivePurchasePrice(p: ProductForCalc): number | nul
  * Etkin stok:
  *   mainStock > 0      → mainStock
  *   mainStock = 0
- *     streetStock > pharmacyStockRule → streetStock - pharmacyStockRule
+ *     streetStock > pharmacyStockRule
+ *       fazla = streetStock - pharmacyStockRule
+ *       brand.pharmacyOpenAmount varsa → min(fazla, openAmount) aç (cap)
+ *       yoksa → fazla aç (eski davranış)
  *     streetStock <= pharmacyStockRule → 0 (uyarı kayıtlanır)
  */
 export function calculateEffectiveStock(p: ProductForCalc): {
@@ -376,7 +380,11 @@ export function calculateEffectiveStock(p: ProductForCalc): {
   }
   const rule = p.brand.pharmacyStockRule ?? 0
   if (p.streetStock > rule) {
-    return { stock: p.streetStock - rule, source: "PHARMACY_FALLBACK" }
+    const fazla = p.streetStock - rule
+    const cap = p.brand.pharmacyOpenAmount ?? null
+    const stock =
+      cap != null && cap > 0 ? Math.min(fazla, cap) : fazla
+    return { stock, source: "PHARMACY_FALLBACK" }
   }
   return { stock: 0, source: "ZERO" }
 }
@@ -721,7 +729,7 @@ async function selectProductIdsByQuery(query: ProductQuery): Promise<number[]> {
     select: {
       id: true,
       streetStock: true,
-      brand: { select: { pharmacyStockRule: true } },
+      brand: { select: { pharmacyStockRule: true, pharmacyOpenAmount: true } },
     },
   })
 
@@ -758,6 +766,7 @@ export async function buildExportPreview(
             yearEndDiscount3: true,
             pharmacyMargin: true,
             pharmacyStockRule: true,
+            pharmacyOpenAmount: true,
             targetProfit: true,
           },
         },
@@ -911,6 +920,7 @@ export async function buildExportExcel(
             yearEndDiscount3: true,
             pharmacyMargin: true,
             pharmacyStockRule: true,
+            pharmacyOpenAmount: true,
             targetProfit: true,
           },
         },
@@ -1269,7 +1279,7 @@ export async function listLowStockAlerts(): Promise<LowStockAlert[]> {
     },
     include: {
       brand: {
-        select: { id: true, name: true, pharmacyStockRule: true },
+        select: { id: true, name: true, pharmacyStockRule: true, pharmacyOpenAmount: true },
       },
     },
     orderBy: { name: "asc" },
