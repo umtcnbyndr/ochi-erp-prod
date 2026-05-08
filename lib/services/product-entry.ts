@@ -196,3 +196,144 @@ export async function createEntrySession(input: EntrySessionInput): Promise<Entr
     priceChanged,
   }
 }
+
+// ==============  TOPLU GİRİŞ (Excel / textarea)  ==============
+
+export interface BulkEntryRow {
+  /** 1-based satır numarası (UI feedback için) */
+  rowNumber: number
+  barcode: string
+  quantity: number
+  unitPrice: number | null // KDV dahil alış (opsiyonel)
+}
+
+export interface BulkPreviewMatch {
+  rowNumber: number
+  barcode: string
+  productId: number
+  productName: string
+  quantity: number
+  unitPrice: number | null
+}
+
+export interface BulkPreviewMiss {
+  rowNumber: number
+  barcode: string
+  reason: string
+}
+
+export interface BulkPreviewResult {
+  matched: BulkPreviewMatch[]
+  missed: BulkPreviewMiss[]
+  duplicateBarcodes: string[]
+}
+
+/**
+ * Toplu girişi önizler — barkodları çözer, eşleşen/eşleşmeyenleri ayırır.
+ * DB değişikliği yapmaz.
+ */
+export async function previewBulkEntry(
+  rows: BulkEntryRow[],
+): Promise<BulkPreviewResult> {
+  const result: BulkPreviewResult = {
+    matched: [],
+    missed: [],
+    duplicateBarcodes: [],
+  }
+  if (rows.length === 0) return result
+
+  // Aynı dosyada duplicate barkod varsa uyar (toplama yapmıyoruz, kullanıcı görsün)
+  const seen = new Map<string, number>()
+  for (const r of rows) {
+    const bc = r.barcode.trim()
+    if (!bc) continue
+    seen.set(bc, (seen.get(bc) ?? 0) + 1)
+  }
+  result.duplicateBarcodes = Array.from(seen.entries())
+    .filter(([, c]) => c > 1)
+    .map(([bc]) => bc)
+
+  const uniqueBarcodes = Array.from(seen.keys())
+  if (uniqueBarcodes.length === 0) return result
+
+  // ProductBarcode tablosu üzerinden eşleştir (primary + alternatif barkodlar)
+  const barcodeRows = await prisma.productBarcode.findMany({
+    where: { barcode: { in: uniqueBarcodes } },
+    select: {
+      barcode: true,
+      product: { select: { id: true, name: true, productType: true } },
+    },
+  })
+  const map = new Map<string, { id: number; name: string; productType: string }>()
+  for (const br of barcodeRows) {
+    map.set(br.barcode, br.product)
+  }
+
+  for (const r of rows) {
+    const bc = r.barcode.trim()
+    if (!bc) {
+      result.missed.push({
+        rowNumber: r.rowNumber,
+        barcode: r.barcode,
+        reason: "Barkod boş",
+      })
+      continue
+    }
+    if (r.quantity <= 0) {
+      result.missed.push({
+        rowNumber: r.rowNumber,
+        barcode: bc,
+        reason: "Miktar 0 veya negatif",
+      })
+      continue
+    }
+    const product = map.get(bc)
+    if (!product) {
+      result.missed.push({
+        rowNumber: r.rowNumber,
+        barcode: bc,
+        reason: "Ürün bulunamadı (sistemde bu barkod yok)",
+      })
+      continue
+    }
+    if (product.productType === "SET") {
+      result.missed.push({
+        rowNumber: r.rowNumber,
+        barcode: bc,
+        reason: "Set ürün — bileşenleri ayrı gir",
+      })
+      continue
+    }
+    result.matched.push({
+      rowNumber: r.rowNumber,
+      barcode: bc,
+      productId: product.id,
+      productName: product.name,
+      quantity: r.quantity,
+      unitPrice: r.unitPrice,
+    })
+  }
+
+  return result
+}
+
+/**
+ * Önizleme'deki matched satırları tek bir EntrySession olarak kaydeder.
+ * createEntrySession'ı sarmalar.
+ */
+export async function executeBulkEntry(
+  matched: BulkPreviewMatch[],
+  header: Omit<EntrySessionInput, "lines">,
+): Promise<EntryReport> {
+  if (matched.length === 0) {
+    throw new Error("Eşleşen satır yok — kaydedilecek bir şey yok")
+  }
+  return createEntrySession({
+    ...header,
+    lines: matched.map((m) => ({
+      productId: m.productId,
+      quantity: m.quantity,
+      unitPrice: m.unitPrice,
+    })),
+  })
+}

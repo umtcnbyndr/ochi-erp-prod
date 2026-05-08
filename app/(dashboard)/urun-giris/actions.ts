@@ -184,3 +184,61 @@ export async function submitEntryAction(
     return { success: false, error: err instanceof Error ? err.message : "Giriş tamamlanamadı" }
   }
 }
+
+// ============== Toplu Giriş (Excel / Textarea) ==============
+
+import {
+  previewBulkEntry,
+  executeBulkEntry,
+  type BulkEntryRow,
+  type BulkPreviewResult,
+  type BulkPreviewMatch,
+} from "@/lib/services/product-entry"
+
+export async function previewBulkEntryAction(
+  rows: BulkEntryRow[],
+): Promise<
+  | { success: true; data: BulkPreviewResult }
+  | { success: false; error: string }
+> {
+  try {
+    await requirePermission("urun-giris", "edit")
+    const data = await previewBulkEntry(rows)
+    return { success: true, data }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Önizleme hatası",
+    }
+  }
+}
+
+export async function executeBulkEntryAction(
+  matched: BulkPreviewMatch[],
+  header: {
+    source: "PURCHASE" | "RETURN"
+    counterpartyId?: number | null
+    generalNote?: string | null
+    brandInvoiceNumber?: string | null
+    pharmacyInvoiceLabel?: string | null
+    pharmacyInvoicePending?: boolean
+    pharmacyInvoiceExpectedMonth?: string | null
+  },
+): Promise<
+  | { success: true; data: EntryReport }
+  | { success: false; error: string }
+> {
+  try {
+    await requirePermission("urun-giris", "edit")
+    const report = await executeBulkEntry(matched, header)
+    revalidatePath("/urun-giris")
+    revalidatePath("/urunler")
+    revalidatePath("/stok-hareketleri")
+    return { success: true, data: report }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Toplu giriş kaydedilemedi",
+    }
+  }
+}

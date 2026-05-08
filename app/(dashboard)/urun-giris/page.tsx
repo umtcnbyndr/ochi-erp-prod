@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, FileSpreadsheet } from "lucide-react"
 import { prisma } from "@/lib/db"
 import { getPurchaseOrder } from "@/lib/services/purchase-order"
 import { PageHeader } from "@/components/common/page-header"
@@ -91,6 +91,14 @@ export default async function UrunGirisPage({
         <PageHeader
           title="Ürün Giriş"
           description="Seans tabanlı mal kabul — barkod okutun, kalem ekleyin, tamamlayın"
+          actions={
+            <Link href="/urun-giris/toplu">
+              <Button variant="outline" size="sm">
+                <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" />
+                Toplu Excel ile Gir
+              </Button>
+            </Link>
+          }
         />
       )}
 
