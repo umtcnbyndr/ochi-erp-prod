@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/db"
-import { Users, ChevronRight } from "lucide-react"
+import { Users, ChevronRight, AlertTriangle } from "lucide-react"
 import { PageHeader } from "@/components/common/page-header"
 import {
   Card,
@@ -84,6 +84,29 @@ export default async function AyarlarPage() {
       </div>
 
       <TrendyolForm initial={trendyolInitial} />
+
+      {/* Tehlikeli alan — sadece admin */}
+      {session?.user?.role === "ADMIN" && (
+        <Link href="/ayarlar/sistem-sifirla" className="block">
+          <Card className="border-rose-500/30 bg-rose-50/30 dark:bg-rose-950/10 transition-colors hover:bg-rose-50/60 dark:hover:bg-rose-950/20">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2 text-rose-700 dark:text-rose-400">
+                <AlertTriangle className="h-4 w-4" />
+                Sistem Sıfırla (sisteme aktif geçiş)
+              </CardTitle>
+              <CardDescription>
+                Stok hareketleri, mal kabul seansları ve ana alış geçmişini siler. Tüm ürünlerin Ana Stok ve Ana Alış değerleri sıfırlanır. Eczane verisi (Cadde stoğu/alış/PSF) korunur. <strong className="text-rose-700 dark:text-rose-400">GERİ ALINAMAZ.</strong>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                🔒 Sadece admin
+              </span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
     </div>
   )
 }

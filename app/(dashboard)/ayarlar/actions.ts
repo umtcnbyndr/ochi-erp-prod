@@ -158,3 +158,37 @@ export async function testTrendyolConfigAction(): Promise<{
   revalidatePath("/ayarlar")
   return test
 }
+
+// ============== Sistem Reset (admin only, destructive) ==============
+
+import { resetStockAndAlisHistory, type ResetReport } from "@/lib/services/admin-reset"
+
+export type ResetReportClient = ResetReport
+
+export async function resetStockHistoryAction(
+  confirmPhrase: string,
+): Promise<
+  | { success: true; data: ResetReport }
+  | { success: false; error: string }
+> {
+  try {
+    const adminUser = await requireAdmin()
+    if (confirmPhrase !== "STOK RESETLE") {
+      return { success: false, error: "Onay metni hatalı" }
+    }
+    console.warn(
+      `[admin-reset] Admin (#${adminUser.id}) sistemi sıfırlıyor`,
+    )
+    const report = await resetStockAndAlisHistory()
+    console.warn("[admin-reset] Sonuç:", report)
+    revalidatePath("/urunler")
+    revalidatePath("/stok-hareketleri")
+    revalidatePath("/urun-giris")
+    return { success: true, data: report }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Sıfırlama başarısız",
+    }
+  }
+}
