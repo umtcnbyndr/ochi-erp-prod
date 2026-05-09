@@ -203,7 +203,23 @@ function SuggestionCard({ s, onCopy, onArchive }: {
               <Badge variant="outline" className="text-[10px]">
                 {meta.trendyolType}
               </Badge>
-              <span className="text-2xl font-bold ml-2">%{s.finalPct}</span>
+              <span className="text-2xl font-bold ml-2 tabular-nums">
+                {s.recommendedFormat === "AMOUNT" ? (
+                  <>
+                    {s.finalAmount} ₺
+                    <span className="text-xs text-muted-foreground font-normal ml-1">
+                      (≈%{s.finalPct})
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    %{s.finalPct}
+                    <span className="text-xs text-muted-foreground font-normal ml-1">
+                      (≈{s.finalAmount} ₺)
+                    </span>
+                  </>
+                )}
+              </span>
               {s.violatesFloor && (
                 <Badge variant="outline" className="text-[10px] text-amber-700 bg-amber-50 dark:bg-amber-950/30">
                   ⚠ Kâr tabanı korundu
@@ -262,7 +278,9 @@ function SuggestionCard({ s, onCopy, onArchive }: {
             </div>
             <div className="flex justify-between font-semibold">
               <span>Güvenli son oran:</span>
-              <span className="tabular-nums text-emerald-700">%{s.finalPct}</span>
+              <span className="tabular-nums text-emerald-700">
+                %{s.finalPct} <span className="text-[10px] text-muted-foreground">/ {s.finalAmount} ₺</span>
+              </span>
             </div>
             <div className="flex justify-between">
               <span>Kupon sonrası net marj:</span>

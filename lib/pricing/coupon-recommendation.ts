@@ -192,6 +192,10 @@ export interface CouponRecommendation {
   baseSuggestionPct: number
   /** Güvenli olarak nihai gösterilecek oran */
   safeFinalPct: number
+  /** Yüzde × fiyat karşılığı (TL) — Trendyol'da "TL kupon" olarak da kullanılabilir */
+  safeFinalAmount: number
+  /** Tavsiye edilen format: PCT (yüzde) veya AMOUNT (TL) */
+  recommendedFormat: "PCT" | "AMOUNT"
   /** Tahmini etki — optimist senaryoda ek ciro */
   estimatedExtraRevenue: number
   /** Tahmini ek satış adeti */
@@ -249,11 +253,24 @@ export function recommendCoupon(input: {
   const discountedPrice = input.pricing.salePrice * (1 - finalPct / 100)
   const estimatedExtraRevenue = estimatedExtraSales * discountedPrice
 
+  // TL karşılığı — fiyat × oran. Yuvarlama: 5'in katları (Trendyol UX)
+  const rawAmount = (input.pricing.salePrice * finalPct) / 100
+  const safeFinalAmount = Math.floor(rawAmount / 5) * 5
+
+  // Format önerisi:
+  //   - Düşük fiyat (< 500 TL) → % daha temiz görünür
+  //   - Orta fiyat (500-2000 TL) → yine % yeterli
+  //   - Yüksek fiyat (≥ 2000 TL) → TL daha okunabilir (örn "300 TL indirim")
+  const recommendedFormat: "PCT" | "AMOUNT" =
+    input.pricing.salePrice >= 2000 ? "AMOUNT" : "PCT"
+
   return {
     type: input.type,
     signal: typeToSignalLabel(input.type),
     baseSuggestionPct: basePct,
     safeFinalPct: finalPct,
+    safeFinalAmount,
+    recommendedFormat,
     estimatedExtraRevenue,
     estimatedExtraSales,
     safety,

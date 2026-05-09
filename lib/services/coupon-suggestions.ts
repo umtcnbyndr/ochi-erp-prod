@@ -37,6 +37,10 @@ export interface SuggestionListRow {
   metrics: Record<string, number | string | null>
   /** Önerilen kupon oranı (kâr-safe) */
   finalPct: number
+  /** Yüzde × fiyat karşılığı TL (5 katlarında yuvarlanmış) */
+  finalAmount: number
+  /** UI'da hangi formatı önce göster: yüzde mi TL mi */
+  recommendedFormat: "PCT" | "AMOUNT"
   /** Heuristic önerisi (kısılmış olabilir) */
   baseSuggestionPct: number
   violatesFloor: boolean
@@ -219,10 +223,12 @@ export async function generateCouponSuggestions(
           pricing, channel, targets,
           metrics: { ...m, views: m.views },
         })
-        const coupon = rec.safeFinalPct
         suggestions.push(buildRow({
           product, snap, signalType: "STOCK_LIQUIDATION",
-          finalPct: coupon, baseSuggestion: 20,
+          finalPct: rec.safeFinalPct,
+          finalAmount: rec.safeFinalAmount,
+          recommendedFormat: rec.recommendedFormat,
+          baseSuggestion: 20,
           safety: rec.safety,
           estimatedExtraSales: 0, estimatedExtraRevenue: 0,
           urgency: "LOW",
@@ -248,6 +254,8 @@ export async function generateCouponSuggestions(
       suggestions.push(buildRow({
         product, snap, signalType: type,
         finalPct: rec.safeFinalPct,
+        finalAmount: rec.safeFinalAmount,
+        recommendedFormat: rec.recommendedFormat,
         baseSuggestion: rec.baseSuggestionPct,
         safety: rec.safety,
         estimatedExtraSales: rec.estimatedExtraSales,
@@ -286,6 +294,8 @@ function buildRow(args: {
   snap: { totalViews: number; cartAdds: number; grossFavorites: number; orders: number; salesCount: number }
   signalType: SuggestionListRow["type"]
   finalPct: number
+  finalAmount: number
+  recommendedFormat: "PCT" | "AMOUNT"
   baseSuggestion: number
   safety: { violatesFloor: boolean; belowTarget: boolean; marginAfterCoupon: number; reason: string }
   estimatedExtraSales: number
@@ -321,16 +331,19 @@ function buildRow(args: {
   // Min sepet: ürün fiyatının %50'si (yuvarlanmış)
   const recommendedMinBasket = Math.max(100, Math.round((args.salePrice * 0.5) / 50) * 50)
 
-  // Kupon parametreleri (clipboard için)
+  // Kupon parametreleri (clipboard için) — hem yüzde hem TL göster
   const couponName = `${(args.product.brand?.name ?? "X").substring(0, 6).toUpperCase()}-${args.signalType}-${args.finalPct}`
   const couponParams = [
     `Kupon Adı: ${couponName}`,
     `Tip: ${SIGNAL_LABEL[args.signalType]}`,
-    `İndirim: %${args.finalPct}`,
+    args.recommendedFormat === "AMOUNT"
+      ? `İndirim: ${args.finalAmount} TL  (≈ %${args.finalPct})`
+      : `İndirim: %${args.finalPct}  (≈ ${args.finalAmount} TL)`,
     `Min Sepet: ${recommendedMinBasket} TL`,
     `Süre: ${recommendedDays} gün`,
     `Ürün: ${args.product.name} (${args.product.trendyolBarcode ?? args.product.primaryBarcode ?? "—"})`,
-    `Mevcut Marj sonrası: %${args.safety.marginAfterCoupon.toFixed(1)}`,
+    `Satış Fiyatı: ${args.salePrice.toFixed(2)} TL`,
+    `İndirim Sonrası Marj: %${args.safety.marginAfterCoupon.toFixed(1)}`,
   ].join("\n")
 
   return {
@@ -354,6 +367,8 @@ function buildRow(args: {
         : "—",
     },
     finalPct: args.finalPct,
+    finalAmount: args.finalAmount,
+    recommendedFormat: args.recommendedFormat,
     baseSuggestionPct: args.baseSuggestion,
     violatesFloor: args.safety.violatesFloor,
     belowTarget: args.safety.belowTarget,
@@ -474,6 +489,8 @@ async function generateReturnSuggestions(
       snap: { totalViews: 0, cartAdds: 0, grossFavorites: 0, orders: 0, salesCount: 0 },
       signalType: "RETURN",
       finalPct: rec.safeFinalPct,
+      finalAmount: rec.safeFinalAmount,
+      recommendedFormat: rec.recommendedFormat,
       baseSuggestion: rec.baseSuggestionPct,
       safety: rec.safety,
       estimatedExtraSales,
