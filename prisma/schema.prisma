@@ -205,6 +205,8 @@ model Marketplace {
   prices ProductMarketplacePrice[]
   brandFloors BrandMarketplaceFloor[]
   listings ProductMarketplaceListing[]
+  dopigoOrders DopigoOrder[]
+  monthlyExpenses MarketplaceMonthlyExpense[]
 }
 
 /**
@@ -388,6 +390,7 @@ model Product {
   campaignSales               CampaignSale[]
   favoriteSnapshots           TrendyolFavoriteSnapshot[]
   trendyolListings            TrendyolListing[]
+  dopigoOrderItems            DopigoOrderItem[]
 
   @@index([pharmacyId])
   @@index([brandId])
@@ -684,6 +687,179 @@ model TrendyolConfig {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Dopigo API konfigürasyonu — SADECE OKUMA için kullanılır (GET only).
+/// CLAUDE.md: Dopigo'ya hiçbir veri POST/PUT/PATCH/DELETE gönderilmez.
+model DopigoConfig {
+  id         Int      @id @default(1)
+  pharmacyId Int      @default(1)
+
+  apiToken   String   // DRF tarzı: "Authorization: Token <apiToken>"
+  baseUrl    String   @default("https://panel.dopigo.com")
+  isActive   Boolean  @default(true)
+
+  lastTestedAt DateTime?
+  lastTestOk   Boolean?
+  lastTestNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Dopigo'dan çekilen sipariş — read-only snapshot.
+model DopigoOrder {
+  id Int @id @default(autoincrement())
+
+  // Dopigo tarafındaki ID (unique)
+  dopigoOrderId BigInt @unique
+
+  // Marketplace bilgisi (Dopigo'nun gönderdiği)
+  serviceName    String   // "trendyol", "hepsiburada", "farmazon", "store"...
+  salesChannel   String   // "trendyol", "hepsiburada"... (lower-case)
+  serviceOrderId String?  // ör. Trendyol order code "3833483689"
+  serviceValue   String?  // ör. "11216996303-3833483689"
+
+  // İçerideki Marketplace tablosuyla bağ (varsa). Yeni kanal görürsek null kalır.
+  marketplaceId Int?
+  marketplace   Marketplace? @relation(fields: [marketplaceId], references: [id], onDelete: SetNull)
+
+  // Tarihler
+  serviceCreatedAt DateTime  // Dopigo "service_created" — esas tarihimiz
+  shippedAt        DateTime?
+
+  // Tutarlar
+  total       Decimal  @db.Decimal(12, 2) // Toplam (KDV dahil)
+  serviceFee  Decimal? @db.Decimal(12, 2) // Dopigo'nun service_fee
+  discount    Decimal? @db.Decimal(12, 2)
+
+  paymentType String? // "cc", vb.
+  status      String  // "waiting_shipment", "shipped", "cancelled", ... (Dopigo'nun ham status'u)
+  archived    Boolean @default(false)
+
+  // Türetilmiş durum (UI'da kullanılır):
+  //  SUCCESS  — shipped + invoice_deleted=false
+  //  CANCELLED — status=cancelled
+  //  RETURNED  — shipped + invoice_deleted=true (iade)
+  //  WAITING   — waiting_shipment
+  //  OTHER     — bilinmeyen
+  derivedStatus String @default("OTHER")
+
+  // Dopigo raw json'dan: invoice_deleted=true ise sipariş büyük ihtimalle iade.
+  invoiceDeleted Boolean @default(false)
+  invoiceNumber  String?
+
+  notes       String?
+
+  // Müşteri bilgisi (denormalize, tekrar müşteri tablosu lazım olursa ayrı tablo)
+  customerName    String?
+  customerCity    String?
+  customerDistrict String?
+  customerEmail   String?
+
+  // Senkron meta
+  fetchedAt DateTime @default(now())
+  rawJson   Json     // ham API cevabı (debugging için)
+
+  items DopigoOrderItem[]
+
+  @@index([serviceCreatedAt])
+  @@index([salesChannel, serviceCreatedAt])
+  @@index([status])
+  @@index([derivedStatus])
+  @@index([marketplaceId])
+}
+
+/// Sipariş kalemi (ürün satırı). Bizim Product ile eşleştirme burada.
+model DopigoOrderItem {
+  id Int @id @default(autoincrement())
+
+  dopigoItemId BigInt @unique
+  orderId      Int
+  order        DopigoOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Dopigo verisi
+  serviceItemId    String?  // Trendyol line item id (ör. "5489388389")
+  serviceProductId String?  // genelde barkod ya da TY product id
+  sku              String?  // Dopigo'daki SKU (lojistik kod)
+  foreignSku       String?  // linked_product.foreign_sku — genelde BARKOD
+  barcode          String?  // ham barkod
+  productName      String
+
+  amount    Int            // adet
+  price     Decimal        @db.Decimal(12, 2) // satır toplamı (price * amount değil, line total — Dopigo öyle veriyor)
+  unitPrice Decimal?       @db.Decimal(12, 2)
+  taxRatio  Int?           // KDV %
+  itemStatus String?       // "approved", "cancelled", ...
+
+  // Bizim Product'a eşleşme
+  productId Int?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  // Eşleşme metodu (audit için)
+  matchMethod String?  // "BARCODE_EXACT" | "FOREIGN_SKU_EXACT" | "DOPIGO_SKU" | "MANUAL" | "NONE"
+  matchedAt   DateTime?
+
+  // Hediye/Set işareti — analiz raporunda ayrı göstermek için
+  productType String?  // SINGLE | SET | GIFT (snapshot)
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([barcode])
+  @@index([foreignSku])
+  @@index([matchMethod])
+}
+
+/// Sipariş senkron çalıştırma logu — kontrol + audit için.
+/// (Dopigo Excel yükleme için ayrı model var: DopigoSyncRun)
+model DopigoOrderSyncRun {
+  id Int @id @default(autoincrement())
+
+  startedAt   DateTime @default(now())
+  finishedAt  DateTime?
+
+  // Hangi tarih aralığı çekildi
+  rangeFrom DateTime?
+  rangeTo   DateTime?
+
+  totalFetched Int     @default(0)
+  totalCreated Int     @default(0)
+  totalUpdated Int     @default(0)
+  totalMatched Int     @default(0) // bu run'da product eşleşmesi yapılan item sayısı
+
+  status       String  @default("RUNNING") // RUNNING | SUCCESS | FAILED
+  errorMessage String?
+
+  triggeredBy String? // "MANUAL" | "CRON" | "INITIAL_BACKFILL"
+}
+
+/// Ay sonu raporu için — kullanıcının her marketplace × ay için elle girdiği gerçek giderler.
+/// Mod 2 (detaylı rapor) bu verilerle gerçek net karı hesaplar.
+/// Bu kayıt yoksa Mod 1 (tahmini) kullanılır.
+model MarketplaceMonthlyExpense {
+  id              Int      @id @default(autoincrement())
+  marketplaceId   Int
+  marketplace     Marketplace @relation(fields: [marketplaceId], references: [id], onDelete: Cascade)
+
+  // Ayın ilk günü (UTC midnight)
+  month DateTime
+
+  // Kullanıcının panelden bakıp girdiği gerçek değerler
+  commissionPaid  Decimal? @db.Decimal(12, 2)
+  shippingPaid    Decimal? @db.Decimal(12, 2)
+  withholdingPaid Decimal? @db.Decimal(12, 2)
+  returnCosts     Decimal? @db.Decimal(12, 2)
+  adSpend         Decimal? @db.Decimal(12, 2)
+  otherExpenses   Decimal? @db.Decimal(12, 2)
+
+  notes String?
+
+  enteredAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  enteredBy String?
+
+  @@unique([marketplaceId, month])
+  @@index([month])
 }
 
 /// BuyBox/rakip fiyat gözlemi — zaman içinde fiyat hareketini izlemek için

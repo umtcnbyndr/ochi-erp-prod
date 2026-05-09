@@ -33,6 +33,7 @@ export const ALL_MODULES: ModuleDefinition[] = [
   { key: "fiyat-onerileri",  label: "Fiyat Önerileri",    routes: ["/fiyat-onerileri"] },
   { key: "fiyat-kontrol",    label: "Fiyat Kontrol",      routes: ["/fiyat-kontrol"] },
   { key: "trendyol-favoriler", label: "Trendyol Favorilenme", routes: ["/trendyol-favoriler"] },
+  { key: "dopigo-siparisler",label: "Dopigo Siparişler",  routes: ["/dopigo-siparisler"] },
   { key: "markalar",         label: "Markalar",           routes: ["/markalar"] },
   { key: "kategoriler",      label: "Kategoriler",        routes: ["/kategoriler"] },
   { key: "marketplaces",     label: "Pazar Yerleri",      routes: ["/marketplaces"] },

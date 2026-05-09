@@ -5,8 +5,9 @@
 ## Kesin Kararlar (Tartışmaya Kapalı)
 
 - **SET ürünler satılmaz.** Bileşen tekil ürünler düşer. Set sadece "kaç tane yapılabilir" görünümü.
-- **Trendyol Sipariş çekme YOK.** İleride Dopigo API'den.
+- **Trendyol Sipariş çekme YOK.** Dopigo API'den çekiyoruz.
 - **Trendyol direkt fiyat push YOK.** Dopigo Excel akışıyla.
+- **Dopigo API: SADECE OKUMA.** Hiçbir koşulda Dopigo'ya veri (sipariş/ürün/fiyat/stok) **POST/PUT/PATCH/DELETE göndermiyoruz**. Sadece GET. Dopigo bizim için sipariş/müşteri kuyusu — yazma o tarafta yapılır.
 - **Aktif marka:** Sadece Skinceuticals. Diğerleri sırayla eklenecek.
 
 ## Ürün Tipleri

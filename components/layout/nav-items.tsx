@@ -20,6 +20,7 @@ import {
   ShoppingCart,
   Megaphone,
   Heart,
+  ShoppingBasket,
 } from "lucide-react"
 
 export interface NavItem {
@@ -71,6 +72,7 @@ export const navGroups: NavGroup[] = [
       { label: "Fiyat Önerileri", href: "/fiyat-onerileri", icon: Sparkles, moduleKey: "fiyat-onerileri" },
       { label: "Fiyat Kontrol", href: "/fiyat-kontrol", icon: TrendingUp, moduleKey: "fiyat-kontrol" },
       { label: "Trendyol Favorilenme", href: "/trendyol-favoriler", icon: Heart, moduleKey: "trendyol-favoriler" },
+      { label: "Dopigo Siparişler", href: "/dopigo-siparisler", icon: ShoppingBasket, moduleKey: "dopigo-siparisler" },
     ],
   },
   {
