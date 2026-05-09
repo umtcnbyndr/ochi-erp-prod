@@ -159,6 +159,125 @@ export async function testTrendyolConfigAction(): Promise<{
   return test
 }
 
+// ============== Dopigo API config (read-only access) ==============
+
+import { testDopigoConnection } from "@/lib/services/dopigo-api/client"
+
+const dopigoSchema = z.object({
+  apiToken: z.string().trim().min(10, "API Token zorunlu (en az 10 karakter)").max(200),
+  isActive: z.boolean().default(true),
+})
+
+export type DopigoFormResult =
+  | { success: true; tested: boolean; testMessage?: string }
+  | { success: false; error: string }
+
+const DOPIGO_TOKEN_PLACEHOLDER = "***"
+
+export async function saveDopigoConfigAction(input: {
+  apiToken: string
+  isActive: boolean
+  alsoTest: boolean
+}): Promise<DopigoFormResult> {
+  const adminUser = await requireAdmin()
+  const parsed = dopigoSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "Geçersiz" }
+  }
+
+  // Token placeholder geldiyse mevcut token'ı koru (placeholder asla DOM'a sızmaz)
+  let tokenToStore: string
+  if (parsed.data.apiToken === DOPIGO_TOKEN_PLACEHOLDER) {
+    const existing = await prisma.dopigoConfig.findUnique({ where: { id: 1 } })
+    if (!existing?.apiToken) {
+      return { success: false, error: "API Token zorunlu (kayıtlı token yok)" }
+    }
+    tokenToStore = existing.apiToken
+  } else {
+    tokenToStore = parsed.data.apiToken
+  }
+
+  let testOk: boolean | null = null
+  let testMessage: string | undefined
+
+  if (input.alsoTest) {
+    const test = await testDopigoConnection({
+      apiToken: tokenToStore,
+      baseUrl: "https://panel.dopigo.com",
+    })
+    testOk = test.ok
+    testMessage = test.message
+  }
+
+  const before = await prisma.dopigoConfig.findUnique({ where: { id: 1 } })
+
+  await prisma.dopigoConfig.upsert({
+    where: { id: 1 },
+    create: {
+      id: 1,
+      apiToken: tokenToStore,
+      isActive: parsed.data.isActive,
+      lastTestedAt: testOk != null ? new Date() : null,
+      lastTestOk: testOk,
+      lastTestNote: testMessage ?? null,
+    },
+    update: {
+      apiToken: tokenToStore,
+      isActive: parsed.data.isActive,
+      ...(testOk != null
+        ? {
+            lastTestedAt: new Date(),
+            lastTestOk: testOk,
+            lastTestNote: testMessage ?? null,
+          }
+        : {}),
+    },
+  })
+
+  // Audit log: token değeri loglanmaz
+  await writeAuditLog({
+    userId: adminUser.id,
+    action: "DOPIGO_CONFIG_UPDATE",
+    entityType: "DopigoConfig",
+    entityId: 1,
+    before: before ? { isActive: before.isActive } : null,
+    after: {
+      isActive: parsed.data.isActive,
+      tokenChanged: parsed.data.apiToken !== DOPIGO_TOKEN_PLACEHOLDER,
+    },
+  })
+
+  revalidatePath("/ayarlar")
+  revalidatePath("/dopigo-siparisler")
+
+  return { success: true, tested: input.alsoTest, testMessage }
+}
+
+export async function testDopigoConfigAction(): Promise<{
+  ok: boolean
+  message: string
+}> {
+  await requireAdmin()
+  const config = await prisma.dopigoConfig.findUnique({ where: { id: 1 } })
+  if (!config?.apiToken) {
+    return { ok: false, message: "Önce token kaydet" }
+  }
+  const test = await testDopigoConnection({
+    apiToken: config.apiToken,
+    baseUrl: config.baseUrl ?? "https://panel.dopigo.com",
+  })
+  await prisma.dopigoConfig.update({
+    where: { id: 1 },
+    data: {
+      lastTestedAt: new Date(),
+      lastTestOk: test.ok,
+      lastTestNote: test.message,
+    },
+  })
+  revalidatePath("/ayarlar")
+  return test
+}
+
 // ============== Sistem Reset (admin only, destructive) ==============
 
 import { resetStockAndAlisHistory, type ResetReport } from "@/lib/services/admin-reset"

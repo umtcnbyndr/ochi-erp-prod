@@ -11,14 +11,16 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { TrendyolForm } from "./trendyol-form"
+import { DopigoForm } from "./dopigo-form"
 
 export const dynamic = "force-dynamic"
 
 export default async function AyarlarPage() {
   const session = await auth()
 
-  const [trendyolConfig, userCount] = await Promise.all([
+  const [trendyolConfig, dopigoConfig, userCount] = await Promise.all([
     prisma.trendyolConfig.findUnique({ where: { id: 1 } }),
+    prisma.dopigoConfig.findUnique({ where: { id: 1 } }),
     prisma.user.count(),
   ])
 
@@ -34,6 +36,17 @@ export default async function AyarlarPage() {
         lastTestedAt: trendyolConfig.lastTestedAt,
         lastTestOk: trendyolConfig.lastTestOk,
         lastTestNote: trendyolConfig.lastTestNote,
+      }
+    : null
+
+  // Dopigo: token DOM'a sızmaz, "***" placeholder gönderilir
+  const dopigoInitial = dopigoConfig
+    ? {
+        apiToken: dopigoConfig.apiToken ? "***" : "",
+        isActive: dopigoConfig.isActive,
+        lastTestedAt: dopigoConfig.lastTestedAt,
+        lastTestOk: dopigoConfig.lastTestOk,
+        lastTestNote: dopigoConfig.lastTestNote,
       }
     : null
 
@@ -84,6 +97,8 @@ export default async function AyarlarPage() {
       </div>
 
       <TrendyolForm initial={trendyolInitial} />
+
+      <DopigoForm initial={dopigoInitial} />
 
       {/* Tehlikeli alan — sadece admin */}
       {session?.user?.role === "ADMIN" && (

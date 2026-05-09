@@ -22,7 +22,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import {
   syncOrdersAction,
-  saveDopigoConfigAction,
   saveMonthlyExpenseAction,
   backfillMarketplaceAction,
 } from "./actions"
@@ -1143,17 +1142,7 @@ function MonthlyExpenseRow({ marketplaceId, marketplaceName, month, existing, sa
 function SettingsTab({ configExists, configActive, lastTestOk, lastTestNote, lastSync }: {
   configExists: boolean; configActive: boolean; lastTestOk: boolean | null; lastTestNote: string | null; lastSync: SyncRun | null
 }) {
-  const [pending, startTransition] = useTransition()
-  const [token, setToken] = useState("")
-  const [active] = useState(true)
   const [backfillPending, startBackfill] = useTransition()
-
-  const handleSave = (alsoTest: boolean) => {
-    startTransition(async () => {
-      const res = await saveDopigoConfigAction({ apiToken: token.trim(), isActive: active, alsoTest })
-      if (res.success) { toast.success(res.message); setToken("") } else toast.error(res.message)
-    })
-  }
 
   const handleBackfill = () => {
     startBackfill(async () => {
@@ -1166,34 +1155,35 @@ function SettingsTab({ configExists, configActive, lastTestOk, lastTestNote, las
     <div className="space-y-4 max-w-2xl">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Dopigo API Token</CardTitle>
+          <CardTitle className="text-base">API Bağlantısı</CardTitle>
           <CardDescription>
-            <strong>SADECE OKUMA.</strong> Bu token sadece sipariş çekmek için kullanılır. Dopigo&apos;ya hiçbir veri gönderilmez.
-            Token panel.dopigo.com → Ayarlar → API&apos;den alınır.
+            Dopigo API token ayarları <Link href="/ayarlar" className="text-blue-600 hover:underline font-medium">/ayarlar</Link> sayfasında — Trendyol&apos;un yanında.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <Label className="text-xs">API Token</Label>
-            <Input value={token} onChange={(e) => setToken(e.target.value)}
-              placeholder={configExists ? "Mevcut token kayıtlı (yenisini gir veya boş bırak)" : "a4f94e388d25..."}
-              className="font-mono" autoComplete="off" />
-            <p className="text-xs text-muted-foreground mt-1">
-              Mevcut durum: {configExists ? (
-                <span className={configActive ? "text-emerald-600" : "text-amber-600"}>
-                  {configActive ? "Aktif" : "Pasif"}
-                  {lastTestOk === true && " · Bağlantı testi: ✓"}
-                  {lastTestOk === false && " · Bağlantı testi: ✗"}
-                </span>
-              ) : (<span className="text-rose-600">Kayıtlı değil</span>)}
-            </p>
-            {lastTestNote && (<p className="text-xs mt-1 italic">{lastTestNote}</p>)}
+        <CardContent className="space-y-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Token durumu:</span>
+            {configExists ? (
+              <Badge variant={configActive ? "default" : "outline"} className={configActive ? "" : "text-amber-600"}>
+                {configActive ? "✓ Aktif" : "Pasif"}
+              </Badge>
+            ) : (
+              <Badge variant="destructive">Kayıtlı değil</Badge>
+            )}
           </div>
-          <div className="flex gap-2">
-            <Button onClick={() => handleSave(false)} disabled={pending || !token.trim()}>
-              {pending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Kaydet
+          {lastTestOk !== null && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Son bağlantı testi:</span>
+              <Badge variant={lastTestOk ? "default" : "destructive"}>
+                {lastTestOk ? "✓ Başarılı" : "✗ Başarısız"}
+              </Badge>
+            </div>
+          )}
+          {lastTestNote && <p className="text-xs italic mt-2">{lastTestNote}</p>}
+          <div className="pt-3">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/ayarlar">Ayarlara Git →</Link>
             </Button>
-            <Button variant="outline" onClick={() => handleSave(true)} disabled={pending || !token.trim()}>Kaydet + Test Et</Button>
           </div>
         </CardContent>
       </Card>
