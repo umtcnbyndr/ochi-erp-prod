@@ -36,7 +36,7 @@ export interface TariffRowAnalyzed {
   mainStock: number
   streetStock: number
   trendyolStock: number | null
-  stockSource: "MAIN" | "PHARMACY_FALLBACK" | "ZERO" // hangi stoktan satılacak
+  stockSource: "MAIN" | "PHARMACY_FALLBACK" | "ZERO" | "NOT_IN_ERP" // hangi stoktan satılacak
   stockWarning: string | null // "Ana stok yok, eczane fallback" gibi
   // Fiyat ve komisyon
   trendyolPrice: number | null // mevcut TSF
@@ -75,7 +75,7 @@ export interface AnalyzeFilter {
   brandId?: number | null
   categoryId?: number | null
   /** Stok durumu */
-  stockStatus?: "WITH_MAIN" | "PHARMACY_ONLY" | "NO_STOCK" | "ALL"
+  stockStatus?: "WITH_MAIN" | "PHARMACY_ONLY" | "NO_STOCK" | "NOT_IN_ERP" | "ALL"
   /** En az kâr % */
   minProfitPct?: number | null
   /** Sadece eşleşen ürünler */
@@ -118,7 +118,8 @@ export async function analyzeTariffs(
   const tariffs = await prisma.commissionTariff.findMany({
     where: {
       uploadId: upload.id,
-      ...(filter.onlyMatched !== false ? { productId: { not: null } } : {}),
+      // Default: tümünü göster (eşleşmeyenler de "ERP'de yok" uyarısıyla)
+      ...(filter.onlyMatched === true ? { productId: { not: null } } : {}),
       ...(filter.search
         ? {
             OR: [
@@ -169,8 +170,14 @@ export async function analyzeTariffs(
   for (const t of tariffs) {
     const product = t.product
     const brandId = product?.brand?.id ?? null
-    if (filter.brandId !== undefined && filter.brandId !== null && brandId !== filter.brandId) continue
-    if (filter.categoryId !== undefined && filter.categoryId !== null && product?.category?.id !== filter.categoryId) continue
+    // Brand/category filter sadece ERP'de eşleşenlere uygulanır
+    // (eşleşmeyenlerin brand/category'si yok zaten)
+    if (filter.brandId !== undefined && filter.brandId !== null) {
+      if (!product || brandId !== filter.brandId) continue
+    }
+    if (filter.categoryId !== undefined && filter.categoryId !== null) {
+      if (!product || product.category?.id !== filter.categoryId) continue
+    }
 
     // Maliyet hesabı
     let cost: number | null = null
@@ -207,9 +214,13 @@ export async function analyzeTariffs(
     // Stok durumu
     const mainStock = product?.mainStock ?? 0
     const streetStock = product?.streetStock ?? 0
-    let stockSource: "MAIN" | "PHARMACY_FALLBACK" | "ZERO" = "ZERO"
+    let stockSource: "MAIN" | "PHARMACY_FALLBACK" | "ZERO" | "NOT_IN_ERP" = "ZERO"
     let stockWarning: string | null = null
-    if (mainStock > 0) {
+    if (!product) {
+      // ERP'de eşleşmemiş — bilgi göster, kâr hesabı yapma
+      stockSource = "NOT_IN_ERP"
+      stockWarning = "Bu ürün ERP'de yok (eşleşmemiş)"
+    } else if (mainStock > 0) {
       stockSource = "MAIN"
     } else if (streetStock > 0) {
       stockSource = "PHARMACY_FALLBACK"
@@ -222,7 +233,8 @@ export async function analyzeTariffs(
     if (filter.stockStatus && filter.stockStatus !== "ALL") {
       if (filter.stockStatus === "WITH_MAIN" && stockSource !== "MAIN") continue
       if (filter.stockStatus === "PHARMACY_ONLY" && stockSource !== "PHARMACY_FALLBACK") continue
-      if (filter.stockStatus === "NO_STOCK" && stockSource !== "ZERO") continue
+      if (filter.stockStatus === "NO_STOCK" && stockSource !== "ZERO" && stockSource !== "NOT_IN_ERP") continue
+      if (filter.stockStatus === "NOT_IN_ERP" && stockSource !== "NOT_IN_ERP") continue
     }
 
     // 4 kademe analizi

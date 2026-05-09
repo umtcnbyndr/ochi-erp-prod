@@ -22,10 +22,11 @@ export default async function KomisyonTarifeleriPage({ searchParams }: PageProps
   const marketplace = sp.marketplace ?? "Trendyol"
   const brandId = sp.brand ? Number(sp.brand) : null
   const categoryId = sp.category ? Number(sp.category) : null
-  const stockStatus = (sp.stock as "WITH_MAIN" | "PHARMACY_ONLY" | "NO_STOCK" | "ALL" | undefined) ?? "ALL"
+  const stockStatus = (sp.stock as "WITH_MAIN" | "PHARMACY_ONLY" | "NO_STOCK" | "NOT_IN_ERP" | "ALL" | undefined) ?? "ALL"
   const minProfitPct = sp.minProfit ? Number(sp.minProfit) : null
   const search = sp.search ?? null
-  const onlyMatched = sp.onlyMatched !== "false" // default true
+  // Default: tümünü göster (eşleşmeyenler "ERP'de yok" uyarısıyla)
+  const onlyMatched = sp.onlyMatched === "true"
 
   const [analysis, brands, categories, allUploads] = await Promise.all([
     analyzeTariffs({
@@ -63,6 +64,7 @@ export default async function KomisyonTarifeleriPage({ searchParams }: PageProps
     ).length,
     pharmacyFallbackCount: analysis.rows.filter((r) => r.stockSource === "PHARMACY_FALLBACK").length,
     suspiciousPsfCount: analysis.rows.filter((r) => r.psfSuspicious).length,
+    notInErpCount: analysis.rows.filter((r) => r.stockSource === "NOT_IN_ERP").length,
   }
 
   return (
