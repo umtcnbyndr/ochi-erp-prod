@@ -30,6 +30,10 @@ RUN corepack enable pnpm && corepack prepare pnpm@10.30.3 --activate
 # Public klasoru yoksa olustur (Next.js standalone COPY hata verir)
 RUN mkdir -p public
 ENV NEXT_TELEMETRY_DISABLED=1
+# Build sirasinda Node.js memory limitini explicit set et (small VPS'lerde OOM
+# kill onleme). Default Node 16+ heap = ~1.5GB; 1GB explicit yeterli + GC daha
+# agresif calisir.
+ENV NODE_OPTIONS="--max-old-space-size=1536"
 RUN pnpm prisma generate
 RUN pnpm run build
 
