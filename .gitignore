@@ -47,3 +47,4 @@ logs
 
 # Coolify / Docker
 .coolify/
+.claude/
