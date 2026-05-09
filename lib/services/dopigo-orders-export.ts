@@ -65,8 +65,8 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
       "Müşteri",
       "Şehir",
       "Durum",
-      "Ürün Adı",
       "Barkod",
+      "Ürün Adı",
       "Marka",
       "Kategori",
       "Alt Kategori",
@@ -92,8 +92,8 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
       r.customerName ?? "—",
       r.customerCity ?? "—",
       STATUS_LABELS[r.derivedStatus] ?? r.derivedStatus,
-      r.productName,
       r.barcode ?? r.foreignSku ?? "—",
+      r.productName,
       r.brandName ?? "—",
       r.categoryName ?? "—",
       r.subcategoryName ?? "—",
@@ -113,7 +113,7 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
   // Kolon genişlikleri (21 kolon)
   ordersSheet["!cols"] = [
     { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 14 },
-    { wch: 12 }, { wch: 50 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 6 },
+    { wch: 12 }, { wch: 16 }, { wch: 50 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 6 },
     { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 10 },
     { wch: 14 }, { wch: 8 },
   ]

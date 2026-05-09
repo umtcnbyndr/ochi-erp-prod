@@ -514,8 +514,8 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                   Kanal<SortIcon col="channel" />
                 </TableHead>
                 <TableHead className="w-[140px]">Sipariş No</TableHead>
-                <TableHead>Ürün</TableHead>
                 <TableHead className="w-[120px]">Barkod</TableHead>
+                <TableHead>Ürün</TableHead>
                 <TableHead className="w-[100px]">Marka</TableHead>
                 <TableHead className="w-[100px]">Kategori</TableHead>
                 <TableHead className="text-center w-[50px]">Adet</TableHead>
@@ -588,6 +588,7 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                         <span className="text-muted-foreground/40">↳</span>
                       )}
                     </TableCell>
+                    <TableCell className="font-mono text-xs">{r.barcode ?? r.foreignSku ?? "—"}</TableCell>
                     <TableCell className="text-xs max-w-[280px]">
                       <div className="truncate" title={r.productName}>
                         {r.productId ? (
@@ -602,7 +603,6 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                         <div className="text-[10px] text-muted-foreground truncate">👤 {r.customerName}{r.customerCity ? ` · ${r.customerCity}` : ""}</div>
                       )}
                     </TableCell>
-                    <TableCell className="font-mono text-xs">{r.barcode ?? r.foreignSku ?? "—"}</TableCell>
                     <TableCell className="text-xs">{r.brandName ?? "—"}</TableCell>
                     <TableCell className="text-xs">{r.categoryName ?? "—"}</TableCell>
                     <TableCell className="text-center tabular-nums">{r.amount}</TableCell>
