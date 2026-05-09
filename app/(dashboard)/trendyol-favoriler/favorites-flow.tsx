@@ -301,7 +301,18 @@ export function FavoritesFlow({ runs, topProducts, unmatched, filters }: Props) 
               <Label htmlFor="reportType" className="text-xs">
                 Periyot Tipi
               </Label>
-              <Select value={reportType} onValueChange={setReportType}>
+              <Select
+                value={reportType}
+                onValueChange={(v) => {
+                  setReportType(v)
+                  // YEARLY seçildiğinde — bu yıl 1 Ocak - 31 Aralık otomatik doldur
+                  if (v === "YEARLY") {
+                    const y = new Date().getFullYear()
+                    setPeriodStart(`${y}-01-01`)
+                    setPeriodEnd(`${y}-12-31`)
+                  }
+                }}
+              >
                 <SelectTrigger id="reportType">
                   <SelectValue />
                 </SelectTrigger>
@@ -314,28 +325,67 @@ export function FavoritesFlow({ runs, topProducts, unmatched, filters }: Props) 
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="periodStart" className="text-xs">
-                Başlangıç
-              </Label>
-              <Input
-                id="periodStart"
-                type="date"
-                value={periodStart}
-                onChange={(e) => setPeriodStart(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="periodEnd" className="text-xs">
-                Bitiş
-              </Label>
-              <Input
-                id="periodEnd"
-                type="date"
-                value={periodEnd}
-                onChange={(e) => setPeriodEnd(e.target.value)}
-              />
-            </div>
+
+            {reportType === "YEARLY" ? (
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="year" className="text-xs">
+                  Yıl
+                </Label>
+                <Select
+                  value={periodStart.slice(0, 4) || String(new Date().getFullYear())}
+                  onValueChange={(y) => {
+                    setPeriodStart(`${y}-01-01`)
+                    setPeriodEnd(`${y}-12-31`)
+                  }}
+                >
+                  <SelectTrigger id="year">
+                    <SelectValue placeholder="Yıl seç" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(() => {
+                      const currentYear = new Date().getFullYear()
+                      const years: number[] = []
+                      // Mevcut yıl + son 6 yıl
+                      for (let y = currentYear; y >= currentYear - 6; y--) years.push(y)
+                      return years.map((y) => (
+                        <SelectItem key={y} value={String(y)}>
+                          {y}
+                        </SelectItem>
+                      ))
+                    })()}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">
+                  Otomatik: {periodStart} → {periodEnd}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="periodStart" className="text-xs">
+                    Başlangıç
+                  </Label>
+                  <Input
+                    id="periodStart"
+                    type="date"
+                    value={periodStart}
+                    onChange={(e) => setPeriodStart(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="periodEnd" className="text-xs">
+                    Bitiş
+                  </Label>
+                  <Input
+                    id="periodEnd"
+                    type="date"
+                    value={periodEnd}
+                    onChange={(e) => setPeriodEnd(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+
             <div className="space-y-1.5">
               <Label htmlFor="file" className="text-xs">
                 Excel Dosyası
