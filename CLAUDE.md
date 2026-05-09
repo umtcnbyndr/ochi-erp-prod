@@ -141,6 +141,28 @@ CLAUDE.md kuralı uyduğunda "Bu Opus konusu, modeli değiştirmen mantıklı" d
 - **CSS / Prisma cache bozulursa:** `pnpm refresh` (kill + clean + generate + restart)
 - Detaylı backlog: `BACKLOG.md`
 
+## ⚠️ KRİTİK YARIM KALAN — Faz 2 Entegrasyonu
+
+**Komisyon Tarifeleri sayfası yapıldı AMA `getEffectiveCommission()` helper'ı sistemin geri kalanına bağlanmadı.** Şu an Komisyon Tarifeleri verisi "izole":
+
+- ✅ Sayfa çalışıyor, kademeli komisyon görünüyor
+- ❌ Dopigo aktarım hala sabit `Marketplace.commissionRate=%19` kullanıyor
+- ❌ Fiyat motoru (sale-price.ts, recommendation.ts) aynı şekilde yanlış komisyon
+- ❌ Sipariş raporları net kâr yanlış hesaplıyor
+- ❌ Kupon önerileri kâr taban koruması yanlış (komisyon yanlış)
+
+**Yarın yapılacak (3-4 saat):** `lib/pricing/effective-commission.ts` helper'ını **6 yere bağla**:
+1. `lib/services/dopigo-sync.ts` (Excel export fiyat hesabı)
+2. `lib/pricing/sale-price.ts` (satış fiyatı motoru)
+3. `lib/pricing/recommendation.ts` (BuyBox bazlı öneri)
+4. `lib/services/sales-analytics.ts` (sipariş raporu net kâr)
+5. `lib/services/coupon-suggestions.ts` (kupon kâr hesabı)
+6. `lib/pricing/coupon-recommendation.ts` (kupon kâr taban koruma)
+
+Her birinde: önce `getEffectiveCommission(productId, marketplace, price)` çağır → tariff varsa kademeli %, yoksa fallback Marketplace.commissionRate.
+
+**Bu yapılmadan sistem yarım — Komisyon Tarifeleri "izole ada".**
+
 ## ⚠️ Hızır Kuralı: Schema Değişikliği Sonrası
 
 `pnpm prisma migrate dev` çalıştırınca Next.js `.next` cache'i eski Prisma client'ı tutuyor →
