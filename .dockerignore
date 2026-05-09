@@ -15,3 +15,7 @@ docker-compose*.yml
 coverage
 *.log
 .DS_Store
+# MCP server has its own deps/build, runs separately from Next.js app
+scripts/mcp-server
+# Test ve seed data (build'e gerek yok)
+tests
