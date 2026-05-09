@@ -244,6 +244,8 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
         rangeLabel={label}
         from={sp.from}
         to={sp.to}
+        resolvedFrom={fromDate.toISOString().slice(0, 10)}
+        resolvedTo={toDate.toISOString().slice(0, 10)}
         tab={tab as "siparisler" | "ozet" | "marka" | "kategori" | "kanal" | "urun" | "esleshme" | "aysonu" | "ayarlar"}
         brandId={brandId}
         categoryId={categoryId}

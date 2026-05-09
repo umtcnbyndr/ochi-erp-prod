@@ -47,6 +47,7 @@ interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string
 
 interface Props {
   period: string; rangeLabel: string; from?: string; to?: string
+  resolvedFrom: string; resolvedTo: string  // YYYY-MM-DD — sayfa filtresinin gerçek tarihleri
   tab: "siparisler" | "ozet" | "marka" | "kategori" | "kanal" | "urun" | "esleshme" | "aysonu" | "ayarlar"
   brandId: number | null; categoryId: number | null; salesChannel: string | null
   statusFilter: "SUCCESS" | "CANCELLED" | "RETURNED" | "WAITING" | "OTHER" | null
@@ -188,8 +189,9 @@ export function DopigoOrdersFlow(props: Props) {
           <SyncButton
             configExists={props.configExists}
             configActive={props.configActive}
-            defaultFrom={isoDate(daysAgo(7))}
-            defaultTo={isoDate(new Date())}
+            currentFrom={props.resolvedFrom}
+            currentTo={props.resolvedTo}
+            currentLabel={props.rangeLabel}
           />
           <Button size="sm" variant="outline" asChild>
             <a href={exportUrlSafe} download>
@@ -750,24 +752,106 @@ function OrderDetailDrawer({ row, onClose }: { row: OrderTableRow; onClose: () =
   )
 }
 
-// ===== Sync Button =====
+// ===== Sync Button (dropdown) =====
+// - Ana aksiyon: sayfada görüntülenen tarih aralığını senkronla
+// - Dropdown: Son 7 / Son 30 / Bu ay / Geçen ay / Tüm geçmiş (initial backfill)
 
-function SyncButton({ configExists, configActive, defaultFrom, defaultTo }: {
-  configExists: boolean; configActive: boolean; defaultFrom: string; defaultTo: string
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu"
+
+function SyncButton({ configExists, configActive, currentFrom, currentTo, currentLabel }: {
+  configExists: boolean; configActive: boolean
+  currentFrom: string; currentTo: string; currentLabel: string
 }) {
   const [pending, startTransition] = useTransition()
-  const handleSync = () => {
+  const disabled = pending || !configExists || !configActive
+
+  const runSync = (fromDate: string, toDate: string, label: string) => {
+    if (!confirmIfBig(fromDate, toDate)) return
     startTransition(async () => {
-      const res = await syncOrdersAction({ fromDate: defaultFrom, toDate: defaultTo })
+      toast.loading(`Senkronlanıyor: ${label}...`, { id: "sync" })
+      const res = await syncOrdersAction({ fromDate, toDate })
+      toast.dismiss("sync")
       if (res.success) toast.success(res.message); else toast.error(res.message)
     })
   }
+
+  // Önceden tanımlı seçenekler
+  const today = new Date()
+  const ymd = (d: Date) => d.toISOString().slice(0, 10)
+  const presets = (() => {
+    const t = new Date(today)
+    const week = new Date(t); week.setDate(week.getDate() - 6)
+    const month30 = new Date(t); month30.setDate(month30.getDate() - 29)
+    const thisMonthStart = new Date(t.getFullYear(), t.getMonth(), 1)
+    const lastMonthStart = new Date(t.getFullYear(), t.getMonth() - 1, 1)
+    const lastMonthEnd = new Date(t.getFullYear(), t.getMonth(), 0)
+    return [
+      { label: "Son 7 gün", from: ymd(week), to: ymd(t) },
+      { label: "Son 30 gün", from: ymd(month30), to: ymd(t) },
+      { label: "Bu ay", from: ymd(thisMonthStart), to: ymd(t) },
+      {
+        label: `Geçen ay (${lastMonthStart.toLocaleString("tr-TR", { month: "long" })})`,
+        from: ymd(lastMonthStart),
+        to: ymd(lastMonthEnd),
+      },
+    ]
+  })()
+
+  // Tüm geçmiş için 1 yıl geriye git (Dopigo'da ortalama hesabımızda ~22K sipariş var)
+  const ALL_HISTORY_FROM = "2025-01-01"
+
   return (
-    <Button size="sm" onClick={handleSync} disabled={pending || !configExists || !configActive}>
-      {pending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
-      Son 7 gün senkronla
-    </Button>
+    <div className="inline-flex items-stretch rounded-md shadow-sm border bg-background">
+      {/* Sol: aktif tarih aralığını senkronla */}
+      <Button
+        size="sm"
+        variant="ghost"
+        className="rounded-r-none border-r"
+        onClick={() => runSync(currentFrom, currentTo, currentLabel)}
+        disabled={disabled}
+      >
+        {pending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
+        Senkronla: {currentLabel}
+      </Button>
+
+      {/* Sağ: dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="ghost" className="rounded-l-none px-2" disabled={disabled}>
+            <ChevronDown className="h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel className="text-xs">Hızlı tarih aralığı</DropdownMenuLabel>
+          {presets.map((p) => (
+            <DropdownMenuItem key={p.label} onClick={() => runSync(p.from, p.to, p.label)} disabled={disabled}>
+              <RefreshCw className="h-3 w-3 mr-2" />
+              {p.label}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs">Toplu</DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => runSync(ALL_HISTORY_FROM, ymd(today), "Tüm geçmiş")}
+            disabled={disabled}
+            className="text-amber-600 focus:text-amber-700"
+          >
+            <RefreshCw className="h-3 w-3 mr-2" />
+            Tüm geçmiş (yavaş)
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   )
+}
+
+// 60 günden fazla aralık seçildiğinde uyarı
+function confirmIfBig(from: string, to: string): boolean {
+  const days = Math.round((new Date(to).getTime() - new Date(from).getTime()) / (1000 * 60 * 60 * 24))
+  if (days > 60) {
+    return confirm(`${days} günlük aralık senkronlanacak. Birkaç dakika sürebilir. Devam edilsin mi?`)
+  }
+  return true
 }
 
 // ===== Custom Date Range =====
