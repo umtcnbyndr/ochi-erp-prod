@@ -43,7 +43,7 @@ interface TopProductRow { productId: number | null; productName: string; brandNa
 interface UnmatchedItem { itemId: number; orderId: number; salesChannel: string; productName: string; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; price: number; serviceCreatedAt: string }
 interface SyncRun { id: number; startedAt: string; finishedAt: string | null; totalFetched: number; totalCreated: number; totalUpdated: number; totalMatched: number; status: string; errorMessage: string | null; rangeFrom: string | null; rangeTo: string | null }
 interface MonthlyExpense { id: number; marketplaceId: number; commissionPaid: number | null; shippingPaid: number | null; withholdingPaid: number | null; returnCosts: number | null; adSpend: number | null; otherExpenses: number | null; notes: string | null }
-interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; totalCost: number; commission: number; shipping: number; withholding: number; remaining: number; marginPct: number; matchMethod: string | null }
+interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; totalCost: number; commission: number; shipping: number; withholding: number; remaining: number; marginPct: number; matchMethod: string | null }
 
 interface Props {
   period: string; rangeLabel: string; from?: string; to?: string
@@ -497,6 +497,7 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                 </TableHead>
                 <TableHead className="w-[140px]">Sipariş No</TableHead>
                 <TableHead>Ürün</TableHead>
+                <TableHead className="w-[120px]">Barkod</TableHead>
                 <TableHead className="w-[100px]">Marka</TableHead>
                 <TableHead className="w-[100px]">Kategori</TableHead>
                 <TableHead className="text-center w-[50px]">Adet</TableHead>
@@ -545,6 +546,7 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                       </div>
                       {r.customerName && <div className="text-[10px] text-muted-foreground truncate">👤 {r.customerName}{r.customerCity ? ` · ${r.customerCity}` : ""}</div>}
                     </TableCell>
+                    <TableCell className="font-mono text-xs">{r.barcode ?? r.foreignSku ?? "—"}</TableCell>
                     <TableCell className="text-xs">{r.brandName ?? "—"}</TableCell>
                     <TableCell className="text-xs">{r.categoryName ?? "—"}</TableCell>
                     <TableCell className="text-center tabular-nums">{r.amount}</TableCell>
@@ -568,7 +570,7 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
               })}
               {data.rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={14} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={15} className="text-center text-muted-foreground py-12">
                     Bu filtreye uyan sipariş yok
                   </TableCell>
                 </TableRow>
@@ -652,7 +654,32 @@ function OrderDetailDrawer({ row, onClose }: { row: OrderTableRow; onClose: () =
               </Link>
             ) : <span className="text-amber-600">{row.productName} (eşleşmemiş)</span>}
           </div>
-          <div className="grid grid-cols-3 gap-3 mt-2 text-xs">
+
+          {/* Barkod / SKU bilgileri */}
+          {(row.barcode || row.foreignSku || row.sku) && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2 text-xs">
+              {row.barcode && (
+                <div className="bg-muted/40 rounded px-2 py-1">
+                  <Label className="text-[10px] text-muted-foreground">Barkod</Label>
+                  <div className="font-mono font-medium select-all">{row.barcode}</div>
+                </div>
+              )}
+              {row.foreignSku && row.foreignSku !== row.barcode && (
+                <div className="bg-muted/40 rounded px-2 py-1">
+                  <Label className="text-[10px] text-muted-foreground">Foreign SKU</Label>
+                  <div className="font-mono font-medium select-all">{row.foreignSku}</div>
+                </div>
+              )}
+              {row.sku && (
+                <div className="bg-muted/40 rounded px-2 py-1">
+                  <Label className="text-[10px] text-muted-foreground">Dopigo SKU</Label>
+                  <div className="font-mono font-medium select-all">{row.sku}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-3 mt-3 text-xs">
             <div>
               <Label className="text-[10px] text-muted-foreground">Marka</Label>
               <div>{row.brandName ?? "—"}</div>

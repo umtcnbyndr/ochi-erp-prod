@@ -574,6 +574,10 @@ export interface OrderTableRow {
   brandName: string | null
   categoryName: string | null
   subcategoryName: string | null
+  // Tanımlayıcı alanlar
+  barcode: string | null      // linked_product.barcode (genelde gerçek barkod)
+  foreignSku: string | null   // linked_product.foreign_sku
+  sku: string | null          // Dopigo SKU (lojistik kod)
   amount: number
   unitPrice: number | null
   lineTotal: number // Bu kalem'in toplamı (price)
@@ -665,6 +669,9 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       brand_name: string | null
       category_name: string | null
       subcategory_name: string | null
+      barcode: string | null
+      foreign_sku: string | null
+      sku: string | null
       amount: number
       unit_price: number | null
       line_total: number
@@ -692,6 +699,9 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       b.name                              AS brand_name,
       c.name                              AS category_name,
       s.name                              AS subcategory_name,
+      i.barcode                           AS barcode,
+      i."foreignSku"                      AS foreign_sku,
+      i.sku                               AS sku,
       i.amount::int                       AS amount,
       i."unitPrice"::float8               AS unit_price,
       i.price::float8                     AS line_total,
@@ -754,6 +764,9 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       brandName: r.brand_name,
       categoryName: r.category_name,
       subcategoryName: r.subcategory_name,
+      barcode: r.barcode,
+      foreignSku: r.foreign_sku,
+      sku: r.sku,
       amount,
       unitPrice: r.unit_price,
       lineTotal,

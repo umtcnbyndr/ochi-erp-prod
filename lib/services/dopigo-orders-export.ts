@@ -66,6 +66,7 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
       "Şehir",
       "Durum",
       "Ürün Adı",
+      "Barkod",
       "Marka",
       "Kategori",
       "Alt Kategori",
@@ -92,6 +93,7 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
       r.customerCity ?? "—",
       STATUS_LABELS[r.derivedStatus] ?? r.derivedStatus,
       r.productName,
+      r.barcode ?? r.foreignSku ?? "—",
       r.brandName ?? "—",
       r.categoryName ?? "—",
       r.subcategoryName ?? "—",
@@ -108,10 +110,10 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
   }
 
   const ordersSheet = XLSX.utils.aoa_to_sheet(ordersSheetData)
-  // Kolon genişlikleri
+  // Kolon genişlikleri (21 kolon)
   ordersSheet["!cols"] = [
     { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 14 },
-    { wch: 12 }, { wch: 50 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 6 },
+    { wch: 12 }, { wch: 50 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 6 },
     { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 10 },
     { wch: 14 }, { wch: 8 },
   ]
