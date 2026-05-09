@@ -29,6 +29,8 @@ export interface TariffRowAnalyzed {
   productName: string
   brand: string | null
   category: string | null
+  /** Tarife'den gelen barkod (her zaman dolu — Excel'in BARKOD kolonu) */
+  barcode: string
   trendyolBarcode: string | null
   primaryBarcode: string | null
   modelKodu: string | null
@@ -364,6 +366,7 @@ export async function analyzeTariffs(
       productName: t.productName,
       brand: t.brand,
       category: t.category,
+      barcode: t.barcode,
       trendyolBarcode: product?.trendyolBarcode ?? null,
       primaryBarcode: product?.primaryBarcode ?? null,
       modelKodu: t.modelKodu,

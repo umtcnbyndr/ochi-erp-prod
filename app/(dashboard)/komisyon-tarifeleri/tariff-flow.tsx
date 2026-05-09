@@ -34,6 +34,7 @@ export interface TariffRow {
   productName: string
   brand: string | null
   category: string | null
+  barcode: string  // Excel'in BARKOD kolonu — her zaman dolu
   trendyolBarcode: string | null
   primaryBarcode: string | null
   modelKodu: string | null
@@ -719,8 +720,14 @@ function TariffRow({ row, targetProfit }: { row: TariffRow; targetProfit: number
           <span>{row.brand ?? "—"}</span>
           {row.category && <><span>·</span><span>{row.category}</span></>}
         </div>
-        {row.trendyolBarcode && (
-          <div className="text-[10px] font-mono text-muted-foreground">{row.trendyolBarcode}</div>
+        {/* Barkod her zaman bariz görünür — eşleşmeyen ürünlerde de */}
+        <div className="font-mono text-[11px] text-foreground/80 mt-1 select-all">
+          {row.barcode}
+        </div>
+        {row.modelKodu && row.modelKodu !== row.barcode && (
+          <div className="font-mono text-[10px] text-muted-foreground">
+            <span className="text-[9px]">model:</span> {row.modelKodu}
+          </div>
         )}
         <div className="flex flex-wrap gap-1 mt-1">
           {row.stockSource === "NOT_IN_ERP" && (
