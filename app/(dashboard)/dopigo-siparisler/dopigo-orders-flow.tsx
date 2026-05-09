@@ -24,6 +24,7 @@ import {
   syncOrdersAction,
   saveDopigoConfigAction,
   saveMonthlyExpenseAction,
+  backfillMarketplaceAction,
 } from "./actions"
 
 // ===== Tipler =====
@@ -1145,12 +1146,22 @@ function SettingsTab({ configExists, configActive, lastTestOk, lastTestNote, las
   const [pending, startTransition] = useTransition()
   const [token, setToken] = useState("")
   const [active] = useState(true)
+  const [backfillPending, startBackfill] = useTransition()
+
   const handleSave = (alsoTest: boolean) => {
     startTransition(async () => {
       const res = await saveDopigoConfigAction({ apiToken: token.trim(), isActive: active, alsoTest })
       if (res.success) { toast.success(res.message); setToken("") } else toast.error(res.message)
     })
   }
+
+  const handleBackfill = () => {
+    startBackfill(async () => {
+      const res = await backfillMarketplaceAction()
+      if (res.success) toast.success(res.message); else toast.error(res.message)
+    })
+  }
+
   return (
     <div className="space-y-4 max-w-2xl">
       <Card>
@@ -1184,6 +1195,23 @@ function SettingsTab({ configExists, configActive, lastTestOk, lastTestNote, las
             </Button>
             <Button variant="outline" onClick={() => handleSave(true)} disabled={pending || !token.trim()}>Kaydet + Test Et</Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Marketplace Eşleştirmesi</CardTitle>
+          <CardDescription>
+            Marketplace tablosunda yeni kayıt eklediğinde veya isim düzelttiğinde,
+            mevcut siparişlerde &quot;marketplaceId NULL&quot; kalanları yeniden eşleştirir.
+            Komisyon/kargo/stopaj 0 görünüyorsa bu butonu çalıştır.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button onClick={handleBackfill} disabled={backfillPending} variant="outline">
+            {backfillPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Eşleşmeleri Onar
+          </Button>
         </CardContent>
       </Card>
 

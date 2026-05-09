@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/db"
-import { syncDopigoOrders } from "@/lib/services/dopigo-orders"
+import { syncDopigoOrders, backfillMarketplaceMappings } from "@/lib/services/dopigo-orders"
 import { manualMatchOrderItem, clearMatchForOrderItem } from "@/lib/services/dopigo-orders"
 import { testDopigoConnection } from "@/lib/services/dopigo-api/client"
 import { requireAdmin } from "@/lib/permissions"
@@ -130,6 +130,30 @@ export async function saveDopigoConfigAction(input: {
 
   revalidatePath("/dopigo-siparisler")
   return { success: true, message: testMsg ?? "Kaydedildi", tested: input.alsoTest }
+}
+
+/**
+ * Marketplace eşleşmelerini yeniden çalıştır (alias düzeltmesi sonrası backfill için).
+ */
+export async function backfillMarketplaceAction(): Promise<SyncFormResult & { byChannel?: Record<string, { fixed: number; total: number }> }> {
+  await requireAdmin()
+  try {
+    const r = await backfillMarketplaceMappings()
+    revalidatePath("/dopigo-siparisler")
+    const detail = Object.entries(r.byChannel)
+      .map(([ch, v]) => `${ch}: ${v.fixed}/${v.total}`)
+      .join(", ")
+    return {
+      success: true,
+      message: `${r.totalFixed}/${r.totalNull} sipariş eşleşti. ${detail}`,
+      byChannel: r.byChannel,
+    }
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : "Backfill başarısız",
+    }
+  }
 }
 
 /**

@@ -245,10 +245,16 @@ async function loadMarketplaceMap(): Promise<Map<string, number>> {
 
 /**
  * salesChannel → Marketplace.id eşleştirmesi.
- * Dopigo: "trendyol", "hepsiburada", "n11", "amazon", "store", "farmazon", ...
- * Marketplace: "Trendyol", "Hepsiburada", "Dopigo Mağaza", ... (case insensitive match)
  *
- * Eşleşmezse null — orphan kanal olarak görünür, admin Marketplace tablosuna ekler.
+ * Strategy (öncelik sırası):
+ *   1) Tam eşleşme (lowercase)
+ *   2) Alias eşleşmesi — Dopigo channel adı ile Marketplace.name farklı olabilir
+ *      (örn. Dopigo "amazon" → Marketplace "Amazon TR")
+ *   3) Substring/contains match — bilinmeyen kanallar için tolerant fallback
+ *      (örn. "epttavm" → "PttAvm" name'de "ttavm" var)
+ *
+ * Eşleşmezse null — orphan kanal (chamelo, sanat optik gibi diğer şirketlerin
+ * siparişleri olabilir, KPI'larda komisyon/kargo 0 hesaplanır).
  */
 function resolveMarketplaceId(
   salesChannel: string,
@@ -258,30 +264,47 @@ function resolveMarketplaceId(
   const direct = map.get(key)
   if (direct) return direct
 
-  // Bilinen alias'lar
+  // Bilinen alias'lar — sol: Dopigo channel, sağ: Marketplace.name pattern'leri
   const aliases: Record<string, string[]> = {
     trendyol: ["trendyol"],
     hepsiburada: ["hepsiburada", "hb"],
     n11: ["n11"],
-    amazon: ["amazon"],
-    store: ["store", "mağaza", "magaza", "kendi mağaza"],
+    amazon: ["amazon", "amazon tr"], // ← "Amazon TR" düzeltmesi
+    store: ["store", "mağaza", "magaza", "kendi mağaza", "web sitesi"],
     farmazon: ["farmazon"],
     pazarama: ["pazarama"],
-    epttavm: ["epttavm", "ptt avm", "pttavm"],
+    epttavm: ["epttavm", "ptt avm", "pttavm", "pttavm "], // ← "PttAvm" düzeltmesi
     ikas: ["ikas"],
     ciceksepeti: ["çiçeksepeti", "ciceksepeti"],
     ticimax: ["ticimax"],
+    // Diğer şirketlerin kanalları (CLAUDE.md: 5 firma var) — orphan bırakılabilir
+    "chamelo-mağaza": ["chamelo"],
+    "chamelo-satış": ["chamelo"],
+    "sanat optik": ["sanat optik", "sanat"],
   }
 
-  for (const [canonical, aliasList] of Object.entries(aliases)) {
-    if (aliasList.includes(key) || key === canonical) {
-      // Aliaslardan bir tanesi map'te var mı?
-      for (const alias of [canonical, ...aliasList]) {
-        const found = map.get(alias.toLowerCase())
-        if (found) return found
+  // 1) Bilinen alias kontrolü
+  const aliasList = aliases[key]
+  if (aliasList) {
+    for (const candidate of aliasList) {
+      const found = map.get(candidate.toLowerCase())
+      if (found) return found
+    }
+    // Substring/contains: "amazon" → "amazon tr" gibi
+    for (const [name, id] of map.entries()) {
+      for (const candidate of aliasList) {
+        if (name.includes(candidate.toLowerCase()) || candidate.toLowerCase().includes(name)) {
+          return id
+        }
       }
     }
   }
+
+  // 2) Genel contains fallback (case-insensitive substring)
+  for (const [name, id] of map.entries()) {
+    if (name.includes(key) || key.includes(name)) return id
+  }
+
   return null
 }
 
@@ -373,6 +396,46 @@ async function matchProduct(item: DopigoApiOrderItem): Promise<MatchResult> {
   }
 
   return { productId: null, method: "NONE", productType: null }
+}
+
+/**
+ * Mevcut DopigoOrder kayıtlarında marketplaceId NULL olanları yeniden eşleştirir.
+ * Marketplace tablosunda sonradan ekleme/değişiklik olunca çalıştırılır.
+ *
+ * Returns: { totalNull: kaç sipariş null'du, totalFixed: kaç tanesi düzeldi }
+ */
+export async function backfillMarketplaceMappings(): Promise<{
+  totalNull: number
+  totalFixed: number
+  byChannel: Record<string, { fixed: number; total: number }>
+}> {
+  const map = await loadMarketplaceMap()
+
+  const orphans = await prisma.dopigoOrder.findMany({
+    where: { marketplaceId: null },
+    select: { id: true, salesChannel: true },
+  })
+
+  const byChannel: Record<string, { fixed: number; total: number }> = {}
+  let fixed = 0
+
+  for (const o of orphans) {
+    const ch = o.salesChannel
+    if (!byChannel[ch]) byChannel[ch] = { fixed: 0, total: 0 }
+    byChannel[ch].total++
+
+    const mpId = resolveMarketplaceId(ch, map)
+    if (mpId) {
+      await prisma.dopigoOrder.update({
+        where: { id: o.id },
+        data: { marketplaceId: mpId },
+      })
+      byChannel[ch].fixed++
+      fixed++
+    }
+  }
+
+  return { totalNull: orphans.length, totalFixed: fixed, byChannel }
 }
 
 // ===== Manuel eşleştirme (UI için) =====
