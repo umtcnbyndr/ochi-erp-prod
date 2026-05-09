@@ -14,6 +14,10 @@ interface PageProps {
     minProfit?: string
     search?: string
     onlyMatched?: string
+    sortBy?: string
+    page?: string
+    pageSize?: string
+    targetProfit?: string  // renklendirme eşiği
   }>
 }
 
@@ -27,6 +31,10 @@ export default async function KomisyonTarifeleriPage({ searchParams }: PageProps
   const search = sp.search ?? null
   // Default: tümünü göster (eşleşmeyenler "ERP'de yok" uyarısıyla)
   const onlyMatched = sp.onlyMatched === "true"
+  const sortBy = (sp.sortBy as "stock_priority" | "main_stock" | "street_stock" | "tsf_desc" | "tsf_asc" | "brand" | "profit" | undefined) ?? "stock_priority"
+  const page = Math.max(1, Number(sp.page ?? "1"))
+  const pageSize = Math.min(500, Math.max(25, Number(sp.pageSize ?? "100")))
+  const targetProfit = sp.targetProfit ? Number(sp.targetProfit) : 15 // default %15
 
   const [analysis, brands, categories, allUploads] = await Promise.all([
     analyzeTariffs({
@@ -37,6 +45,7 @@ export default async function KomisyonTarifeleriPage({ searchParams }: PageProps
       minProfitPct,
       search,
       onlyMatched,
+      sortBy,
     }),
     prisma.brand.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.category.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -55,17 +64,23 @@ export default async function KomisyonTarifeleriPage({ searchParams }: PageProps
     }),
   ])
 
-  // Stats
+  // Stats (filter uygulanmış tüm rows)
   const stats = {
     totalRows: analysis.rows.length,
     selectedCount: analysis.rows.filter((r) => r.selectedTier !== null).length,
     profitableCount: analysis.rows.filter((r) =>
-      r.tiers.some((t) => t.netProfitPct !== null && t.netProfitPct >= 15),
+      r.tiers.some((t) => t.netProfitPct !== null && t.netProfitPct >= targetProfit),
     ).length,
     pharmacyFallbackCount: analysis.rows.filter((r) => r.stockSource === "PHARMACY_FALLBACK").length,
     suspiciousPsfCount: analysis.rows.filter((r) => r.psfSuspicious).length,
     notInErpCount: analysis.rows.filter((r) => r.stockSource === "NOT_IN_ERP").length,
   }
+
+  // Pagination — sayfalanmış rows
+  const total = analysis.rows.length
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const sliced = analysis.rows.slice((safePage - 1) * pageSize, safePage * pageSize)
 
   return (
     <div className="space-y-4">
@@ -76,10 +91,14 @@ export default async function KomisyonTarifeleriPage({ searchParams }: PageProps
 
       <TariffFlow
         marketplace={marketplace}
-        rows={analysis.rows.map((r) => ({
-          ...r,
-          // Date alanları yok bu obje — ama tariffs'lardan tier'lar primitives
-        }))}
+        rows={sliced}
+        allTariffIds={analysis.rows.map((r) => r.tariffId)}
+        page={safePage}
+        pageSize={pageSize}
+        totalRows={total}
+        totalPages={totalPages}
+        sortBy={sortBy}
+        targetProfit={targetProfit}
         activeUpload={
           analysis.activeUpload
             ? {

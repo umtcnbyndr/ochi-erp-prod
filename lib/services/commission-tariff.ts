@@ -48,6 +48,7 @@ export interface TariffRowAnalyzed {
   // 4 kademe analizi
   tiers: TierAnalysis[]
   currentTier: 1 | 2 | 3 | 4 | null // mevcut TSF hangi kademede
+  recommendedTier: 1 | 2 | 3 | 4 | null // sistem öneri (en yüksek kâr veren)
   // Seçim
   selectedTier: 1 | 2 | 3 | 4 | null
   selectedPrice: number | null
@@ -82,6 +83,8 @@ export interface AnalyzeFilter {
   onlyMatched?: boolean // default true
   /** Arama (barkod/ürün adı) */
   search?: string | null
+  /** Sıralama */
+  sortBy?: "stock_priority" | "main_stock" | "street_stock" | "tsf_desc" | "tsf_asc" | "brand" | "profit"
 }
 
 export async function analyzeTariffs(
@@ -337,12 +340,22 @@ export async function analyzeTariffs(
       }
     }
 
-    // Min kâr % filtresi
+      // Min kâr % filtresi
     if (filter.minProfitPct !== null && filter.minProfitPct !== undefined) {
       const hasGoodTier = tiers.some(
         (t) => t.netProfitPct !== null && t.netProfitPct >= filter.minProfitPct!,
       )
       if (!hasGoodTier) continue
+    }
+
+    // Önerilen kademe — en yüksek kâr veren kademe (≥%0)
+    let recommendedTier: 1 | 2 | 3 | 4 | null = null
+    let bestProfit = -Infinity
+    for (const t of tiers) {
+      if (t.netProfit !== null && t.netProfit > bestProfit) {
+        bestProfit = t.netProfit
+        recommendedTier = t.tier
+      }
     }
 
     rows.push({
@@ -366,11 +379,47 @@ export async function analyzeTariffs(
       psfSuspicious,
       tiers,
       currentTier,
+      recommendedTier,
       selectedTier: t.selectedTier as 1 | 2 | 3 | 4 | null,
       selectedPrice: t.selectedPrice ? Number(t.selectedPrice) : null,
       applyToEnd: t.applyToEnd,
     })
   }
+
+  // Sıralama: default önce ana stok > eczane > stok yok > ERP yok
+  const stockPriority: Record<string, number> = {
+    MAIN: 0,
+    PHARMACY_FALLBACK: 1,
+    ZERO: 2,
+    NOT_IN_ERP: 3,
+  }
+  const sortBy = filter.sortBy ?? "stock_priority"
+  rows.sort((a, b) => {
+    switch (sortBy) {
+      case "main_stock":
+        return b.mainStock - a.mainStock
+      case "street_stock":
+        return b.streetStock - a.streetStock
+      case "tsf_desc":
+        return (b.trendyolPrice ?? 0) - (a.trendyolPrice ?? 0)
+      case "tsf_asc":
+        return (a.trendyolPrice ?? 0) - (b.trendyolPrice ?? 0)
+      case "brand":
+        return (a.brand ?? "").localeCompare(b.brand ?? "", "tr")
+      case "profit": {
+        const aMax = Math.max(...a.tiers.map((t) => t.netProfit ?? -Infinity))
+        const bMax = Math.max(...b.tiers.map((t) => t.netProfit ?? -Infinity))
+        return bMax - aMax
+      }
+      case "stock_priority":
+      default: {
+        const ap = stockPriority[a.stockSource] ?? 99
+        const bp = stockPriority[b.stockSource] ?? 99
+        if (ap !== bp) return ap - bp
+        return b.mainStock - a.mainStock
+      }
+    }
+  })
 
   return {
     rows,
