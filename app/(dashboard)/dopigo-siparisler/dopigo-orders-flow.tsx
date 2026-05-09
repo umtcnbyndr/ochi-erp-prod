@@ -803,7 +803,10 @@ function OrderDetailDrawer({ row, siblings, onSwitchItem, onClose }: {
                   <span className={muted}>{pctOf(row.commission)}</span>
                 </span>
 
-                <span className="text-rose-600">- Kargo:</span>
+                <span className="text-rose-600">
+                  - Kargo:
+                  {isMultiItem && <span className="text-[9px] text-muted-foreground/70 ml-1">(pay)</span>}
+                </span>
                 <span className="text-right tabular-nums text-rose-600">
                   {tl(row.shipping)}
                   <span className={muted}>{pctOf(row.shipping)}</span>

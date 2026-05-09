@@ -681,6 +681,9 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       shipping_cost: number | null
       withholding_rate: number | null
       match_method: string | null
+      // Window: aynı sipariş için toplam ciro (kargo paylaştırmasında kullanılır)
+      order_total: number
+      items_in_order: number
     }>
   >(
     `
@@ -710,7 +713,10 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       m."commissionRate"::float8          AS commission_rate,
       m."shippingCost"::float8            AS shipping_cost,
       m."withholdingTax"::float8          AS withholding_rate,
-      i."matchMethod"                     AS match_method
+      i."matchMethod"                     AS match_method,
+      -- Sipariş bazlı window: aynı orderId için tüm itemların toplamı
+      SUM(i.price)::float8 OVER (PARTITION BY o.id)  AS order_total,
+      COUNT(*)::int OVER (PARTITION BY o.id)         AS items_in_order
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
@@ -742,7 +748,12 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       withholding = 0
     } else {
       commission = (lineTotal * Number(r.commission_rate ?? 0)) / 100
-      shipping = Number(r.shipping_cost ?? 0)
+      // Kargo: 1 sipariş = 1 kargo. Çoklu kalemli siparişte cironun payına göre böl.
+      // Tek kalemli: share=1.0 → tam kargo
+      // 3 kalemli (1500/2890, 600/2890, 790/2890): paylar 0.519, 0.207, 0.273 → toplam 1.0
+      const orderTotal = Number(r.order_total ?? lineTotal)
+      const shippingShare = orderTotal > 0 ? lineTotal / orderTotal : 1
+      shipping = Number(r.shipping_cost ?? 0) * shippingShare
       withholding = (lineTotal * Number(r.withholding_rate ?? 0)) / 100
     }
 
