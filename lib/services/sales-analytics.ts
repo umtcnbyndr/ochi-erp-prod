@@ -715,8 +715,9 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       m."withholdingTax"::float8          AS withholding_rate,
       i."matchMethod"                     AS match_method,
       -- Sipariş bazlı window: aynı orderId için tüm itemların toplamı
-      SUM(i.price)::float8 OVER (PARTITION BY o.id)  AS order_total,
-      COUNT(*)::int OVER (PARTITION BY o.id)         AS items_in_order
+      -- (cast PARANTEZ İÇİNDE olmalı, "OVER" öncesi syntax error verir)
+      (SUM(i.price) OVER (PARTITION BY o.id))::float8  AS order_total,
+      (COUNT(*) OVER (PARTITION BY o.id))::int         AS items_in_order
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"

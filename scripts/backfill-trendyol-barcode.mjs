@@ -35,7 +35,12 @@ async function main() {
   })
 
   // Map: productId → primary listing barcode
-  const map = new Map(primaryListings.map((l) => [l.productId, l.barcode!]))
+  // (where filter zaten barcode != null garanti ediyor, ama defensive)
+  const map = new Map(
+    primaryListings
+      .filter((l) => l.barcode !== null)
+      .map((l) => [l.productId, l.barcode]),
+  )
 
   // trendyolBarcode boş olan ürünleri al
   const products = await prisma.product.findMany({
