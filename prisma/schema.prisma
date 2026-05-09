@@ -391,6 +391,7 @@ model Product {
   favoriteSnapshots           TrendyolFavoriteSnapshot[]
   trendyolListings            TrendyolListing[]
   dopigoOrderItems            DopigoOrderItem[]
+  commissionTariffs           CommissionTariff[]
 
   @@index([pharmacyId])
   @@index([brandId])
@@ -1272,4 +1273,91 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([action, createdAt])
   @@index([entityType, entityId])
+}
+
+// ---------- Komisyon Tarifeleri (Trendyol/HB/N11 haftalık tarife) ----------
+//
+// Trendyol Salı 08:00 - sonraki Salı 07:59 haftalık tarife yayınlar.
+// Excel yüklenir, her ürün için 4 fiyat kademesi + komisyon oranı saklanır.
+// Kullanıcı bir kademe seçer, sistem Excel export ile TY'ye geri yüklenecek
+// dosyayı üretir.
+//
+// Critical: Sistemdeki TÜM komisyon hesabı (dopigo-sync, sale-price,
+// recommendation, sales-analytics, coupon-*) artık bu tarifeden okur
+// (lib/pricing/effective-commission.ts helper'ı üzerinden). Tarife yoksa
+// fallback Marketplace.commissionRate kullanılır.
+
+model CommissionTariffUpload {
+  id            Int      @id @default(autoincrement())
+  marketplace   String   // "Trendyol" | "Hepsiburada" | "N11" (Marketplace.name ile uyumlu)
+  filename      String
+  effectiveFrom DateTime // Tarifenin başlangıç tarihi (Salı 08:00)
+  effectiveTo   DateTime // Tarifenin bitiş tarihi (sonraki Salı 07:59)
+  rowCount      Int      @default(0)
+  matchedCount  Int      @default(0) // ERP'ye eşleşen satır sayısı
+  tarifeGrubu   String?  // Excel'deki "TARİFE GRUBU" alanı
+  uploadedAt    DateTime @default(now())
+  uploadedBy    String?  // userId
+
+  tariffs CommissionTariff[]
+
+  @@unique([marketplace, effectiveFrom])
+  @@index([effectiveFrom, effectiveTo])
+}
+
+model CommissionTariff {
+  id       Int @id @default(autoincrement())
+  uploadId Int
+  upload   CommissionTariffUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  // Dönem bilgisi (upload'dan kopya — query hızı için)
+  marketplace   String
+  effectiveFrom DateTime
+  effectiveTo   DateTime
+
+  // Trendyol ham verisi
+  barcode              String
+  modelKodu            String?
+  satıcıStokKodu       String?  @map("satici_stok_kodu")
+  productName          String
+  brand                String?
+  category             String?
+  trendyolStock        Int?
+  trendyolPrice        Decimal? @db.Decimal(12, 2) // GÜNCEL TSF
+  currentCommissionPct Decimal? @db.Decimal(5, 2) // GÜNCEL KOMİSYON %
+  baseCommissionPrice  Decimal? @db.Decimal(12, 2) // KOMİSYONA ESAS FİYAT
+  isRecommended        Boolean  @default(false) // "Önerilen Ürün" rozeti
+
+  // 4 kademe — alt limit (≥ bu fiyat) + komisyon %
+  // tier1AltLimit ≥ → tier1CommissionPct
+  // tier2AltLimit-tier2UstLimit → tier2CommissionPct
+  // tier3AltLimit-tier3UstLimit → tier3CommissionPct
+  // ≤ tier4UstLimit → tier4CommissionPct
+  tier1AltLimit       Decimal? @db.Decimal(12, 2)
+  tier1CommissionPct  Decimal? @db.Decimal(5, 2)
+  tier2UstLimit       Decimal? @db.Decimal(12, 2)
+  tier2AltLimit       Decimal? @db.Decimal(12, 2)
+  tier2CommissionPct  Decimal? @db.Decimal(5, 2)
+  tier3UstLimit       Decimal? @db.Decimal(12, 2)
+  tier3AltLimit       Decimal? @db.Decimal(12, 2)
+  tier3CommissionPct  Decimal? @db.Decimal(5, 2)
+  tier4UstLimit       Decimal? @db.Decimal(12, 2)
+  tier4CommissionPct  Decimal? @db.Decimal(5, 2)
+
+  // ERP eşleştirmesi (TrendyolListing veya ProductBarcode üzerinden)
+  productId Int?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  // Kullanıcının seçtiği kademe (Excel export'una yansır)
+  selectedTier  Int?      // 1, 2, 3, 4
+  selectedPrice Decimal?  @db.Decimal(12, 2) // Kademede önerilen yeni TSF
+  applyToEnd    Boolean   @default(false) // "Tarife Sonuna Kadar Uygula" — default false
+  selectedAt    DateTime?
+  selectedBy    String?
+
+  rawJson Json
+
+  @@unique([uploadId, barcode])
+  @@index([productId, marketplace])
+  @@index([marketplace, effectiveFrom, effectiveTo])
 }
