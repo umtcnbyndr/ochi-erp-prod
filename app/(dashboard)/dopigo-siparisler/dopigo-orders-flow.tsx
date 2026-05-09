@@ -298,12 +298,22 @@ export function DopigoOrdersFlow(props: Props) {
       {/* Sipariş detay drawer */}
       <Sheet open={drawerItemId !== null} onOpenChange={(o) => !o && setDrawerItemId(null)}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-          {drawerItemId !== null && (
-            <OrderDetailDrawer
-              row={props.tableData.rows.find((r) => r.itemId === drawerItemId)!}
-              onClose={() => setDrawerItemId(null)}
-            />
-          )}
+          {drawerItemId !== null && (() => {
+            const row = props.tableData.rows.find((r) => r.itemId === drawerItemId)
+            if (!row) return null
+            // Aynı sipariş'in diğer kalemleri (aynı orderId, farklı itemId)
+            const siblings = props.tableData.rows.filter(
+              (r) => r.orderId === row.orderId && r.itemId !== row.itemId,
+            )
+            return (
+              <OrderDetailDrawer
+                row={row}
+                siblings={siblings}
+                onSwitchItem={(itemId) => setDrawerItemId(itemId)}
+                onClose={() => setDrawerItemId(null)}
+              />
+            )
+          })()}
         </SheetContent>
       </Sheet>
     </div>
@@ -473,6 +483,14 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
 }) {
   const totalPages = Math.max(1, Math.ceil(data.totalCount / data.pageSize))
 
+  // Aynı siparişin kalemlerini grupla (gruplandırılmış görünüm için)
+  // İlk satır = full info, diğerleri = sadece ürün/finansal sütunlar
+  const orderGroupSizes = useMemo(() => {
+    const counts = new Map<number, number>()
+    for (const r of data.rows) counts.set(r.orderId, (counts.get(r.orderId) ?? 0) + 1)
+    return counts
+  }, [data.rows])
+
   const handleSort = (col: string) => {
     if (sortBy === col) onSort(col, sortDir === "asc" ? "desc" : "asc")
     else onSort(col, "desc")
@@ -515,25 +533,61 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.rows.map((r) => {
+              {data.rows.map((r, idx) => {
                 const meta = STATUS_META[r.derivedStatus] ?? STATUS_META.OTHER
                 const date = new Date(r.serviceCreatedAt)
                 const isProfit = r.remaining >= 0
                 const isStaleOrLow = r.marginPct < 5
+
+                // Gruplandırma: aynı orderId'li ardışık satırların ilki = grup başı
+                const prevOrderId = idx > 0 ? data.rows[idx - 1].orderId : null
+                const isFirstOfGroup = r.orderId !== prevOrderId
+                const groupSize = orderGroupSizes.get(r.orderId) ?? 1
+                const isMultiItem = groupSize > 1
+
+                // Grup içindeki son kalem mi? (alt border kaldırma için)
+                const nextOrderId = idx < data.rows.length - 1 ? data.rows[idx + 1].orderId : null
+                const isLastOfGroup = r.orderId !== nextOrderId
+
                 return (
                   <TableRow
                     key={r.itemId}
                     onClick={() => onRowClick(r.itemId)}
-                    className={`cursor-pointer hover:bg-accent/50 border-l-4 ${meta.bgColor.split(' ').filter(c => c.startsWith('border-l-')).join(' ')}`}
+                    className={`cursor-pointer hover:bg-accent/50 border-l-4 ${meta.bgColor.split(' ').filter(c => c.startsWith('border-l-')).join(' ')} ${
+                      !isLastOfGroup ? "border-b-0" : ""
+                    } ${!isFirstOfGroup ? "bg-muted/10" : ""}`}
                   >
                     <TableCell className="text-xs">
-                      <div>{date.toLocaleDateString("tr-TR")}</div>
-                      <div className="text-muted-foreground">{date.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</div>
+                      {isFirstOfGroup ? (
+                        <>
+                          <div>{date.toLocaleDateString("tr-TR")}</div>
+                          <div className="text-muted-foreground">{date.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</div>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground/40 text-[10px]">↳</span>
+                      )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-[10px]">{r.salesChannel}</Badge>
+                      {isFirstOfGroup ? (
+                        <Badge variant="outline" className="text-[10px]">{r.salesChannel}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground/40 text-[10px]">·</span>
+                      )}
                     </TableCell>
-                    <TableCell className="font-mono text-xs">{r.serviceOrderId ?? r.dopigoOrderId.slice(-8)}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {isFirstOfGroup ? (
+                        <div className="flex items-center gap-1">
+                          <span>{r.serviceOrderId ?? r.dopigoOrderId.slice(-8)}</span>
+                          {isMultiItem && (
+                            <Badge variant="secondary" className="text-[9px] h-4 px-1" title={`Bu siparişte ${groupSize} kalem var`}>
+                              +{groupSize - 1}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground/40">↳</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-xs max-w-[280px]">
                       <div className="truncate" title={r.productName}>
                         {r.productId ? (
@@ -544,7 +598,9 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                           <span className="text-amber-600">{r.productName}</span>
                         )}
                       </div>
-                      {r.customerName && <div className="text-[10px] text-muted-foreground truncate">👤 {r.customerName}{r.customerCity ? ` · ${r.customerCity}` : ""}</div>}
+                      {isFirstOfGroup && r.customerName && (
+                        <div className="text-[10px] text-muted-foreground truncate">👤 {r.customerName}{r.customerCity ? ` · ${r.customerCity}` : ""}</div>
+                      )}
                     </TableCell>
                     <TableCell className="font-mono text-xs">{r.barcode ?? r.foreignSku ?? "—"}</TableCell>
                     <TableCell className="text-xs">{r.brandName ?? "—"}</TableCell>
@@ -606,10 +662,20 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
 
 // ===== Order Detail Drawer =====
 
-function OrderDetailDrawer({ row, onClose }: { row: OrderTableRow; onClose: () => void }) {
+function OrderDetailDrawer({ row, siblings, onSwitchItem, onClose }: {
+  row: OrderTableRow
+  siblings: OrderTableRow[]
+  onSwitchItem: (itemId: number) => void
+  onClose: () => void
+}) {
   const meta = STATUS_META[row.derivedStatus] ?? STATUS_META.OTHER
   const Icon = meta.icon
   const date = new Date(row.serviceCreatedAt)
+  const isMultiItem = siblings.length > 0
+
+  // Tüm sipariş için toplam tutar
+  const orderTotal = row.lineTotal + siblings.reduce((sum, s) => sum + s.lineTotal, 0)
+  const orderRemaining = row.remaining + siblings.reduce((sum, s) => sum + s.remaining, 0)
 
   return (
     <>
@@ -617,11 +683,18 @@ function OrderDetailDrawer({ row, onClose }: { row: OrderTableRow; onClose: () =
         <SheetTitle className="flex items-center gap-2">
           <Icon className={`h-5 w-5 ${meta.color}`} />
           Sipariş Detayı
+          {isMultiItem && <Badge variant="secondary" className="ml-2">{siblings.length + 1} kalem</Badge>}
         </SheetTitle>
         <SheetDescription>
           <Badge variant="outline" className={meta.color}>{meta.label}</Badge>
           {" · "}
           <Badge variant="secondary">{row.salesChannel}</Badge>
+          {isMultiItem && (
+            <>
+              {" · "}
+              <span className="text-xs">Toplam: <strong>{tl(orderTotal)}</strong> · Net: <strong className={orderRemaining >= 0 ? "text-emerald-700" : "text-rose-700"}>{tl(orderRemaining)}</strong></span>
+            </>
+          )}
         </SheetDescription>
       </SheetHeader>
 
@@ -770,6 +843,31 @@ function OrderDetailDrawer({ row, onClose }: { row: OrderTableRow; onClose: () =
         {row.matchMethod && (
           <div className="border-t pt-3 text-xs text-muted-foreground">
             Eşleştirme yöntemi: <Badge variant="outline" className="text-[10px]">{row.matchMethod}</Badge>
+          </div>
+        )}
+
+        {/* Aynı siparişin diğer kalemleri */}
+        {isMultiItem && (
+          <div className="border-t pt-3 space-y-2">
+            <Label className="text-xs text-muted-foreground">
+              Bu siparişteki diğer kalemler ({siblings.length})
+            </Label>
+            <div className="space-y-1.5">
+              {siblings.map((s) => (
+                <button
+                  key={s.itemId}
+                  onClick={() => onSwitchItem(s.itemId)}
+                  className="w-full text-left text-xs bg-muted/40 hover:bg-muted/70 rounded px-3 py-2 flex items-center gap-3 transition-colors"
+                >
+                  <span className="text-muted-foreground tabular-nums shrink-0">{s.amount}x</span>
+                  <span className="flex-1 truncate">{s.productName}</span>
+                  <span className="tabular-nums shrink-0 font-medium">{tl(s.lineTotal)}</span>
+                  <span className={`tabular-nums shrink-0 text-[10px] ${s.remaining >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {tl(s.remaining)}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

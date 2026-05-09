@@ -614,22 +614,23 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
   const limit = filter.limit ?? 100
   const offset = filter.offset ?? 0
 
-  // Sort kuralı
+  // Sort kuralı — aynı siparişe ait kalemler hep yan yana kalır (orderId ikinci anahtar)
   let orderBy: string
   const dir = filter.sortDir === "asc" ? "ASC" : "DESC"
   switch (filter.sortBy) {
     case "channel":
-      orderBy = `o."salesChannel" ${dir}, o."serviceCreatedAt" DESC`
+      orderBy = `o."salesChannel" ${dir}, o."serviceCreatedAt" DESC, o.id DESC, i.id ASC`
       break
     case "revenue":
-      orderBy = `i.price ${dir}`
+      // Aynı siparişin item'ları yan yana, içlerinde fiyata göre sırala
+      orderBy = `o."serviceCreatedAt" DESC, o.id DESC, i.price ${dir}, i.id ASC`
       break
     case "profit":
-      orderBy = `i.price - COALESCE(p."mainPurchasePrice" * i.amount, 0) ${dir}`
+      orderBy = `o."serviceCreatedAt" DESC, o.id DESC, (i.price - COALESCE(p."mainPurchasePrice" * i.amount, 0)) ${dir}, i.id ASC`
       break
     case "date":
     default:
-      orderBy = `o."serviceCreatedAt" ${dir}, i.id DESC`
+      orderBy = `o."serviceCreatedAt" ${dir}, o.id ${dir}, i.id ASC`
   }
 
   // Toplam sayı
