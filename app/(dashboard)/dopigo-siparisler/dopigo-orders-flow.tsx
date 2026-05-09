@@ -24,6 +24,7 @@ import {
   syncOrdersAction,
   saveMonthlyExpenseAction,
   backfillMarketplaceAction,
+  rematchOrdersAction,
 } from "./actions"
 
 // ===== Tipler =====
@@ -1355,10 +1356,20 @@ function SettingsTab({ configExists, configActive, lastTestOk, lastTestNote, las
   configExists: boolean; configActive: boolean; lastTestOk: boolean | null; lastTestNote: string | null; lastSync: SyncRun | null
 }) {
   const [backfillPending, startBackfill] = useTransition()
+  const [rematchPending, startRematch] = useTransition()
 
   const handleBackfill = () => {
     startBackfill(async () => {
       const res = await backfillMarketplaceAction()
+      if (res.success) toast.success(res.message); else toast.error(res.message)
+    })
+  }
+
+  const handleRematch = () => {
+    startRematch(async () => {
+      toast.loading("Eşleşmemiş kalemler taranıyor...", { id: "rematch" })
+      const res = await rematchOrdersAction()
+      toast.dismiss("rematch")
       if (res.success) toast.success(res.message); else toast.error(res.message)
     })
   }
@@ -1402,18 +1413,37 @@ function SettingsTab({ configExists, configActive, lastTestOk, lastTestNote, las
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Marketplace Eşleştirmesi</CardTitle>
+          <CardTitle className="text-base">Eşleşme Onarımı</CardTitle>
           <CardDescription>
-            Marketplace tablosunda yeni kayıt eklediğinde veya isim düzelttiğinde,
-            mevcut siparişlerde &quot;marketplaceId NULL&quot; kalanları yeniden eşleştirir.
-            Komisyon/kargo/stopaj 0 görünüyorsa bu butonu çalıştır.
+            Marketplace veya ürün tablolarında değişiklik olduğunda mevcut siparişleri
+            yeniden eşleştir. Eşleşmemiş kalemler veya 0 komisyon görüyorsan kullan.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button onClick={handleBackfill} disabled={backfillPending} variant="outline">
-            {backfillPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Eşleşmeleri Onar
-          </Button>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-medium">Sipariş Eşleştirmeleri</div>
+              <div className="text-xs text-muted-foreground">
+                Eşleşmemiş kalemleri yeniden tara (multi-listing/Mustela tipi için)
+              </div>
+            </div>
+            <Button onClick={handleRematch} disabled={rematchPending} variant="outline" size="sm">
+              {rematchPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+              Ürün Eşleştir
+            </Button>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t pt-3">
+            <div className="text-sm">
+              <div className="font-medium">Marketplace Eşleştirmesi</div>
+              <div className="text-xs text-muted-foreground">
+                marketplaceId NULL olan siparişleri kanal adından eşleştir
+              </div>
+            </div>
+            <Button onClick={handleBackfill} disabled={backfillPending} variant="outline" size="sm">
+              {backfillPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+              Kanal Eşleştir
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

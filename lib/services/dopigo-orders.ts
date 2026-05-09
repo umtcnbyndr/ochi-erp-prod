@@ -329,8 +329,12 @@ async function matchProduct(item: DopigoApiOrderItem): Promise<MatchResult> {
     .filter((v): v is string => !!v && v.trim().length > 0)
     .map((s) => s.trim())
 
-  // 1) Barkod exact (primary veya alternative)
+  // 1) Barkod exact — 3 kaynak kontrol et (öncelik: Product → Listing → ProductBarcode)
+  //    Bu özellikle Mustela-tipi ürünler için kritik: aynı ürünün TY'de 2 farklı
+  //    barkodla 2 listing'i olabiliyor; siparişin barkodu hangisi olursa olsun
+  //    ÜRÜNE BAĞLANMALI (kaybolmamalı).
   for (const bc of candidateBarcodes) {
+    // 1a) Ana barkod (Product.primaryBarcode)
     const direct = await prisma.product.findFirst({
       where: { primaryBarcode: bc },
       select: { id: true, productType: true },
@@ -338,6 +342,21 @@ async function matchProduct(item: DopigoApiOrderItem): Promise<MatchResult> {
     if (direct) {
       return { productId: direct.id, method: "BARCODE_EXACT", productType: direct.productType }
     }
+
+    // 1b) Marketplace listing barkodu (multi-listing senaryosu — Mustela tipi)
+    const listingByBarcode = await prisma.productMarketplaceListing.findFirst({
+      where: { barcode: bc },
+      select: { product: { select: { id: true, productType: true } } },
+    })
+    if (listingByBarcode) {
+      return {
+        productId: listingByBarcode.product.id,
+        method: "BARCODE_EXACT",
+        productType: listingByBarcode.product.productType,
+      }
+    }
+
+    // 1c) Alternatif barkodlar (ProductBarcode)
     const altBarcode = await prisma.productBarcode.findFirst({
       where: { barcode: bc },
       select: { product: { select: { id: true, productType: true } } },
@@ -351,12 +370,12 @@ async function matchProduct(item: DopigoApiOrderItem): Promise<MatchResult> {
     }
   }
 
-  // 2) Foreign SKU özel kontrol (zaten yukarıda barkodla denedik ama bazı durumlarda
-  //    foreign_sku farklı bir kod olabilir — listings'te SKU olarak tutulmuş olabilir)
+  // 2) Foreign SKU — listings'te ek kontrol (sku, supplierSku alanları)
+  //    Note: barcode kontrolü zaten yukarıda yapıldı, burada sadece SKU alanları
   const foreignSku = item.linked_product?.foreign_sku?.trim()
   if (foreignSku) {
     const listing = await prisma.productMarketplaceListing.findFirst({
-      where: { OR: [{ sku: foreignSku }, { supplierSku: foreignSku }, { barcode: foreignSku }] },
+      where: { OR: [{ sku: foreignSku }, { supplierSku: foreignSku }] },
       select: { product: { select: { id: true, productType: true } } },
     })
     if (listing) {
@@ -396,6 +415,64 @@ async function matchProduct(item: DopigoApiOrderItem): Promise<MatchResult> {
   }
 
   return { productId: null, method: "NONE", productType: null }
+}
+
+/**
+ * Mevcut DopigoOrderItem kayıtlarında productId NULL olanları yeniden eşleştirir.
+ * Yeni Product/Listing kaydı eklendiğinde veya match logic değiştiğinde çalıştırılır.
+ *
+ * DB'de saklanan barcode/foreignSku/sku alanlarını kullanır — yeniden API çağrısı YOK.
+ */
+export async function rematchUnmatchedItems(): Promise<{
+  totalUnmatched: number
+  totalFixed: number
+  byMethod: Record<string, number>
+}> {
+  const items = await prisma.dopigoOrderItem.findMany({
+    where: { productId: null },
+    select: {
+      id: true,
+      barcode: true,
+      foreignSku: true,
+      sku: true,
+      serviceProductId: true,
+    },
+  })
+
+  const byMethod: Record<string, number> = {}
+  let fixed = 0
+
+  for (const it of items) {
+    // matchProduct'a uyumlu fake item oluştur (sadece kullanılan alanları doldur)
+    const fakeItem = {
+      barcode: it.barcode,
+      service_product_id: it.serviceProductId,
+      sku: it.sku,
+      linked_product: {
+        id: 0,
+        barcode: it.barcode,
+        foreign_sku: it.foreignSku,
+        sku: it.sku,
+      },
+    } as unknown as DopigoApiOrderItem
+
+    const result = await matchProduct(fakeItem)
+    if (result.productId !== null) {
+      await prisma.dopigoOrderItem.update({
+        where: { id: it.id },
+        data: {
+          productId: result.productId,
+          matchMethod: result.method,
+          matchedAt: new Date(),
+          productType: result.productType,
+        },
+      })
+      byMethod[result.method] = (byMethod[result.method] ?? 0) + 1
+      fixed++
+    }
+  }
+
+  return { totalUnmatched: items.length, totalFixed: fixed, byMethod }
 }
 
 /**

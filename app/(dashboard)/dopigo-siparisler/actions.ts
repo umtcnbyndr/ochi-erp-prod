@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/db"
-import { syncDopigoOrders, backfillMarketplaceMappings } from "@/lib/services/dopigo-orders"
+import { syncDopigoOrders, backfillMarketplaceMappings, rematchUnmatchedItems } from "@/lib/services/dopigo-orders"
 import { manualMatchOrderItem, clearMatchForOrderItem } from "@/lib/services/dopigo-orders"
 import { testDopigoConnection } from "@/lib/services/dopigo-api/client"
 import { requireAdmin } from "@/lib/permissions"
@@ -152,6 +152,31 @@ export async function backfillMarketplaceAction(): Promise<SyncFormResult & { by
     return {
       success: false,
       message: err instanceof Error ? err.message : "Backfill başarısız",
+    }
+  }
+}
+
+/**
+ * Eşleşmemiş sipariş kalemlerini yeniden eşleştir.
+ * Yeni listing/product eklendiğinde veya match logic değiştiğinde çalıştırılır.
+ */
+export async function rematchOrdersAction(): Promise<SyncFormResult & { byMethod?: Record<string, number> }> {
+  await requireAdmin()
+  try {
+    const r = await rematchUnmatchedItems()
+    revalidatePath("/dopigo-siparisler")
+    const detail = Object.entries(r.byMethod)
+      .map(([m, c]) => `${m}: ${c}`)
+      .join(", ")
+    return {
+      success: true,
+      message: `${r.totalFixed}/${r.totalUnmatched} kalem eşleşti${detail ? ` (${detail})` : ""}`,
+      byMethod: r.byMethod,
+    }
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : "Re-eşleştirme başarısız",
     }
   }
 }
