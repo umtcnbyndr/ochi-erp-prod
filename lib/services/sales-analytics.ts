@@ -583,6 +583,8 @@ export interface OrderTableRow {
   lineTotal: number // Bu kalem'in toplamı (price)
   // Hesaplanan değerler
   costPerUnit: number | null
+  /** Alış maliyetinin kaynağı: MAIN (gerçek), STREET_FALLBACK (eczane'den hesap), NONE */
+  costSource: "MAIN" | "STREET_FALLBACK" | "NONE"
   totalCost: number
   commission: number
   shipping: number
@@ -677,6 +679,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       unit_price: number | null
       line_total: number
       cost_per_unit: number | null
+      cost_source: string  // "MAIN" | "STREET_FALLBACK" | "NONE"
       commission_rate: number | null
       shipping_cost: number | null
       withholding_rate: number | null
@@ -709,7 +712,19 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       i.amount::int                       AS amount,
       i."unitPrice"::float8               AS unit_price,
       i.price::float8                     AS line_total,
-      p."mainPurchasePrice"::float8       AS cost_per_unit,
+      -- Alış maliyeti: 1) mainPurchasePrice (KDV dahil ana stok)
+      --                2) streetPurchasePrice × (1 + KDV) — eczane alış fallback
+      --                3) NULL (göstergede "—")
+      COALESCE(
+        p."mainPurchasePrice",
+        p."streetPurchasePrice" * (1 + COALESCE(p."vatRate", 20) / 100)
+      )::float8                           AS cost_per_unit,
+      -- Hangi kaynak kullanıldı? UI'da rozet gösterilebilir
+      CASE
+        WHEN p."mainPurchasePrice" IS NOT NULL THEN 'MAIN'
+        WHEN p."streetPurchasePrice" IS NOT NULL THEN 'STREET_FALLBACK'
+        ELSE 'NONE'
+      END                                 AS cost_source,
       m."commissionRate"::float8          AS commission_rate,
       m."shippingCost"::float8            AS shipping_cost,
       m."withholdingTax"::float8          AS withholding_rate,
@@ -739,6 +754,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
     const lineTotal = Number(r.line_total ?? 0)
     const amount = Number(r.amount ?? 0)
     const costPerUnit = r.cost_per_unit !== null && r.cost_per_unit !== undefined ? Number(r.cost_per_unit) : null
+    const costSource = r.cost_source as "MAIN" | "STREET_FALLBACK" | "NONE"
     const totalCost = costPerUnit !== null ? costPerUnit * amount : 0
     const isStore = STORE_CHANNELS.has(r.sales_channel.toLowerCase())
 
@@ -784,6 +800,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       unitPrice: r.unit_price,
       lineTotal,
       costPerUnit,
+      costSource,
       totalCost,
       commission,
       shipping,

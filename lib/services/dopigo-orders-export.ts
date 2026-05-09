@@ -74,6 +74,7 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
       "Birim Fiyat",
       "Sipariş Tutarı",
       "Alış Maliyeti",
+      "Alış Kaynağı",
       "Komisyon",
       "Kargo",
       "Stopaj",
@@ -81,6 +82,12 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
       "Kâr %",
     ],
   ]
+
+  const COST_SOURCE_LABEL: Record<string, string> = {
+    MAIN: "Ana stok",
+    STREET_FALLBACK: "Eczane (fallback)",
+    NONE: "—",
+  }
 
   for (const r of tableRows) {
     const date = new Date(r.serviceCreatedAt)
@@ -101,6 +108,7 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
       r.unitPrice ?? Math.round((r.lineTotal / Math.max(r.amount, 1)) * 100) / 100,
       r.lineTotal,
       r.totalCost,
+      COST_SOURCE_LABEL[r.costSource] ?? r.costSource,
       r.commission,
       r.shipping,
       r.withholding,
@@ -110,11 +118,11 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
   }
 
   const ordersSheet = XLSX.utils.aoa_to_sheet(ordersSheetData)
-  // Kolon genişlikleri (21 kolon)
+  // Kolon genişlikleri (22 kolon)
   ordersSheet["!cols"] = [
     { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 14 },
     { wch: 12 }, { wch: 16 }, { wch: 50 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 6 },
-    { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 10 },
+    { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 10 },
     { wch: 14 }, { wch: 8 },
   ]
 

@@ -44,7 +44,7 @@ interface TopProductRow { productId: number | null; productName: string; brandNa
 interface UnmatchedItem { itemId: number; orderId: number; salesChannel: string; productName: string; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; price: number; serviceCreatedAt: string }
 interface SyncRun { id: number; startedAt: string; finishedAt: string | null; totalFetched: number; totalCreated: number; totalUpdated: number; totalMatched: number; status: string; errorMessage: string | null; rangeFrom: string | null; rangeTo: string | null }
 interface MonthlyExpense { id: number; marketplaceId: number; commissionPaid: number | null; shippingPaid: number | null; withholdingPaid: number | null; returnCosts: number | null; adSpend: number | null; otherExpenses: number | null; notes: string | null }
-interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; totalCost: number; commission: number; shipping: number; withholding: number; remaining: number; marginPct: number; matchMethod: string | null }
+interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; costSource: "MAIN" | "STREET_FALLBACK" | "NONE"; totalCost: number; commission: number; shipping: number; withholding: number; remaining: number; marginPct: number; matchMethod: string | null }
 
 interface Props {
   period: string; rangeLabel: string; from?: string; to?: string
@@ -786,7 +786,14 @@ function OrderDetailDrawer({ row, siblings, onSwitchItem, onClose }: {
                 <span className="font-semibold">Sipariş Tutarı:</span>
                 <span className="text-right tabular-nums font-semibold">{tl(lt)}</span>
 
-                <span className="text-rose-600">- Alış maliyeti:</span>
+                <span className="text-rose-600">
+                  - Alış maliyeti:
+                  {row.costSource === "STREET_FALLBACK" && (
+                    <span className="text-[9px] text-amber-600 ml-1" title="Ana stok alış fiyatı yok — eczane stoğu × KDV ile hesaplandı">
+                      (eczane fb)
+                    </span>
+                  )}
+                </span>
                 <span className="text-right tabular-nums text-rose-600">
                   {row.costPerUnit !== null ? (
                     <>
