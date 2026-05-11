@@ -203,7 +203,25 @@ export function MatchFlow({ brands, initialStatus }: Props) {
       return
     }
     toast.success("Barkod eklendi")
-    handleBuild() // tabloyu yenile
+    // Optimistic UI: rebuild bitmeden satırı orphan listesinden çıkar
+    setMatch((prev) =>
+      prev
+        ? {
+            ...prev,
+            orphansTrendyol:
+              side === "TRENDYOL"
+                ? prev.orphansTrendyol.filter((o) => o.barcode !== barcode)
+                : prev.orphansTrendyol,
+            orphansDopigo:
+              side === "DOPIGO"
+                ? prev.orphansDopigo.filter(
+                    (o) => o.barcode !== barcode && o.sku !== barcode,
+                  )
+                : prev.orphansDopigo,
+          }
+        : prev,
+    )
+    handleBuild() // backend'ten tam yenile (3-kanal match satırı oluşturulsun)
   }
 
   // Toplu fuzzy onay — threshold üstündeki tüm fuzzy match'leri bir kerede ekler
@@ -1140,6 +1158,26 @@ export function MatchFlow({ brands, initialStatus }: Props) {
           title={orphanDialog.title}
           onClose={() => setOrphanDialog(null)}
           onMatched={() => {
+            // Optimistic: orphan satırını listeden anında kaldır
+            const dialogBarcode = orphanDialog.barcode
+            const dialogSide = orphanDialog.side
+            setMatch((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    orphansTrendyol:
+                      dialogSide === "TRENDYOL"
+                        ? prev.orphansTrendyol.filter((o) => o.barcode !== dialogBarcode)
+                        : prev.orphansTrendyol,
+                    orphansDopigo:
+                      dialogSide === "DOPIGO"
+                        ? prev.orphansDopigo.filter(
+                            (o) => o.barcode !== dialogBarcode && o.sku !== dialogBarcode,
+                          )
+                        : prev.orphansDopigo,
+                  }
+                : prev,
+            )
             setOrphanDialog(null)
             handleBuild()
           }}
