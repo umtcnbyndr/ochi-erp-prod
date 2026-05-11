@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db"
 import { syncDopigoOrders, backfillMarketplaceMappings, rematchUnmatchedItems } from "@/lib/services/dopigo-orders"
 import { manualMatchOrderItem, clearMatchForOrderItem } from "@/lib/services/dopigo-orders"
 import { testDopigoConnection } from "@/lib/services/dopigo-api/client"
-import { requireAdmin } from "@/lib/permissions"
+import { requireAdmin, requirePermission } from "@/lib/permissions"
 
 export interface SyncFormResult {
   success: boolean
@@ -23,7 +23,7 @@ export async function syncOrdersAction(formData: {
   toDate: string
   salesChannel?: string
 }): Promise<SyncFormResult> {
-  await requireAdmin()
+  await requirePermission("dopigo-siparisler", "edit")
   try {
     const result = await syncDopigoOrders({
       fromDate: formData.fromDate,
@@ -54,7 +54,7 @@ export async function syncOrdersAction(formData: {
  * Eşleşmemiş bir item'ı bizim ürüne manuel bağla.
  */
 export async function manualMatchAction(itemId: number, productId: number): Promise<SyncFormResult> {
-  await requireAdmin()
+  await requirePermission("dopigo-siparisler", "edit")
   try {
     await manualMatchOrderItem(itemId, productId)
     revalidatePath("/dopigo-siparisler")
@@ -68,7 +68,7 @@ export async function manualMatchAction(itemId: number, productId: number): Prom
 }
 
 export async function unmatchAction(itemId: number): Promise<SyncFormResult> {
-  await requireAdmin()
+  await requirePermission("dopigo-siparisler", "edit")
   try {
     await clearMatchForOrderItem(itemId)
     revalidatePath("/dopigo-siparisler")
@@ -136,7 +136,7 @@ export async function saveDopigoConfigAction(input: {
  * Marketplace eşleşmelerini yeniden çalıştır (alias düzeltmesi sonrası backfill için).
  */
 export async function backfillMarketplaceAction(): Promise<SyncFormResult & { byChannel?: Record<string, { fixed: number; total: number }> }> {
-  await requireAdmin()
+  await requirePermission("dopigo-siparisler", "edit")
   try {
     const r = await backfillMarketplaceMappings()
     revalidatePath("/dopigo-siparisler")
@@ -161,7 +161,7 @@ export async function backfillMarketplaceAction(): Promise<SyncFormResult & { by
  * Yeni listing/product eklendiğinde veya match logic değiştiğinde çalıştırılır.
  */
 export async function rematchOrdersAction(): Promise<SyncFormResult & { byMethod?: Record<string, number> }> {
-  await requireAdmin()
+  await requirePermission("dopigo-siparisler", "edit")
   try {
     const r = await rematchUnmatchedItems()
     revalidatePath("/dopigo-siparisler")
@@ -195,7 +195,7 @@ export async function saveMonthlyExpenseAction(input: {
   otherExpenses?: number | null
   notes?: string | null
 }): Promise<SyncFormResult> {
-  await requireAdmin()
+  await requirePermission("dopigo-siparisler", "edit")
   try {
     const monthDate = new Date(`${input.month}T00:00:00.000Z`)
     await prisma.marketplaceMonthlyExpense.upsert({
