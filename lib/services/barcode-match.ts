@@ -190,22 +190,40 @@ export async function buildThreeWayMatch(opts?: {
     }
   }
 
-  // ERP'nin tüm tanıdığı barkodlar — primary + alternatif + supplier + pazaryeri kodları
-  function erpKnownBarcodes(p: (typeof erpProducts)[0]): Set<string> {
-    const s = new Set<string>()
-    s.add(p.primaryBarcode)
-    if (p.supplierBarcode) s.add(p.supplierBarcode)
-    if (p.trendyolBarcode) s.add(p.trendyolBarcode)
-    if (p.dopigoBarcode) s.add(p.dopigoBarcode)
-    if (p.dopigoSku) s.add(p.dopigoSku)
-    for (const b of p.barcodes) s.add(b.barcode)
-    // Listings tab'ından girilen değerler (Trendyol Barkod, Dopigo SKU, Tedarikçi Barkod)
-    for (const l of p.marketplaceListings) {
-      if (l.barcode) s.add(l.barcode)
-      if (l.sku) s.add(l.sku)
-      if (l.supplierSku) s.add(l.supplierSku)
+  // ERP'nin tanıdığı barkodlar — ÖNCELİK SIRASI önemli, ilk match break ediyor:
+  // 1. marketplaceListings.barcode → kullanıcı bu pazaryerine açıkça yazdı, EN GÜVENİLİR
+  // 2. trendyolBarcode / dopigoBarcode / dopigoSku → eski column fallback'leri
+  // 3. primaryBarcode + alt barkodlar → genel barkodlar
+  // 4. listing.sku / listing.supplierSku → diğer alanlar
+  //
+  // Neden öncelik? primaryBarcode başka bir TY listing'e (ör. bundle ürün) denk gelirse
+  // yanlış eşleşme yapardı. Listing.barcode kullanıcı tarafından bu pazaryerine bilinçli
+  // şekilde girildiği için daha güvenilir.
+  function erpKnownBarcodesOrdered(p: (typeof erpProducts)[0]): string[] {
+    const out: string[] = []
+    const seen = new Set<string>()
+    const push = (v: string | null | undefined) => {
+      if (v && !seen.has(v)) {
+        seen.add(v)
+        out.push(v)
+      }
     }
-    return s
+    // 1. Listing barkodları (Trendyol/Dopigo için kullanıcının açıkça girdiği değer)
+    for (const l of p.marketplaceListings) push(l.barcode)
+    // 2. Legacy column'lar (Listings tab'ı öncesi sistem)
+    push(p.trendyolBarcode)
+    push(p.dopigoBarcode)
+    push(p.dopigoSku)
+    push(p.supplierBarcode)
+    // 3. Primary + alternatif barkodlar
+    push(p.primaryBarcode)
+    for (const b of p.barcodes) push(b.barcode)
+    // 4. Listing'in SKU/Tedarikçi alanları (Dopigo eşleştirmesi için)
+    for (const l of p.marketplaceListings) {
+      push(l.sku)
+      push(l.supplierSku)
+    }
+    return out
   }
 
   // 3) Pass 1 — Exact match
@@ -215,7 +233,7 @@ export async function buildThreeWayMatch(opts?: {
   const rows: ThreeWayMatchRow[] = []
 
   for (const p of erpProducts) {
-    const known = erpKnownBarcodes(p)
+    const known = erpKnownBarcodesOrdered(p)
 
     // Trendyol exact
     let tyMatch: (typeof trendyolListings)[0] | null = null
