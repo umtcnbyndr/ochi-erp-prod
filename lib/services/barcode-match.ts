@@ -125,7 +125,9 @@ export async function buildThreeWayMatch(opts?: {
     prisma.product.findMany({
       where: {
         status: "ACTIVE",
-        productType: { not: "SET" },
+        // SET ürünler dahil — kullanıcı bir SET'i Trendyol/Dopigo'da bundle barkoduyla
+        // (örn. BUNDLE1365) listeleyebilir. Eşleştirme tablosu "bu barkod ERP'de hangi
+        // ürüne karşılık geliyor?" sorusunu cevaplar; satış/listing kararı bağımsız.
         ...(opts?.brandId ? { brandId: opts.brandId } : {}),
       },
       select: {
