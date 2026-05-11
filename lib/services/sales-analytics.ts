@@ -13,6 +13,10 @@
  */
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@prisma/client"
+import {
+  COMMISSION_TARIFF_JOIN_SQL,
+  EFFECTIVE_COMMISSION_PCT_SQL,
+} from "@/lib/pricing/effective-commission"
 
 // ===== Tipler =====
 
@@ -286,7 +290,7 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
       unit_count: number
       revenue: number
       cost: number
-      commission_rate: number | null
+      tariff_commission: number
       shipping_cost: number | null
       withholding: number | null
     }>
@@ -305,15 +309,16 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
              ELSE 0
         END
       ), 0)::float8                                                        AS cost,
-      COALESCE(m."commissionRate", 0)::float8                              AS commission_rate,
+      COALESCE(SUM(i.price * (${EFFECTIVE_COMMISSION_PCT_SQL}) / 100), 0)::float8 AS tariff_commission,
       COALESCE(m."shippingCost", 0)::float8                                AS shipping_cost,
       COALESCE(m."withholdingTax", 0)::float8                              AS withholding
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
+    ${COMMISSION_TARIFF_JOIN_SQL}
     ${whereSql}
-    GROUP BY o."salesChannel", m.id, m.name, m."commissionRate", m."shippingCost", m."withholdingTax"
+    GROUP BY o."salesChannel", m.id, m.name, m."shippingCost", m."withholdingTax"
     ORDER BY revenue DESC
     `,
     ...params,
@@ -345,7 +350,7 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
       estShipping = 0
       estWithholding = 0
     } else {
-      estCommission = (revenue * Number(r.commission_rate ?? 0)) / 100
+      estCommission = Number(r.tariff_commission ?? 0)
       estShipping = orders * Number(r.shipping_cost ?? 0)
       estWithholding = (revenue * Number(r.withholding ?? 0)) / 100
     }
@@ -725,7 +730,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
         WHEN p."streetPurchasePrice" IS NOT NULL THEN 'STREET_FALLBACK'
         ELSE 'NONE'
       END                                 AS cost_source,
-      m."commissionRate"::float8          AS commission_rate,
+      (${EFFECTIVE_COMMISSION_PCT_SQL})::float8 AS commission_rate,
       m."shippingCost"::float8            AS shipping_cost,
       m."withholdingTax"::float8          AS withholding_rate,
       i."matchMethod"                     AS match_method,
@@ -740,6 +745,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
     LEFT JOIN "Category" c ON c.id = p."categoryId"
     LEFT JOIN "Subcategory" s ON s.id = p."subcategoryId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
+    ${COMMISSION_TARIFF_JOIN_SQL}
     ${whereSql}
     ORDER BY ${orderBy}
     LIMIT ${limitParam} OFFSET ${offsetParam}
@@ -930,6 +936,7 @@ interface ChannelExpenseSnapshot {
 
 async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExpenseSnapshot> {
   // Channel breakdown'dan toplamları topla (recursion önlemek için tekrar query)
+  // Komisyon: per-item kademeli tarife (CommissionTariff) → tarife yoksa Marketplace.commissionRate
   const { whereSql, params } = buildWhere(filter)
   const rows = await prisma.$queryRawUnsafe<
     Array<{
@@ -937,7 +944,7 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
       sales_channel: string
       revenue: number
       orders: number
-      commission_rate: number | null
+      tariff_commission: number
       shipping_cost: number | null
       withholding: number | null
     }>
@@ -948,15 +955,16 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
       o."salesChannel"                     AS sales_channel,
       COUNT(DISTINCT o.id)::int            AS orders,
       COALESCE(SUM(i.price), 0)::float8    AS revenue,
-      COALESCE(m."commissionRate", 0)::float8  AS commission_rate,
+      COALESCE(SUM(i.price * (${EFFECTIVE_COMMISSION_PCT_SQL}) / 100), 0)::float8 AS tariff_commission,
       COALESCE(m."shippingCost", 0)::float8    AS shipping_cost,
       COALESCE(m."withholdingTax", 0)::float8  AS withholding
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
+    ${COMMISSION_TARIFF_JOIN_SQL}
     ${whereSql}
-    GROUP BY m.id, o."salesChannel", m."commissionRate", m."shippingCost", m."withholdingTax"
+    GROUP BY m.id, o."salesChannel", m."shippingCost", m."withholdingTax"
     `,
     ...params,
   )
@@ -983,7 +991,7 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
     } else if (isStore) {
       // mağaza: 0 (zaten 0 ekleniyor)
     } else {
-      totalCommission += (revenue * Number(r.commission_rate ?? 0)) / 100
+      totalCommission += Number(r.tariff_commission ?? 0)
       totalShipping += orders * Number(r.shipping_cost ?? 0)
       totalWithholding += (revenue * Number(r.withholding ?? 0)) / 100
       estimatedUsed = true

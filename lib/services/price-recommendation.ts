@@ -11,6 +11,11 @@ import {
   recommendPrice,
   type RecommendationResult,
 } from "@/lib/pricing/recommendation"
+import {
+  loadCommissionTariffsForProducts,
+  resolveEffectiveCommissionSync,
+  type TariffMap,
+} from "@/lib/pricing/effective-commission"
 import { calculateEffectivePurchasePrice } from "@/lib/services/dopigo-sync"
 import { buildActiveCampaignMap, type ActiveCampaignInfo } from "@/lib/services/campaign"
 import type { Decimal } from "@prisma/client/runtime/library"
@@ -102,6 +107,75 @@ function decToNum(v: Decimal | string | number | null | undefined): number | nul
 }
 
 /**
+ * recommendPrice'ı kademeli komisyon farkında çağırır.
+ * Pass 1: fallback komisyon ile recommendation hesapla → recommendedPrice çıkar.
+ * Pass 2: recommendedPrice'a göre kademe çöz → komisyon değiştiyse re-call.
+ * Sınır kenarı: max 1 ek iter.
+ */
+function recommendPriceWithTariff(
+  input: Parameters<typeof recommendPrice>[0],
+  tariffCtx: {
+    productId: number
+    marketplaceName: string
+    tariffMap: TariffMap
+    fallbackRate: number
+  },
+): RecommendationResult {
+  // Pass 1: fallback komisyon
+  let result = recommendPrice(input)
+
+  // No-data ve campaign-active durumlarında kademe lookup'a gerek yok (formul zaten dummy/atlanan)
+  if (result.basis === "NO_PURCHASE_PRICE") return result
+
+  // Recommended fiyatın kademesini çöz
+  const referencePrice = result.recommendedPrice > 0 ? result.recommendedPrice : result.formulaPrice
+  if (referencePrice <= 0) return result
+
+  const resolved = resolveEffectiveCommissionSync({
+    productId: tariffCtx.productId,
+    marketplaceName: tariffCtx.marketplaceName,
+    priceAtCalculation: referencePrice,
+    tariffMap: tariffCtx.tariffMap,
+    fallbackRate: tariffCtx.fallbackRate,
+  })
+
+  if (resolved.source !== "TARIFF" || resolved.rate === tariffCtx.fallbackRate) {
+    return result
+  }
+
+  // Pass 2: kademeli oranla recompute
+  const adjustedInput = {
+    ...input,
+    marketplace: {
+      ...input.marketplace,
+      commissionRate: resolved.rate,
+    },
+  }
+  result = recommendPrice(adjustedInput)
+
+  // Pass 3 (sınır kenarı koruması): yeni fiyat farklı kademede mi?
+  const recheck = resolveEffectiveCommissionSync({
+    productId: tariffCtx.productId,
+    marketplaceName: tariffCtx.marketplaceName,
+    priceAtCalculation: result.recommendedPrice,
+    tariffMap: tariffCtx.tariffMap,
+    fallbackRate: tariffCtx.fallbackRate,
+  })
+  if (recheck.source === "TARIFF" && recheck.rate !== resolved.rate) {
+    const finalInput = {
+      ...input,
+      marketplace: {
+        ...input.marketplace,
+        commissionRate: recheck.rate,
+      },
+    }
+    result = recommendPrice(finalInput)
+  }
+
+  return result
+}
+
+/**
  * Bir ya da daha fazla urun icin fiyat onerilerini hesapla (DB'ye yazmaz, sadece doner).
  */
 export async function getRecommendations(
@@ -128,11 +202,15 @@ export async function getRecommendations(
   const products = await loadProductsForRecommendation(where)
   if (products.length === 0) return []
 
-  // En yeni BuyBox observation'larini ve aktif kampanya map'ini paralel cek
+  // En yeni BuyBox observation'larini, aktif kampanya map'ini ve kademeli tarifeleri paralel cek
   const productIds = products.map((p) => p.id)
-  const [latestBuyboxByProductId, activeCampaignMap] = await Promise.all([
+  const [latestBuyboxByProductId, activeCampaignMap, tariffMap] = await Promise.all([
     getLatestBuyboxMap(productIds),
     buildActiveCampaignMap(),
+    loadCommissionTariffsForProducts(
+      productIds,
+      marketplaces.map((mp) => mp.name),
+    ),
   ])
 
   const rows: RecommendationRow[] = []
@@ -178,40 +256,47 @@ export async function getRecommendations(
         (pmp) => pmp.marketplaceId === mp.id,
       )
 
-      const recommendation = recommendPrice({
-        netPurchasePrice: purchaseForRec ?? 0,
-        marketplace: {
-          commissionRate: mp.commissionRate,
-          shippingCost: mp.shippingCost,
-          extraCost: mp.extraCost,
-          withholdingTax: mp.withholdingTax,
-          targetProfit: mp.targetProfit,
-          minProfitFloor: mp.minProfitFloor,
-          defaultUndercutBuffer: mp.defaultUndercutBuffer,
-          defaultUndercutBufferPct: mp.defaultUndercutBufferPct,
-        },
-        brandUndercutBuffer: product.brand.priceUndercutBuffer,
-        brandUndercutBufferPct: product.brand.priceUndercutBufferPct,
-        brandTargetProfit: product.brand.targetProfit ?? undefined,
-        // Kampanya aktif → BuyBox baskisi atlanir (formul fiyati onerilir)
-        campaignActive: activeCampaignContext != null,
-        campaignInfo: activeCampaignContext
-          ? {
-              name: activeCampaignContext.campaignName,
-              discountRate: activeCampaignContext.discountRate,
-              discountTL: campaignDiscountTL,
-            }
-          : undefined,
-        buybox:
-          mp.name === "Trendyol" && buyboxObs
+      const recommendation = recommendPriceWithTariff(
+        {
+          netPurchasePrice: purchaseForRec ?? 0,
+          marketplace: {
+            commissionRate: mp.commissionRate,
+            shippingCost: mp.shippingCost,
+            extraCost: mp.extraCost,
+            withholdingTax: mp.withholdingTax,
+            targetProfit: mp.targetProfit,
+            minProfitFloor: mp.minProfitFloor,
+            defaultUndercutBuffer: mp.defaultUndercutBuffer,
+            defaultUndercutBufferPct: mp.defaultUndercutBufferPct,
+          },
+          brandUndercutBuffer: product.brand.priceUndercutBuffer,
+          brandUndercutBufferPct: product.brand.priceUndercutBufferPct,
+          brandTargetProfit: product.brand.targetProfit ?? undefined,
+          campaignActive: activeCampaignContext != null,
+          campaignInfo: activeCampaignContext
             ? {
-                competitorPrice: buyboxObs.buyboxPrice,
-                ourPrice: buyboxObs.ourPrice ?? undefined,
-                ownsBuyBox: buyboxObs.buyboxOrder === 1,
-                competitorCount: buyboxObs.hasMultipleSeller ? 2 : 1,
+                name: activeCampaignContext.campaignName,
+                discountRate: activeCampaignContext.discountRate,
+                discountTL: campaignDiscountTL,
               }
             : undefined,
-      })
+          buybox:
+            mp.name === "Trendyol" && buyboxObs
+              ? {
+                  competitorPrice: buyboxObs.buyboxPrice,
+                  ourPrice: buyboxObs.ourPrice ?? undefined,
+                  ownsBuyBox: buyboxObs.buyboxOrder === 1,
+                  competitorCount: buyboxObs.hasMultipleSeller ? 2 : 1,
+                }
+              : undefined,
+        },
+        {
+          productId: product.id,
+          marketplaceName: mp.name,
+          tariffMap,
+          fallbackRate: Number(mp.commissionRate),
+        },
+      )
 
       rows.push({
         productId: product.id,

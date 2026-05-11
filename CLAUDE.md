@@ -141,27 +141,28 @@ CLAUDE.md kuralı uyduğunda "Bu Opus konusu, modeli değiştirmen mantıklı" d
 - **CSS / Prisma cache bozulursa:** `pnpm refresh` (kill + clean + generate + restart)
 - Detaylı backlog: `BACKLOG.md`
 
-## ⚠️ KRİTİK YARIM KALAN — Faz 2 Entegrasyonu
+## ✅ Faz 2 Entegrasyonu Tamamlandı (2026-05-11)
 
-**Komisyon Tarifeleri sayfası yapıldı AMA `getEffectiveCommission()` helper'ı sistemin geri kalanına bağlanmadı.** Şu an Komisyon Tarifeleri verisi "izole":
+Komisyon Tarifeleri artık sistemin geri kalanına bağlı. Tüm hesaplamalar **kademeli tarife** öncelikli, yoksa `Marketplace.commissionRate` fallback'ine düşüyor.
 
-- ✅ Sayfa çalışıyor, kademeli komisyon görünüyor
-- ❌ Dopigo aktarım hala sabit `Marketplace.commissionRate=%19` kullanıyor
-- ❌ Fiyat motoru (sale-price.ts, recommendation.ts) aynı şekilde yanlış komisyon
-- ❌ Sipariş raporları net kâr yanlış hesaplıyor
-- ❌ Kupon önerileri kâr taban koruması yanlış (komisyon yanlış)
+**Bağlandığı yerler:**
+- ✅ `lib/services/dopigo-sync.ts` → `computeFormulaPriceWithTariff` (formula, kampanya, OOS, web sitesi, pazaryeri fiyatları)
+- ✅ `lib/services/price-recommendation.ts` → `recommendPriceWithTariff` (BuyBox bazlı öneri, max 2 iter sınır kenarı koruması)
+- ✅ `lib/services/sales-analytics.ts` → SQL `EFFECTIVE_COMMISSION_PCT_SQL` ve `COMMISSION_TARIFF_JOIN_SQL` ile aggregate ve per-line kâr hesabı
+- ✅ `lib/services/coupon-suggestions.ts` → `channelFor()` her ürün × salePrice için kademeli komisyon
+- ✅ `lib/pricing/coupon-recommendation.ts` → pure fonksiyon; `channel.commissionRate` input olarak kademeli alır (caller'lar update edildi)
+- ✅ `lib/pricing/sale-price.ts` → pure kalır; `computeFormulaPriceWithTariff` wrapper kullanır
 
-**Yarın yapılacak (3-4 saat):** `lib/pricing/effective-commission.ts` helper'ını **6 yere bağla**:
-1. `lib/services/dopigo-sync.ts` (Excel export fiyat hesabı)
-2. `lib/pricing/sale-price.ts` (satış fiyatı motoru)
-3. `lib/pricing/recommendation.ts` (BuyBox bazlı öneri)
-4. `lib/services/sales-analytics.ts` (sipariş raporu net kâr)
-5. `lib/services/coupon-suggestions.ts` (kupon kâr hesabı)
-6. `lib/pricing/coupon-recommendation.ts` (kupon kâr taban koruma)
+**Helper API'leri (effective-commission.ts):**
+- `getEffectiveCommission()` — tek lookup async (bireysel)
+- `loadCommissionTariffsForProducts(productIds, marketplaceNames)` — batch (N+1 önlemi)
+- `resolveEffectiveCommissionSync()` — pre-loaded map'ten senkron çözer
+- `calculateWithEffectiveCommission()` — saf calc fn ile 1-iter wrapper (sınır kenarı için 2-iter)
+- `COMMISSION_TARIFF_JOIN_SQL` + `EFFECTIVE_COMMISSION_PCT_SQL` — raw SQL fragments
 
-Her birinde: önce `getEffectiveCommission(productId, marketplace, price)` çağır → tariff varsa kademeli %, yoksa fallback Marketplace.commissionRate.
-
-**Bu yapılmadan sistem yarım — Komisyon Tarifeleri "izole ada".**
+**Test gereken yerler:**
+- Komisyon Tarifeleri sayfasında bir ürün için kademe değiştir → Dopigo aktarım Excel preview o tarifenin oranı ile fiyat hesaplamalı
+- Sales analytics raporda BuyBox kademeli komisyon farkı kâr marjına yansımalı
 
 ## ⚠️ Hızır Kuralı: Schema Değişikliği Sonrası
 

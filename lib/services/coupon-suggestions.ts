@@ -20,6 +20,11 @@ import {
   type ChannelEconomics,
   type ProfitTargets,
 } from "@/lib/pricing/coupon-recommendation"
+import {
+  loadCommissionTariffsForProducts,
+  resolveEffectiveCommissionSync,
+  type TariffMap,
+} from "@/lib/pricing/effective-commission"
 
 export type SuggestionStatus = "NEW" | "DONE" | "SKIPPED" | "POSTPONED"
 
@@ -89,10 +94,24 @@ export async function generateCouponSuggestions(
   })
   if (!marketplace) return []
 
-  const channel: ChannelEconomics = {
-    commissionRate: Number(marketplace.commissionRate),
+  // Fallback channel (tarife yoksa kullanılır)
+  const fallbackCommission = Number(marketplace.commissionRate)
+  const channelBase: ChannelEconomics = {
+    commissionRate: fallbackCommission,
     withholdingTax: Number(marketplace.withholdingTax),
     shippingCost: Number(marketplace.shippingCost),
+  }
+
+  /** Bir ürün × salePrice için etkin komisyonlu channel döndürür */
+  function channelFor(productId: number, salePrice: number, tariffs: TariffMap): ChannelEconomics {
+    const resolved = resolveEffectiveCommissionSync({
+      productId,
+      marketplaceName: marketplace!.name,
+      priceAtCalculation: salePrice,
+      tariffMap: tariffs,
+      fallbackRate: fallbackCommission,
+    })
+    return { ...channelBase, commissionRate: resolved.rate }
   }
 
   // En son periyot run'ı (DAILY veya WEEKLY tercih edilir, sonra MONTHLY)
@@ -144,6 +163,12 @@ export async function generateCouponSuggestions(
       },
     },
   })
+
+  // Kademeli komisyon tarifeleri (snapshot'larda eşleşmiş ürünler için)
+  const productIds = snapshots
+    .map((s) => s.productId)
+    .filter((id): id is number => id != null)
+  const tariffMap = await loadCommissionTariffsForProducts(productIds, [marketplace.name])
 
   const suggestions: SuggestionListRow[] = []
 
@@ -214,6 +239,9 @@ export async function generateCouponSuggestions(
       if (!signals.includes(filter.type)) continue
     }
 
+    // Ürün × salePrice için kademeli komisyonlu channel
+    const channel = channelFor(product.id, salePrice, tariffMap)
+
     for (const type of signals) {
       // PRICE_UP / STOCK_LIQ özel — kupon oranı farklı mantık
       if (type === "STOCK_LIQUIDATION") {
@@ -268,7 +296,12 @@ export async function generateCouponSuggestions(
   }
 
   // RETURN signals — Dopigo verisinden ayrıca türet
-  const returnSuggestions = await generateReturnSuggestions(channel, marketplace.id)
+  const returnSuggestions = await generateReturnSuggestions(
+    channelBase,
+    marketplace.id,
+    marketplace.name,
+    fallbackCommission,
+  )
   suggestions.push(...returnSuggestions)
 
   // Sıralama: HIGH urgency önce, sonra estimatedExtraRevenue desc
@@ -387,8 +420,10 @@ function buildRow(args: {
  * Dopigo siparişlerinden — son 30 günde iade yaşamış ürünler için RETURN sinyali.
  */
 async function generateReturnSuggestions(
-  channel: ChannelEconomics,
+  channelBase: ChannelEconomics,
   marketplaceId: number,
+  marketplaceName: string,
+  fallbackCommission: number,
 ): Promise<SuggestionListRow[]> {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - 30)
@@ -443,6 +478,12 @@ async function generateReturnSuggestions(
     }
   }
 
+  // Kademeli tarife — toplu ön-yükleme
+  const tariffMap = await loadCommissionTariffsForProducts(
+    Array.from(byProduct.keys()),
+    [marketplaceName],
+  )
+
   const result: SuggestionListRow[] = []
   for (const [productId, { count, product }] of byProduct.entries()) {
     if (!product) continue
@@ -464,6 +505,16 @@ async function generateReturnSuggestions(
       target: product.brand?.targetProfit ? Number(product.brand.targetProfit) : null,
       floor: null,
     }
+
+    // Ürün × salePrice için kademeli komisyonlu channel
+    const resolved = resolveEffectiveCommissionSync({
+      productId,
+      marketplaceName,
+      priceAtCalculation: salePrice,
+      tariffMap,
+      fallbackRate: fallbackCommission,
+    })
+    const channel: ChannelEconomics = { ...channelBase, commissionRate: resolved.rate }
 
     const rec = recommendCoupon({
       type: "RETURN",

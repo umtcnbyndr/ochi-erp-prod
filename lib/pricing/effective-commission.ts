@@ -13,6 +13,11 @@
  *   - tier2AltLimit ≤ Fiyat < tier1AltLimit → tier2CommissionPct
  *   - tier3AltLimit ≤ Fiyat < tier2AltLimit → tier3CommissionPct
  *   - Fiyat < tier3AltLimit → tier4CommissionPct
+ *
+ * İki kullanım modu:
+ *  1) Tek lookup: `getEffectiveCommission()` async — bireysel hesaplamalar.
+ *  2) Batch lookup: `loadCommissionTariffsForProducts()` + `resolveEffectiveCommissionSync()`
+ *     — büyük listelerde N+1 önler (Excel export, çoklu ürün rapor, vb.).
  */
 import { prisma } from "@/lib/db"
 
@@ -166,3 +171,235 @@ function num(v: { toString(): string } | number | null | undefined): number | nu
   const n = typeof v === "number" ? v : Number(v.toString())
   return Number.isFinite(n) ? n : null
 }
+
+// ─── Batch Lookup (büyük listelerde N+1 önler) ─────────────────
+
+/**
+ * Bir kademeli tarife kaydının saf hali (4-kademe + tarih aralığı).
+ * loadCommissionTariffsForProducts() bu tipi map'te değer olarak döner.
+ */
+export interface TariffRow {
+  id: number
+  productId: number
+  marketplace: string
+  effectiveFrom: Date
+  effectiveTo: Date
+  tier1AltLimit: number | null
+  tier1CommissionPct: number | null
+  tier2UstLimit: number | null
+  tier2AltLimit: number | null
+  tier2CommissionPct: number | null
+  tier3UstLimit: number | null
+  tier3AltLimit: number | null
+  tier3CommissionPct: number | null
+  tier4UstLimit: number | null
+  tier4CommissionPct: number | null
+}
+
+/** Map key: `${productId}__${marketplaceName}` */
+export type TariffMap = Map<string, TariffRow>
+
+export function tariffKey(productId: number, marketplaceName: string): string {
+  return `${productId}__${marketplaceName}`
+}
+
+/**
+ * Belirli ürün/marketplace kombinasyonları için aktif tarifeleri tek query'de çeker.
+ * Excel export gibi N ürünlü işlemlerde kullanılır.
+ */
+export async function loadCommissionTariffsForProducts(
+  productIds: number[],
+  marketplaceNames: string[],
+  at: Date = new Date(),
+): Promise<TariffMap> {
+  if (productIds.length === 0 || marketplaceNames.length === 0) return new Map()
+
+  const tariffs = await prisma.commissionTariff.findMany({
+    where: {
+      productId: { in: productIds },
+      marketplace: { in: marketplaceNames },
+      effectiveFrom: { lte: at },
+      effectiveTo: { gte: at },
+    },
+    select: {
+      id: true,
+      productId: true,
+      marketplace: true,
+      effectiveFrom: true,
+      effectiveTo: true,
+      tier1AltLimit: true,
+      tier1CommissionPct: true,
+      tier2UstLimit: true,
+      tier2AltLimit: true,
+      tier2CommissionPct: true,
+      tier3UstLimit: true,
+      tier3AltLimit: true,
+      tier3CommissionPct: true,
+      tier4UstLimit: true,
+      tier4CommissionPct: true,
+    },
+  })
+
+  const map: TariffMap = new Map()
+  for (const t of tariffs) {
+    if (t.productId == null) continue // güvenlik (where filter ile zaten null gelmez)
+    const row: TariffRow = {
+      id: t.id,
+      productId: t.productId,
+      marketplace: t.marketplace,
+      effectiveFrom: t.effectiveFrom,
+      effectiveTo: t.effectiveTo,
+      tier1AltLimit: num(t.tier1AltLimit),
+      tier1CommissionPct: num(t.tier1CommissionPct),
+      tier2UstLimit: num(t.tier2UstLimit),
+      tier2AltLimit: num(t.tier2AltLimit),
+      tier2CommissionPct: num(t.tier2CommissionPct),
+      tier3UstLimit: num(t.tier3UstLimit),
+      tier3AltLimit: num(t.tier3AltLimit),
+      tier3CommissionPct: num(t.tier3CommissionPct),
+      tier4UstLimit: num(t.tier4UstLimit),
+      tier4CommissionPct: num(t.tier4CommissionPct),
+    }
+    map.set(tariffKey(t.productId, t.marketplace), row)
+  }
+  return map
+}
+
+/**
+ * Pre-loaded tariff map'inden senkron komisyon çözer.
+ * Tarife yoksa → fallbackRate.
+ * Tarife var ama kademe çözülemiyor → fallbackRate.
+ */
+export function resolveEffectiveCommissionSync(input: {
+  productId: number
+  marketplaceName: string
+  priceAtCalculation: number
+  tariffMap: TariffMap
+  fallbackRate: number
+}): { rate: number; source: "TARIFF" | "MARKETPLACE_DEFAULT"; tier?: 1 | 2 | 3 | 4 } {
+  const tariff = input.tariffMap.get(
+    tariffKey(input.productId, input.marketplaceName),
+  )
+  if (tariff) {
+    const t = resolveTier(input.priceAtCalculation, tariff)
+    if (t) return { rate: t.rate, source: "TARIFF", tier: t.tier }
+  }
+  return { rate: input.fallbackRate, source: "MARKETPLACE_DEFAULT" }
+}
+
+/**
+ * Tarife varsa kademe-aware fiyat hesaplama: ilk pass'te `fallbackRate` ile fiyat tahmin,
+ * sonra o fiyatın düştüğü kademenin komisyonu ile re-calc. 1-iter genelde yeterli.
+ * Sınır kenarındaki ürünler için max 2 iter (yine kademe değiştiyse). Daha fazla = döngü.
+ *
+ * @param calc - Pure pricing function (kommisyon yüzdesini alır, fiyat döner)
+ * @param productId - ürün id (tariffMap key)
+ * @param marketplaceName - "Trendyol" gibi
+ * @param tariffMap - pre-loaded map
+ * @param fallbackRate - kademeli yoksa kullanılacak (Marketplace.commissionRate)
+ * @returns - { price, rate, source, tier? }
+ */
+export function calculateWithEffectiveCommission(input: {
+  productId: number
+  marketplaceName: string
+  tariffMap: TariffMap
+  fallbackRate: number
+  calc: (commissionPct: number) => number
+}): {
+  price: number
+  rate: number
+  source: "TARIFF" | "MARKETPLACE_DEFAULT"
+  tier?: 1 | 2 | 3 | 4
+} {
+  // Pass 1: fallback komisyon ile başla
+  let rate = input.fallbackRate
+  let source: "TARIFF" | "MARKETPLACE_DEFAULT" = "MARKETPLACE_DEFAULT"
+  let tier: 1 | 2 | 3 | 4 | undefined
+
+  let price = input.calc(rate)
+
+  // Pass 2: tarife varsa fiyatın kademesini çöz, gerekirse re-calc
+  const resolved = resolveEffectiveCommissionSync({
+    productId: input.productId,
+    marketplaceName: input.marketplaceName,
+    priceAtCalculation: price,
+    tariffMap: input.tariffMap,
+    fallbackRate: input.fallbackRate,
+  })
+
+  if (resolved.source === "TARIFF" && resolved.rate !== rate) {
+    rate = resolved.rate
+    source = "TARIFF"
+    tier = resolved.tier
+    price = input.calc(rate)
+
+    // Pass 3 (idempotency): yeni fiyat farklı kademede mi? (sınır kenarında nadir)
+    const recheck = resolveEffectiveCommissionSync({
+      productId: input.productId,
+      marketplaceName: input.marketplaceName,
+      priceAtCalculation: price,
+      tariffMap: input.tariffMap,
+      fallbackRate: input.fallbackRate,
+    })
+    if (recheck.source === "TARIFF" && recheck.rate !== rate) {
+      rate = recheck.rate
+      tier = recheck.tier
+      price = input.calc(rate)
+    }
+  } else if (resolved.source === "TARIFF") {
+    // Aynı oran ama tarife kaynağı belli olsun
+    source = "TARIFF"
+    tier = resolved.tier
+  }
+
+  return { price, rate, source, tier }
+}
+
+// ─── SQL helpers (sales-analytics gibi raw SQL kullanan servisler için) ──────
+
+/**
+ * Raw SQL içinde tarife join'i için kullanılan SQL fragment'i.
+ * Item tarihiyle (o."serviceCreatedAt") tarife geçerliliği eşleştirilir.
+ *
+ * Beklenen alias'lar:
+ *   - i: "DopigoOrderItem"
+ *   - o: "DopigoOrder"
+ *   - m: "Marketplace"
+ */
+export const COMMISSION_TARIFF_JOIN_SQL = `
+  LEFT JOIN "CommissionTariff" ct
+    ON ct."productId" = i."productId"
+    AND ct.marketplace = m.name
+    AND ct."effectiveFrom" <= o."serviceCreatedAt"
+    AND ct."effectiveTo" >= o."serviceCreatedAt"
+`
+
+/**
+ * Bir item'ın birim fiyatına göre etkin komisyon yüzdesini döndüren SQL ifadesi.
+ * Sonuç tip: float8 (yüzde, 0–100).
+ *
+ * Tarife yoksa → m."commissionRate" fallback.
+ * Tarife var ama kademe matchlemese → m."commissionRate" fallback.
+ *
+ * Birim fiyat: COALESCE(i."unitPrice", i.price / NULLIF(i.amount, 0))
+ */
+export const EFFECTIVE_COMMISSION_PCT_SQL = `
+  CASE
+    WHEN ct.id IS NULL THEN COALESCE(m."commissionRate", 0)::float8
+    WHEN ct."tier1AltLimit" IS NOT NULL
+         AND COALESCE(i."unitPrice", i.price / NULLIF(i.amount, 0)) >= ct."tier1AltLimit"
+         THEN ct."tier1CommissionPct"::float8
+    WHEN ct."tier2AltLimit" IS NOT NULL AND ct."tier2UstLimit" IS NOT NULL
+         AND COALESCE(i."unitPrice", i.price / NULLIF(i.amount, 0)) >= ct."tier2AltLimit"
+         AND COALESCE(i."unitPrice", i.price / NULLIF(i.amount, 0)) <= ct."tier2UstLimit"
+         THEN ct."tier2CommissionPct"::float8
+    WHEN ct."tier3AltLimit" IS NOT NULL AND ct."tier3UstLimit" IS NOT NULL
+         AND COALESCE(i."unitPrice", i.price / NULLIF(i.amount, 0)) >= ct."tier3AltLimit"
+         AND COALESCE(i."unitPrice", i.price / NULLIF(i.amount, 0)) <= ct."tier3UstLimit"
+         THEN ct."tier3CommissionPct"::float8
+    WHEN ct."tier4UstLimit" IS NOT NULL
+         AND COALESCE(i."unitPrice", i.price / NULLIF(i.amount, 0)) <= ct."tier4UstLimit"
+         THEN ct."tier4CommissionPct"::float8
+    ELSE COALESCE(m."commissionRate", 0)::float8
+  END
+`

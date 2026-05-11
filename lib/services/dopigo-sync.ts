@@ -27,6 +27,9 @@ import {
   calculatePharmacyStockPrice,
   InvalidPricingError,
   applyTrendyolFloor,
+  calculateWithEffectiveCommission,
+  loadCommissionTariffsForProducts,
+  type TariffMap,
 } from "@/lib/pricing"
 import { TRENDYOL_NAME } from "@/lib/services/brand-marketplace-floor"
 
@@ -428,6 +431,58 @@ export interface MarketplacePriceCell {
   source: PriceSource
 }
 
+/**
+ * Bir ürün × marketplace için formül fiyatını kademeli komisyon ile hesaplar.
+ * tariffMap yoksa → eski davranış (marketplace.commissionRate).
+ * tariffMap varsa → 1-iter (gerekirse 2-iter) ile etkin oranı bulup recalculate.
+ */
+function computeFormulaPriceWithTariff(
+  productId: number,
+  marketplace: MarketplaceConfig,
+  netPurchasePrice: number,
+  brandTargetProfit:
+    | number
+    | string
+    | import("@prisma/client/runtime/library").Decimal
+    | null
+    | undefined,
+  tariffMap: TariffMap | null,
+): number {
+  // Decimal'ı string'e çevir (Prisma Decimal → calculateSalePrice'in NumericInput'una)
+  const targetProfit =
+    brandTargetProfit == null
+      ? undefined
+      : typeof brandTargetProfit === "number" || typeof brandTargetProfit === "string"
+        ? brandTargetProfit
+        : brandTargetProfit.toString()
+  const fallbackRate = Number(marketplace.commissionRate)
+  const calc = (commissionPct: number) =>
+    calculateSalePrice({
+      netPurchasePrice,
+      marketplace: {
+        commissionRate: commissionPct,
+        shippingCost: marketplace.shippingCost,
+        extraCost: marketplace.extraCost ?? 0,
+        withholdingTax: marketplace.withholdingTax,
+        targetProfit: marketplace.targetProfit,
+      },
+      brandTargetProfit: targetProfit,
+    })
+
+  if (!tariffMap || tariffMap.size === 0) {
+    return calc(fallbackRate)
+  }
+
+  const result = calculateWithEffectiveCommission({
+    productId,
+    marketplaceName: marketplace.name,
+    tariffMap,
+    fallbackRate,
+    calc,
+  })
+  return result.price
+}
+
 export function calculateMarketplacePricesFor(
   product: ProductForCalc,
   marketplaces: MarketplaceConfig[],
@@ -438,6 +493,11 @@ export function calculateMarketplacePricesFor(
    * Sadece SINGLE/SET ürünler için (GIFT'lerde TY referansı anlamsız).
    */
   floorMap?: Map<number, number> | null,
+  /**
+   * Kademeli komisyon tarifeleri (ürün × marketplace).
+   * null/undefined → fallback Marketplace.commissionRate (eski davranış).
+   */
+  tariffMap?: TariffMap | null,
 ): Record<string, MarketplacePriceCell | null> {
   const result: Record<string, MarketplacePriceCell | null> = {}
   const baseRealPurchase = calculateEffectivePurchasePrice(product)
@@ -541,17 +601,13 @@ export function calculateMarketplacePricesFor(
       // Baz fiyatı bul (recommended > formula) ve × 1.5
       const basePrice = effective?.price ?? (() => {
         try {
-          return calculateSalePrice({
-            netPurchasePrice: purchase,
-            marketplace: {
-              commissionRate: m.commissionRate,
-              shippingCost: m.shippingCost,
-              extraCost: m.extraCost ?? 0,
-              withholdingTax: m.withholdingTax,
-              targetProfit: m.targetProfit,
-            },
-            brandTargetProfit: product.brand.targetProfit ?? undefined,
-          })
+          return computeFormulaPriceWithTariff(
+            product.id,
+            m,
+            purchase,
+            product.brand.targetProfit ?? undefined,
+            tariffMap ?? null,
+          )
         } catch { return null }
       })()
       if (basePrice != null) {
@@ -583,17 +639,13 @@ export function calculateMarketplacePricesFor(
     // Kampanya aktif → sanal alış üzerinden formül (recommendation'ı baypas eder)
     if (campaignActive && purchase != null) {
       try {
-        const sale = calculateSalePrice({
-          netPurchasePrice: purchase,
-          marketplace: {
-            commissionRate: m.commissionRate,
-            shippingCost: m.shippingCost,
-            extraCost: m.extraCost ?? 0,
-            withholdingTax: m.withholdingTax,
-            targetProfit: m.targetProfit,
-          },
-          brandTargetProfit: product.brand.targetProfit ?? undefined,
-        })
+        const sale = computeFormulaPriceWithTariff(
+          product.id,
+          m,
+          purchase,
+          product.brand.targetProfit ?? undefined,
+          tariffMap ?? null,
+        )
         result[m.name] = {
           sale: round2(sale),
           list: round2(sale * LIST_PRICE_MULTIPLIER),
@@ -621,17 +673,13 @@ export function calculateMarketplacePricesFor(
 
     // Formül
     try {
-      const sale = calculateSalePrice({
-        netPurchasePrice: purchase,
-        marketplace: {
-          commissionRate: m.commissionRate,
-          shippingCost: m.shippingCost,
-          extraCost: m.extraCost ?? 0,
-          withholdingTax: m.withholdingTax,
-          targetProfit: m.targetProfit,
-        },
-        brandTargetProfit: product.brand.targetProfit ?? undefined,
-      })
+      const sale = computeFormulaPriceWithTariff(
+        product.id,
+        m,
+        purchase,
+        product.brand.targetProfit ?? undefined,
+        tariffMap ?? null,
+      )
       result[m.name] = {
         sale: round2(sale),
         list: round2(sale * LIST_PRICE_MULTIPLIER),
@@ -829,6 +877,12 @@ export async function buildExportPreview(
     "Trendyol",
   )
 
+  // Kademeli komisyon tarifeleri (aktif tarihte) — N+1 önlemi
+  const tariffMap = await loadCommissionTariffsForProducts(
+    productIds,
+    marketplaces.map((m) => m.name),
+  )
+
   const rows: ExportPreviewRow[] = []
   for (const p of products) {
     const purchase = calculateEffectivePurchasePrice(p)
@@ -840,6 +894,7 @@ export async function buildExportPreview(
       marketplaces,
       activeCampaign,
       floorMap,
+      tariffMap,
     )
 
     let warning: string | undefined
@@ -986,6 +1041,12 @@ export async function buildExportExcel(
   const tyListingsByProduct = await getActiveListingsByMarketplaceBulk(
     productIds,
     "Trendyol",
+  )
+
+  // Kademeli komisyon tarifeleri (aktif tarihte) — N+1 önlemi
+  const tariffMap = await loadCommissionTariffsForProducts(
+    productIds,
+    marketplaces.map((m) => m.name),
   )
 
   // Dopigo lookup map: hem sku hem barcode ile.
@@ -1163,18 +1224,14 @@ export async function buildExportExcel(
           // GIFT: giftMinSalePrice kullan, OOS ise × 1.5
           sale = isOOS ? giftMin * OOS_PRICE_MULTIPLIER : giftMin
         } else if (purchase != null) {
-          // Normal formül
-          sale = calculateSalePrice({
-            netPurchasePrice: purchase,
-            marketplace: {
-              commissionRate: websiteMp.commissionRate,
-              shippingCost: websiteMp.shippingCost,
-              extraCost: websiteMp.extraCost ?? 0,
-              withholdingTax: websiteMp.withholdingTax,
-              targetProfit: websiteMp.targetProfit,
-            },
-            brandTargetProfit: p.brand.targetProfit ?? undefined,
-          })
+          // Normal formül (kademeli komisyon aware)
+          sale = computeFormulaPriceWithTariff(
+            p.id,
+            websiteMp,
+            purchase,
+            p.brand.targetProfit ?? undefined,
+            tariffMap,
+          )
           // OOS: formül fiyatını × 1.5 yükselt
           if (isOOS) sale = sale * OOS_PRICE_MULTIPLIER
         }
@@ -1203,17 +1260,13 @@ export async function buildExportExcel(
           } else if (giftMin != null && giftMin > 0) {
             sale = isOOS ? giftMin * OOS_PRICE_MULTIPLIER : giftMin
           } else if (purchase != null) {
-            sale = calculateSalePrice({
-              netPurchasePrice: purchase,
-              marketplace: {
-                commissionRate: m.commissionRate,
-                shippingCost: m.shippingCost,
-                extraCost: m.extraCost ?? 0,
-                withholdingTax: m.withholdingTax,
-                targetProfit: m.targetProfit,
-              },
-              brandTargetProfit: p.brand.targetProfit ?? undefined,
-            })
+            sale = computeFormulaPriceWithTariff(
+              p.id,
+              m,
+              purchase,
+              p.brand.targetProfit ?? undefined,
+              tariffMap,
+            )
             if (isOOS) sale = sale * OOS_PRICE_MULTIPLIER
           }
 
