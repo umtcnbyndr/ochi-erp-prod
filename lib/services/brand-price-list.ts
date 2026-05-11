@@ -86,16 +86,63 @@ export function autoDetectMapping(columns: string[]): PriceListColumnMapping {
   }
 }
 
-// ─── Number parsing (TR format aware) ────────────────────────
-
+// ─── Number parsing (TR ve EN format aware) ─────────────────
+//
+// Excel'den gelen değer farklı formatlarda olabilir:
+//   TR:    "1.234,56"  (binlik nokta, ondalık virgül)
+//   EN:    "1,234.56"  (binlik virgül, ondalık nokta)
+//   Sade:  "848.21"    (ondalık nokta — Excel raw)
+//   Sade:  "1234,56"   (ondalık virgül — TR locale)
+//   Tam:   "1250"      (ondalıksız)
+//
+// Heuristic: hem nokta hem virgül varsa → son gelen ondalık.
+// Sadece nokta veya sadece virgül varsa → ondalık olarak yorumla.
 function parseNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null
   if (typeof value === "number") return Number.isFinite(value) ? value : null
   if (typeof value !== "string") return null
 
-  // "1.234,56" → "1234.56"
-  const cleaned = value.replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
-  const n = parseFloat(cleaned)
+  let s = value.trim().replace(/\s/g, "")
+  if (!s) return null
+
+  const hasDot = s.includes(".")
+  const hasComma = s.includes(",")
+
+  if (hasDot && hasComma) {
+    // İkisi de varsa son geleni ondalık say
+    if (s.lastIndexOf(",") > s.lastIndexOf(".")) {
+      // TR: "1.234,56" → noktalar binlik, virgül ondalık
+      s = s.replace(/\./g, "").replace(",", ".")
+    } else {
+      // EN: "1,234.56" → virgüller binlik
+      s = s.replace(/,/g, "")
+    }
+  } else if (hasComma) {
+    // Sadece virgül var
+    const parts = s.split(",")
+    if (parts.length === 2 && parts[1].length <= 3) {
+      // "1234,56" — tek virgül + sağında 1-3 hane → ondalık
+      s = s.replace(",", ".")
+    } else {
+      // "1,234,567" — birden fazla virgül → binlik (EN)
+      s = s.replace(/,/g, "")
+    }
+  } else if (hasDot) {
+    // Sadece nokta var
+    const parts = s.split(".")
+    if (parts.length === 2) {
+      // Tek nokta — büyük ihtimal ondalık nokta (Excel raw output).
+      // "848.21" → 848.21 (dokunma)
+      // "1.234" → muhtemelen ondalık 1.234, binlik DEĞİL
+      // (TR Excel'inde "1.234" gibi binlik notasyon ENDER, çoğunlukla raw decimal)
+      // Dokunma → parseFloat doğru parse eder
+    } else if (parts.length > 2) {
+      // "1.234.567" — birden fazla nokta → binlik (TR)
+      s = s.replace(/\./g, "")
+    }
+  }
+
+  const n = parseFloat(s)
   return Number.isFinite(n) ? n : null
 }
 
