@@ -795,7 +795,7 @@ export async function buildExportPreview(
             isPrimary: true,
             marketplace: { name: "Trendyol" },
           },
-          select: { sku: true, supplierSku: true },
+          select: { barcode: true, sku: true, supplierSku: true },
           take: 1,
         },
       },
@@ -949,7 +949,7 @@ export async function buildExportExcel(
             isPrimary: true,
             marketplace: { name: "Trendyol" },
           },
-          select: { sku: true, supplierSku: true },
+          select: { barcode: true, sku: true, supplierSku: true },
           take: 1,
         },
       },
@@ -1041,18 +1041,35 @@ export async function buildExportExcel(
   for (const p of products) {
     // Effective dopigo identifiers — legacy Product field'ı veya Listings tab'ından
     // girilen primary listing değerleri.
+    //
+    // ÖNCELİK (kullanıcı manuel girdiyse o önceliklidir):
+    //   1. Product.dopigoSku (legacy)
+    //   2. listing.sku (Dopigo Ürün Kodu — Listings tab'ından)
+    //   3. listing.supplierSku (Tedarikçi Barkod — Listings tab'ından)
+    //   4. listing.barcode (Trendyol Barkod — Listings tab'ından)
+    //   5. Product.primaryBarcode (üreticinin ana barkodu — son fallback)
+    //
+    // Bazı ürünlerde Dopigo ana barkodu tanımıyor, kullanıcı manuel girer.
+    // O zaman manuel değerler primaryBarcode'u baskılamalı.
     const listingPrimary = (
-      p as { marketplaceListings?: Array<{ sku: string | null; supplierSku: string | null }> }
+      p as { marketplaceListings?: Array<{ barcode: string | null; sku: string | null; supplierSku: string | null }> }
     ).marketplaceListings?.[0]
     const effDopigoSku = p.dopigoSku || listingPrimary?.sku || null
     const effDopigoBarcode = p.dopigoBarcode || listingPrimary?.supplierSku || null
+    const effListingBarcode = listingPrimary?.barcode || null // Trendyol Barkod
 
-    // Once Dopigo snapshot'tan eslesme bul (sku > dopigoBarcode > primaryBarcode)
+    // Dopigo snapshot'tan eslesme bul — sırasıyla tüm key'leri dene
     let dopigoMatch: (typeof dopigoListings)[0] | undefined
     if (effDopigoSku) dopigoMatch = dopigoBySku.get(effDopigoSku)
     if (!dopigoMatch && effDopigoBarcode) {
       dopigoMatch = dopigoByBarcode.get(effDopigoBarcode)
     }
+    // YENİ: listing'in Trendyol Barkod alanı da denenir
+    // (kullanıcı manuel girmiş, ana barkod ile Dopigo tanımıyor olabilir)
+    if (!dopigoMatch && effListingBarcode) {
+      dopigoMatch = dopigoByBarcode.get(effListingBarcode)
+    }
+    // Son fallback: ana barkod
     if (!dopigoMatch) dopigoMatch = dopigoByBarcode.get(p.primaryBarcode)
 
     // Satiri Dopigo snapshot'tan baslat — diger alanlar korunur
@@ -1074,14 +1091,17 @@ export async function buildExportExcel(
       unmatchedDopigo++
       // Snapshot'ta yok — minimum match key'leri yazalim
       if (effDopigoSku) row[headerIndex["sku"]] = effDopigoSku
-      row[headerIndex["barkod/gtin"]] = effDopigoBarcode || p.primaryBarcode
+      row[headerIndex["barkod/gtin"]] =
+        effDopigoBarcode || effListingBarcode || p.primaryBarcode
     }
 
-    // Match key'leri ERP'deki guncel degerlerle override et (snapshot eski olabilir)
+    // Match key'leri ERP'deki guncel degerlerle override et (snapshot eski olabilir).
+    // Manuel listing değerleri öncelikli — ana barkodu baskılarlar.
     if (effDopigoSku) {
       row[headerIndex["sku"]] = effDopigoSku
     }
-    row[headerIndex["barkod/gtin"]] = effDopigoBarcode || p.primaryBarcode
+    row[headerIndex["barkod/gtin"]] =
+      effDopigoBarcode || effListingBarcode || p.primaryBarcode
 
     const baseRealPurchase = calculateEffectivePurchasePrice(p)
     const stockInfo = calculateEffectiveStock(p)

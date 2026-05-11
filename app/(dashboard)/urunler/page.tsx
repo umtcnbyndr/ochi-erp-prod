@@ -45,11 +45,21 @@ export default async function UrunlerPage({
   const pageSizeRaw = (sp.ps as string | undefined) ?? "50"
   const pageSize: number | "all" = pageSizeRaw === "all" ? "all" : parseInt0(pageSizeRaw, 50)!
 
-  const sortByRaw = (sp.sort as string | undefined) ?? "name"
+  // Default sıralama: stok yüksek olanlar üstte (kullanıcı tercihi).
+  // URL'de farklı sıralama varsa o öncelikli (kolon başlığına tıklayınca kalıcı kalır).
+  const sortByRaw = (sp.sort as string | undefined) ?? "mainStock"
   const sortBy: ProductSortBy = (VALID_SORT as string[]).includes(sortByRaw)
     ? (sortByRaw as ProductSortBy)
-    : "name"
-  const sortDir: "asc" | "desc" = sp.dir === "desc" ? "desc" : "asc"
+    : "mainStock"
+  // Stok sıralamasında varsayılan desc (yüksek üstte), diğer kolonlarda asc default
+  const sortDir: "asc" | "desc" =
+    sp.dir === "asc"
+      ? "asc"
+      : sp.dir === "desc"
+        ? "desc"
+        : sortBy === "mainStock" || sortBy === "streetStock"
+          ? "desc"
+          : "asc"
 
   const filters: ProductListFilters = {
     search: (sp.q as string | undefined)?.trim() || undefined,
