@@ -1,11 +1,22 @@
 import { prisma } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 import { calculateSalePrice, InvalidPricingError } from "@/lib/pricing"
 
 /**
  * Belirli bir ürün için tüm aktif marketplace'lerdeki satış fiyatlarını yeniden hesaplar.
  * Ürün oluşturulduğunda veya alış fiyatı değiştiğinde çağrılır.
+ *
+ * Önemli: Alış fiyatı değiştiğinde `recommendedPrice` ve `recommendationBasis` de
+ * geçersiz kılınır. Çünkü öneri eski alış fiyatına göre hesaplanmıştı; yeni alışta
+ * o öneri zarara satışa yol açabilir (BuyBox altına düşmüş olabilir).
+ * Yeni öneri için kullanıcı "Tazele" demeli (BuyBox-aware) veya formül kullanılır.
  */
-export async function recalculateMarketplacePrices(productId: number): Promise<void> {
+export async function recalculateMarketplacePrices(
+  productId: number,
+  opts: { invalidateRecommendation?: boolean } = {},
+): Promise<void> {
+  const invalidateRecommendation = opts.invalidateRecommendation ?? true
+
   const product = await prisma.product.findUnique({
     where: { id: productId },
     select: { id: true, mainPurchasePrice: true },
@@ -39,6 +50,13 @@ export async function recalculateMarketplacePrices(productId: number): Promise<v
         update: {
           calculatedPrice: calculated,
           lastCalculatedAt: new Date(),
+          // Alış değişti → eski öneri zombi, invalidate et.
+          // manualOverride'a DOKUNULMAZ (kullanıcı bilinçli set etmiş).
+          ...(invalidateRecommendation && {
+            recommendedPrice: null,
+            recommendationBasis: Prisma.JsonNull,
+            recommendedAt: null,
+          }),
         },
       })
     } catch (err) {
@@ -91,7 +109,15 @@ export async function recalculatePricesForMarketplace(marketplaceId: number): Pr
           productId_marketplaceId: { productId: p.id, marketplaceId },
         },
         create: { productId: p.id, marketplaceId, calculatedPrice: calculated },
-        update: { calculatedPrice: calculated, lastCalculatedAt: new Date() },
+        update: {
+          calculatedPrice: calculated,
+          lastCalculatedAt: new Date(),
+          // Marketplace ayarı değişti (komisyon/kargo/stopaj/hedef kâr) → eski
+          // BuyBox-bazlı öneri farklı bir komisyona göre hesaplanmıştı, geçersiz.
+          recommendedPrice: null,
+          recommendationBasis: Prisma.JsonNull,
+          recommendedAt: null,
+        },
       })
     } catch (err) {
       if (!(err instanceof InvalidPricingError)) throw err

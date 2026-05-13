@@ -253,16 +253,38 @@ export function recommendPrice(input: RecommendPriceInput): RecommendationResult
     }
   }
 
-  // BuyBox bizde — mevcut fiyatı koru, sistem dokunmaz.
-  // Kullanıcı manuel olarak yükseltmiş olabilir (örn. 200 TL).
-  // Formul (örn. 150 TL) öneriyle bu fiyat AŞAĞI çekilmemeli.
-  // ourPrice = BuyBox API'sinin döndüğü mevcut fiyatımız (buybox bizdeyken = competitorPrice)
+  // BuyBox bizde — kural: mevcut fiyat KÂR TABANI üstündeyse korunur.
+  // Eğer mevcut fiyat kâr tabanı altındaysa (örn. alış zamlandı, ama eski fiyat
+  // hala duruyor) sistem formula'ya çıkarır → BuyBox kaybedilebilir ama
+  // ZARARA SATMAYI ENGELLER. Bu daha güvenli — BuyBox tutarken zarara satmak
+  // tek satışta 50 TL ama 100 satış = 5000 TL kayıp; BuyBox'u kaybetmek belki
+  // gün satışını yavaşlatır ama kâr tabanı altına asla inilmez.
   if (input.buybox?.ownsBuyBox === true) {
     const ourPriceNum = toNumber(input.buybox?.ourPrice, NaN)
     const keepPrice =
       Number.isFinite(ourPriceNum) && ourPriceNum > 0
         ? ourPriceNum
         : competitorPrice // fallback: BuyBox bizdeyken competitorPrice = bizim fiyatımız
+
+    // KRİTİK KONTROL: mevcut fiyat kâr tabanının altında mı?
+    if (keepPrice < floorPrice) {
+      return {
+        formulaPrice,
+        floorPrice,
+        buyboxPrice,
+        recommendedPrice: formulaPrice,
+        basis: "BLOCKED_BY_FLOOR",
+        marginAtRecommended: calculateMarginPct(
+          formulaPrice,
+          purchase,
+          commission,
+          stopaj,
+          shipping + extraCost,
+        ),
+        warning: `BuyBox bizde AMA mevcut fiyat ${round2(keepPrice)} TL kâr tabanı ${round2(floorPrice)} TL altında ZARARDA satıyor. Fiyat formül seviyesine (${round2(formulaPrice)} TL) çıkarılmalı — BuyBox kaybedilebilir ama zarar durdurulur.`,
+      }
+    }
+
     return {
       formulaPrice,
       floorPrice,
