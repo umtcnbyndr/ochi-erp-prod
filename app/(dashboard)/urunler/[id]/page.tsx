@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table"
 import { EmptyState } from "@/components/common/empty-state"
 import { formatCurrency, formatNumber, formatDate, formatPercent } from "@/lib/utils"
+import { isRecommendationStale } from "@/lib/pricing/stale-recommendation"
 import { DeleteButton } from "./delete-button"
 
 export const dynamic = "force-dynamic"
@@ -748,16 +749,29 @@ export default async function ProductDetailPage({
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {mp.recommendedPrice ? (
-                            <div className="flex flex-col items-end">
-                              <span>
-                                {formatCurrency(mp.recommendedPrice.toString())}
-                              </span>
-                              {mp.recommendedAt && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  {formatDate(mp.recommendedAt)}
-                                </span>
-                              )}
-                            </div>
+                            (() => {
+                              const stale = isRecommendationStale(
+                                mp.recommendedAt ?? null,
+                                product.mainPriceUpdatedAt ?? null,
+                              )
+                              return (
+                                <div className="flex flex-col items-end">
+                                  <span className={stale ? "text-amber-600 line-through" : ""}>
+                                    {formatCurrency(mp.recommendedPrice.toString())}
+                                  </span>
+                                  {mp.recommendedAt && (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {formatDate(mp.recommendedAt)}
+                                      {stale && (
+                                        <span className="ml-1 text-amber-600 font-medium">
+                                          ⚠ BAYAT
+                                        </span>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            })()
                           ) : (
                             "—"
                           )}

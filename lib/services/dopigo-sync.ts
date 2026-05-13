@@ -29,6 +29,7 @@ import {
   applyTrendyolFloor,
   calculateWithEffectiveCommission,
   loadCommissionTariffsForProducts,
+  isRecommendationStale,
   type TariffMap,
 } from "@/lib/pricing"
 import { TRENDYOL_NAME } from "@/lib/services/brand-marketplace-floor"
@@ -260,7 +261,10 @@ interface ProductForCalc {
     marketplaceId: number
     manualOverride: import("@prisma/client/runtime/library").Decimal | string | number | null
     recommendedPrice?: import("@prisma/client/runtime/library").Decimal | string | number | null
+    recommendedAt?: Date | null
   }>
+  // Bayat öneri (stale recommendation) kontrolü için referans tarih
+  mainPriceUpdatedAt?: Date | null
   // Set ürün için bileşen bilgisi
   setComponents?: Array<{
     quantity: number
@@ -290,19 +294,28 @@ function getEffectivePriceFor(
   )
   if (!entry) return null
 
-  // Tier 1: manualOverride
+  // Tier 1: manualOverride (kullanıcı bilinçli karar → her zaman korunur)
   if (entry.manualOverride != null) {
     const n = Number(entry.manualOverride)
     if (Number.isFinite(n) && n > 0) {
       return { price: n, source: "MANUAL_OVERRIDE" }
     }
   }
-  // Tier 2: recommendedPrice (BuyBox bazli)
+  // Tier 2: recommendedPrice (BuyBox bazli) — BAYAT KONTROLÜ
+  // Eğer öneri alış fiyatı değişiminden ÖNCE yazıldıysa, eski sayıya dayanıyor demektir.
+  // Bayat ise yokmuş gibi davran, caller formula'ya düşsün.
   if (entry.recommendedPrice != null) {
-    const n = Number(entry.recommendedPrice)
-    if (Number.isFinite(n) && n > 0) {
-      return { price: n, source: "RECOMMENDATION" }
+    const stale = isRecommendationStale(
+      entry.recommendedAt ?? null,
+      product.mainPriceUpdatedAt ?? null,
+    )
+    if (!stale) {
+      const n = Number(entry.recommendedPrice)
+      if (Number.isFinite(n) && n > 0) {
+        return { price: n, source: "RECOMMENDATION" }
+      }
     }
+    // Bayat ise: null dön → formula'ya düşer
   }
   return null
 }
@@ -823,6 +836,7 @@ export async function buildExportPreview(
             marketplaceId: true,
             manualOverride: true,
             recommendedPrice: true,
+            recommendedAt: true,
           },
         },
         setComponents: {
@@ -984,6 +998,7 @@ export async function buildExportExcel(
             marketplaceId: true,
             manualOverride: true,
             recommendedPrice: true,
+            recommendedAt: true,
           },
         },
         setComponents: {

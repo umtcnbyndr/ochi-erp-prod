@@ -326,6 +326,9 @@ model Product {
   // Ana depo
   mainStock         Int      @default(0)
   mainPurchasePrice Decimal? @db.Decimal(14, 4) // KDV dahil, iskontolar dahil (weighted avg)
+  // mainPurchasePrice'ın son değişim zamanı — bayat öneri (recommendedPrice) kontrolü için.
+  // ProductMarketplacePrice.recommendedAt < bu tarih ise öneri bayat → formula'ya düş.
+  mainPriceUpdatedAt DateTime?
 
   // Cadde (eczane)
   streetStock         Int      @default(0)

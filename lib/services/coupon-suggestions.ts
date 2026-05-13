@@ -25,6 +25,7 @@ import {
   resolveEffectiveCommissionSync,
   type TariffMap,
 } from "@/lib/pricing/effective-commission"
+import { isRecommendationStale } from "@/lib/pricing/stale-recommendation"
 
 export type SuggestionStatus = "NEW" | "DONE" | "SKIPPED" | "POSTPONED"
 
@@ -140,6 +141,7 @@ export async function generateCouponSuggestions(
           streetStock: true,
           mainPurchasePrice: true,
           streetPurchasePrice: true,
+          mainPriceUpdatedAt: true,
           vatRate: true,
           status: true,
           productType: true,
@@ -156,6 +158,7 @@ export async function generateCouponSuggestions(
             select: {
               manualOverride: true,
               recommendedPrice: true,
+              recommendedAt: true,
               calculatedPrice: true,
             },
           },
@@ -180,9 +183,15 @@ export async function generateCouponSuggestions(
     if (product.productType !== "SINGLE") continue
 
     // Ürün satış fiyatı (3-tier: manualOverride > recommendedPrice > calculatedPrice)
+    // Bayat öneri kontrolü: recommendedPrice alış değişiminden önce yazıldıysa formula'ya düş
     const mp = product.marketplacePrices[0]
+    const recIsStale = isRecommendationStale(
+      mp?.recommendedAt ?? null,
+      product.mainPriceUpdatedAt ?? null,
+    )
+    const effectiveRec = recIsStale ? null : mp?.recommendedPrice
     const salePrice = Number(
-      mp?.manualOverride ?? mp?.recommendedPrice ?? mp?.calculatedPrice ?? 0,
+      mp?.manualOverride ?? effectiveRec ?? mp?.calculatedPrice ?? 0,
     )
     if (salePrice <= 0) continue
 
@@ -448,6 +457,7 @@ async function generateReturnSuggestions(
           trendyolBarcode: true,
           mainPurchasePrice: true,
           streetPurchasePrice: true,
+          mainPriceUpdatedAt: true,
           vatRate: true,
           productType: true,
           status: true,
@@ -458,6 +468,7 @@ async function generateReturnSuggestions(
             select: {
               manualOverride: true,
               recommendedPrice: true,
+              recommendedAt: true,
               calculatedPrice: true,
             },
           },
@@ -490,8 +501,14 @@ async function generateReturnSuggestions(
     if (count < 3) continue // En az 3 iade
 
     const mp = product.marketplacePrices[0]
+    // Bayat öneri kontrolü: alış değişiminden önceki öneriyi yok say
+    const recIsStale = isRecommendationStale(
+      mp?.recommendedAt ?? null,
+      product.mainPriceUpdatedAt ?? null,
+    )
+    const effectiveRec = recIsStale ? null : mp?.recommendedPrice
     const salePrice = Number(
-      mp?.manualOverride ?? mp?.recommendedPrice ?? mp?.calculatedPrice ?? 0,
+      mp?.manualOverride ?? effectiveRec ?? mp?.calculatedPrice ?? 0,
     )
     if (salePrice <= 0) continue
 

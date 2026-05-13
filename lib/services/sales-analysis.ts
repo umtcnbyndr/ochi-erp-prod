@@ -12,6 +12,7 @@
 import { prisma } from "@/lib/db"
 import { calculatePurchaseNetPrice } from "@/lib/pricing/purchase-net-price"
 import { calculateSalePrice } from "@/lib/pricing/sale-price"
+import { isRecommendationStale } from "@/lib/pricing/stale-recommendation"
 import { toNumber } from "@/lib/pricing/utils"
 import {
   calculateOrderPriorityScore,
@@ -113,6 +114,7 @@ export async function getSalesAnalysis(
       mainStock: true,
       streetStock: true,
       mainPurchasePrice: true,
+      mainPriceUpdatedAt: true,
       psf: true,
       status: true,
       lifetimeDemandScore: true,
@@ -146,6 +148,7 @@ export async function getSalesAnalysis(
           calculatedPrice: true,
           manualOverride: true,
           recommendedPrice: true,
+          recommendedAt: true,
         },
       },
     },
@@ -299,8 +302,13 @@ export async function getSalesAnalysis(
     const tyMp = p.marketplacePrices.find((m) => m.marketplace.name === "Trendyol")
     let ourSalePrice: number | null = null
     if (tyMp) {
-      // Öncelik: manualOverride > recommendedPrice > calculatedPrice
-      const priceVal = tyMp.manualOverride ?? tyMp.recommendedPrice ?? tyMp.calculatedPrice
+      // Öncelik: manualOverride > recommendedPrice (bayat değilse) > calculatedPrice
+      const recIsStale = isRecommendationStale(
+        tyMp.recommendedAt ?? null,
+        p.mainPriceUpdatedAt ?? null,
+      )
+      const effectiveRec = recIsStale ? null : tyMp.recommendedPrice
+      const priceVal = tyMp.manualOverride ?? effectiveRec ?? tyMp.calculatedPrice
       ourSalePrice = priceVal ? Number(priceVal) : null
 
       // Eğer hiçbiri yok ama net alış varsa, formülle hesapla

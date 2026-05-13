@@ -124,6 +124,8 @@ export async function createEntrySession(input: EntrySessionInput): Promise<Entr
         data: {
           mainStock: newStock,
           mainPurchasePrice: newAvgPrice,
+          // Alış fiyatı değiştiyse mainPriceUpdatedAt = now() → bayat öneri kontrolü için referans
+          ...(priceChangedForThis ? { mainPriceUpdatedAt: new Date() } : {}),
           // İade değilse ve marka fatura no seansta girildiyse, ürünün son marka faturasını güncelle
           ...(!isReturn && brandInvoice ? { lastBrandInvoiceNumber: brandInvoice } : {}),
           // PAO girildiyse ürüne yansıt
