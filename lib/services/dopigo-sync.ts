@@ -951,10 +951,11 @@ export async function buildExportPreview(
     }
   }
 
-  // Sıralama: Önce eczane stoğu (PHARMACY_FALLBACK), sonra ana stok (MAIN/SET_VIRTUAL>0),
-  // en son stok=0. Her grupta marka + ürün adı alfabetik.
-  // Mantık: eczaneden açılanlar hızlı eritilmeli (eczane stoğu rotasyonu), bizim stok
-  // sırada bekleyebilir, stok yok olanlar listede en altta.
+  // Sıralama:
+  //   1. Eczane stoğu (PHARMACY_FALLBACK) — stok desc, en çoktan en aza
+  //   2. Ana stok (MAIN / SET_VIRTUAL > 0) — stok desc, en çoktan en aza
+  //   3. Stok = 0 — marka + ad alfabetik
+  // Mantık: eczane stoğu hızlı eritilmeli, çok olanı önce sat. Ana depo da aynı.
   function stockGroupRank(r: ExportPreviewRow): number {
     if (r.stockSource === "PHARMACY_FALLBACK") return 1
     if ((r.stockSource === "MAIN" || r.stockSource === "SET_VIRTUAL") && (r.effectiveStock ?? 0) > 0) return 2
@@ -964,7 +965,12 @@ export async function buildExportPreview(
     const ra = stockGroupRank(a)
     const rb = stockGroupRank(b)
     if (ra !== rb) return ra - rb
-    // Aynı grupta: marka + ürün adı alfabetik (TR locale)
+    // Stoklu gruplarda: stok desc (büyükten küçüğe)
+    if (ra !== 3) {
+      const stockCmp = (b.effectiveStock ?? 0) - (a.effectiveStock ?? 0)
+      if (stockCmp !== 0) return stockCmp
+    }
+    // Aynı stok seviyesinde veya stok=0 grubunda: marka + ad alfabetik
     const brandCmp = (a.brandName ?? "").localeCompare(b.brandName ?? "", "tr")
     if (brandCmp !== 0) return brandCmp
     return a.name.localeCompare(b.name, "tr")
