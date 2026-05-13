@@ -951,6 +951,25 @@ export async function buildExportPreview(
     }
   }
 
+  // Sıralama: Önce eczane stoğu (PHARMACY_FALLBACK), sonra ana stok (MAIN/SET_VIRTUAL>0),
+  // en son stok=0. Her grupta marka + ürün adı alfabetik.
+  // Mantık: eczaneden açılanlar hızlı eritilmeli (eczane stoğu rotasyonu), bizim stok
+  // sırada bekleyebilir, stok yok olanlar listede en altta.
+  function stockGroupRank(r: ExportPreviewRow): number {
+    if (r.stockSource === "PHARMACY_FALLBACK") return 1
+    if ((r.stockSource === "MAIN" || r.stockSource === "SET_VIRTUAL") && (r.effectiveStock ?? 0) > 0) return 2
+    return 3 // ZERO veya SET_VIRTUAL/stok=0
+  }
+  rows.sort((a, b) => {
+    const ra = stockGroupRank(a)
+    const rb = stockGroupRank(b)
+    if (ra !== rb) return ra - rb
+    // Aynı grupta: marka + ürün adı alfabetik (TR locale)
+    const brandCmp = (a.brandName ?? "").localeCompare(b.brandName ?? "", "tr")
+    if (brandCmp !== 0) return brandCmp
+    return a.name.localeCompare(b.name, "tr")
+  })
+
   return rows
 }
 
