@@ -139,3 +139,20 @@ export function MetricCard({
 
   return href ? <Link href={href}>{content}</Link> : content
 }
+
+/**
+ * MetricCard.Skeleton — yükleme sırasında shimmer.
+ * Aynı boyut/padding/aralık tutar, layout shift olmaz.
+ */
+MetricCard.Skeleton = function MetricCardSkeleton({ className }: { className?: string }) {
+  return (
+    <div className={cn("rounded-xl border bg-card p-4", className)}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+        <div className="h-7 w-7 animate-pulse rounded-lg bg-muted" />
+      </div>
+      <div className="mt-2 h-7 w-20 animate-pulse rounded bg-muted" />
+      <div className="mt-2 h-3 w-32 animate-pulse rounded bg-muted/60" />
+    </div>
+  )
+}

@@ -114,16 +114,19 @@ export function Topbar({
         </Button>
       )}
 
-      {/* Breadcrumb */}
-      <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm">
+      {/* Breadcrumb — mobilde yatay scroll yapılabilir */}
+      <nav
+        aria-label="Breadcrumb"
+        className="flex items-center gap-1.5 text-sm min-w-0 flex-1 overflow-x-auto scrollbar-none whitespace-nowrap"
+      >
         <Link
           href="/panel"
-          className="text-muted-foreground transition-colors hover:text-foreground"
+          className="text-muted-foreground transition-colors hover:text-foreground shrink-0"
         >
           Ana Sayfa
         </Link>
         {crumbs.map((crumb) => (
-          <span key={crumb.href} className="flex items-center gap-1.5">
+          <span key={crumb.href} className="flex items-center gap-1.5 shrink-0">
             <ChevronRight
               aria-hidden="true"
               className="h-3.5 w-3.5 text-muted-foreground"

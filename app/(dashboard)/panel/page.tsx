@@ -6,7 +6,6 @@ import {
   Repeat2,
   Sparkles,
   Download,
-  ArrowUpRight,
   AlertTriangle,
   TrendingDown,
   Megaphone,
@@ -14,6 +13,7 @@ import {
 import { getAuthUser } from "@/lib/permissions"
 import { getDashboardSnapshot } from "@/lib/services/dashboard-data"
 import { MetricCard } from "@/components/ui/metric-card"
+import { Section } from "@/components/common/section"
 import { FreshnessRow } from "@/components/panel/freshness-row"
 import { CriticalStockWidget } from "@/components/panel/critical-stock-widget"
 import { BuyboxLostWidget } from "@/components/panel/buybox-lost-widget"
@@ -68,58 +68,43 @@ export default async function PanelPage() {
   return (
     <div className="space-y-6 pb-8">
       {/* Header */}
-      <div className="flex items-end justify-between gap-3 flex-wrap">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{greeting}</h1>
           <p className="text-xs text-muted-foreground mt-1 capitalize">{today}</p>
         </div>
-        <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
-          {quickActions.map((qa) => {
-            const Icon = qa.icon
-            return (
-              <Link
-                key={qa.href}
-                href={qa.href}
-                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {qa.label}
-              </Link>
-            )
-          })}
+        {/* Mobilde yatay scroll, desktop'ta tek satır pill bar */}
+        <div className="-mx-4 px-4 sm:m-0 sm:p-0 overflow-x-auto scrollbar-none">
+          <div className="inline-flex items-center gap-1 rounded-lg border bg-card p-1">
+            {quickActions.map((qa) => {
+              const Icon = qa.icon
+              return (
+                <Link
+                  key={qa.href}
+                  href={qa.href}
+                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors whitespace-nowrap"
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {qa.label}
+                </Link>
+              )
+            })}
+          </div>
         </div>
       </div>
 
       {/* SECTION 1: Sabah Rutini — 4 status MetricCard */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Sabah Rutini
-          </h2>
-          <p className="text-xs text-muted-foreground">Bugün yüklenen veriler</p>
-        </div>
+      <Section title="Sabah Rutini" hint="Bugün yüklenen veriler">
         <FreshnessRow
           pharmacy={data.freshness.pharmacy}
           dopigo={data.freshness.dopigo}
           favorite={data.freshness.favorite}
           buybox={data.freshness.buybox}
         />
-      </section>
+      </Section>
 
       {/* SECTION 2: Günün Özeti — 3 KPI MetricCard (kritik durum sayıları) */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Günün Özeti
-          </h2>
-          <Link
-            href="/raporlar"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Tüm raporlar
-            <ArrowUpRight className="h-3 w-3" />
-          </Link>
-        </div>
+      <Section title="Günün Özeti" action={{ label: "Tüm raporlar", href: "/raporlar" }}>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <MetricCard
             label="Kritik Stok"
@@ -161,32 +146,26 @@ export default async function PanelPage() {
             href="/kampanyalar"
           />
         </div>
-      </section>
+      </Section>
 
       {/* SECTION 3: Acil Eylem — detaylı widget'lar */}
-      <section className="space-y-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Detay
-        </h2>
+      <Section title="Detay">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <CriticalStockWidget data={data.criticalStock} />
           <BuyboxLostWidget data={data.buyboxLost} />
           <PendingCampaignsWidget campaigns={data.pendingCampaigns} />
         </div>
-      </section>
+      </Section>
 
       {/* SECTION 4: Bilgi widget'ları + Notlar (4 sütun grid) */}
-      <section className="space-y-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Bilgilendirme
-        </h2>
+      <Section title="Bilgilendirme">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
           <TrendingWidget items={data.trending} />
           <ExpiringWidget items={data.expiring} />
           <PassiveCandidateWidget items={data.passiveCandidates} />
           <NotesWidget notes={data.notes} />
         </div>
-      </section>
+      </Section>
     </div>
   )
 }
