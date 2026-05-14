@@ -113,6 +113,36 @@ const TableCaption = React.forwardRef<
 ))
 TableCaption.displayName = "TableCaption"
 
+/**
+ * TableEmpty — tablolarda tutarlı "veri yok" satırı.
+ * Tüm sütunları kapsayan tek bir hücre olarak ortalanır.
+ */
+interface TableEmptyProps {
+  colSpan: number
+  message?: string
+  icon?: React.ComponentType<{ className?: string }>
+  /** İsteğe bağlı küçük action (örn. "Filtreleri temizle") */
+  action?: React.ReactNode
+}
+
+function TableEmpty({ colSpan, message = "Kayıt yok", icon: Icon, action }: TableEmptyProps) {
+  return (
+    <TableRow className="hover:bg-transparent">
+      <TableCell colSpan={colSpan} className="text-center py-12">
+        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+          {Icon && (
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+              <Icon className="h-5 w-5" />
+            </div>
+          )}
+          <p className="text-sm">{message}</p>
+          {action && <div className="mt-1">{action}</div>}
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+}
+
 export {
   Table,
   TableHeader,
@@ -122,4 +152,5 @@ export {
   TableRow,
   TableCell,
   TableCaption,
+  TableEmpty,
 }

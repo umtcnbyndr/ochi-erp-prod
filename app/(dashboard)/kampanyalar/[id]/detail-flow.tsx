@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { EmptyState } from "@/components/common/empty-state"
+import { useConfirm } from "@/components/common/confirm-provider"
 import {
   endCampaignAction,
   cancelCampaignAction,
@@ -92,6 +93,7 @@ interface Props {
 
 export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
   const router = useRouter()
+  const confirm = useConfirm()
   const [pending, startTransition] = useTransition()
 
   const [collectOpen, setCollectOpen] = useState(false)
@@ -140,8 +142,13 @@ export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
   )
   const totalQty = campaign.sales.reduce((s, x) => s + x.quantity, 0)
 
-  function handleEnd() {
-    if (!confirm("Kampanya bitirilecek. Devam?")) return
+  async function handleEnd() {
+    const ok = await confirm({
+      title: "Kampanya bitirilecek",
+      description: "Devam etmek istiyor musun?",
+      confirmText: "Evet, bitir",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await endCampaignAction(campaign.id)
       if (!result.success) {
@@ -153,13 +160,15 @@ export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
     })
   }
 
-  function handleDelete() {
-    if (
-      !confirm(
-        `"${campaign.name}" kampanyası tamamen silinecek.\n\nBuna bağlı tüm satış kayıtları (CampaignSale) ve ürün bağlantıları (CampaignProduct) da silinir.\n\nBu işlem GERİ ALINAMAZ.\n\nDevam etmek için tamam'a bas.`,
-      )
-    )
-      return
+  async function handleDelete() {
+    const ok = await confirm({
+      title: `"${campaign.name}" silinecek`,
+      description:
+        "Kampanya ile birlikte tüm satış kayıtları ve ürün bağlantıları da silinir. Bu işlem GERİ ALINAMAZ.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await deleteCampaignAction(campaign.id)
       if (!result.success) {
@@ -171,8 +180,14 @@ export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
     })
   }
 
-  function handleCancel() {
-    if (!confirm("Kampanya iptal edilecek. Bu işlem geri alınamaz. Devam?")) return
+  async function handleCancel() {
+    const ok = await confirm({
+      title: "Kampanya iptal edilecek",
+      description: "Bu işlem geri alınamaz. Devam etmek istiyor musun?",
+      confirmText: "Evet, iptal et",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await cancelCampaignAction(campaign.id)
       if (!result.success) {

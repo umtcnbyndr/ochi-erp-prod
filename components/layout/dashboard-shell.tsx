@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { Sidebar } from "./sidebar"
 import { Topbar } from "./topbar"
+import { ConfirmProvider } from "@/components/common/confirm-provider"
 import type { UserPermissionMap } from "@/lib/permissions"
 
 const STORAGE_KEY = "ochi-sidebar-collapsed"
@@ -42,6 +43,7 @@ export function DashboardShell({
   }, [])
 
   return (
+    <ConfirmProvider>
     <div className="flex min-h-dvh">
       {/* Desktop sidebar */}
       <div
@@ -84,5 +86,6 @@ export function DashboardShell({
         </main>
       </div>
     </div>
+    </ConfirmProvider>
   )
 }
