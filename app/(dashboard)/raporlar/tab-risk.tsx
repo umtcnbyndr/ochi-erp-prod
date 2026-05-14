@@ -103,7 +103,7 @@ export function RiskTab({ data }: { data: RiskOverview }) {
             </p>
           ) : (
             <Table className="text-[13px] [&_th]:px-3 [&_td]:px-3 [&_th]:py-2 [&_td]:py-2">
-              <TableHeader>
+              <TableHeader className="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
                 <TableRow>
                   <TableHead>Ürün</TableHead>
                   <TableHead>Marka</TableHead>

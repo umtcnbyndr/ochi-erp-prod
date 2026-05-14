@@ -19,7 +19,16 @@ const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn("[&_tr]:border-b bg-muted/40", className)} {...props} />
+  // Default sticky: container max-h tanımladığında otomatik üstte kalır.
+  // bg-card opak — body satırları üzerinde kayarken background görünmez.
+  <thead
+    ref={ref}
+    className={cn(
+      "[&_tr]:border-b bg-muted/40 sticky top-0 z-10 shadow-[0_1px_0_0_hsl(var(--border))]",
+      className,
+    )}
+    {...props}
+  />
 ))
 TableHeader.displayName = "TableHeader"
 

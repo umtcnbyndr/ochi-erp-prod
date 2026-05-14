@@ -180,9 +180,9 @@ export function StockMovementTable({ items, isAdmin = false }: Props) {
         </div>
       )}
       {/* Desktop tablo */}
-      <div className="hidden sm:block rounded-lg border overflow-hidden">
+      <div className="hidden sm:block rounded-lg border overflow-hidden [&>div]:max-h-[calc(100dvh-240px)]">
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
             <TableRow>
               {isAdmin && (
                 <TableHead className="w-8">

@@ -338,9 +338,9 @@ export function TakasGivenFlow({ counterparties }: Props) {
             <CardTitle className="text-sm font-medium">Çıkış Listesi</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="hidden sm:block">
+            <div className="hidden sm:block [&>div]:max-h-[calc(100dvh-280px)]">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
                   <TableRow>
                     <TableHead>Ürün</TableHead>
                     <TableHead className="text-right tabular-nums">Miktar</TableHead>
