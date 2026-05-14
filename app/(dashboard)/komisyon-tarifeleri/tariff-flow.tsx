@@ -716,14 +716,27 @@ function TariffTable({ rows, targetProfit }: { rows: TariffRow[]; targetProfit: 
 function TariffRow({ row, targetProfit }: { row: TariffRow; targetProfit: number }) {
   const [pending, startTransition] = useTransition()
   const [selectedTier, setSelectedTier] = useState<1 | 2 | 3 | 4 | null>(row.selectedTier)
+  const [selectedPrice, setSelectedPrice] = useState<number | null>(row.selectedPrice)
 
-  const handleSelect = (tier: 1 | 2 | 3 | 4 | null) => {
+  const handleSelect = (tier: 1 | 2 | 3 | 4 | null, customPrice: number | null = null) => {
+    const previousTier = selectedTier
+    const previousPrice = selectedPrice
     setSelectedTier(tier)
+    // Optimistic — kademe çekildiyse null, customPrice varsa onu, yoksa alt limiti
+    if (tier === null) {
+      setSelectedPrice(null)
+    } else if (customPrice !== null) {
+      setSelectedPrice(customPrice)
+    } else {
+      const t = row.tiers.find((x) => x.tier === tier)
+      setSelectedPrice(t?.suggestedPrice ?? null)
+    }
     startTransition(async () => {
-      const res = await selectTariffAction(row.tariffId, tier)
+      const res = await selectTariffAction(row.tariffId, tier, customPrice)
       if (!res.success) {
         toast.error(res.error ?? "Hata")
-        setSelectedTier(row.selectedTier)
+        setSelectedTier(previousTier)
+        setSelectedPrice(previousPrice)
       }
     })
   }
@@ -823,7 +836,9 @@ function TariffRow({ row, targetProfit }: { row: TariffRow; targetProfit: number
             isCurrent={row.currentTier === t.tier}
             isRecommended={row.recommendedTier === t.tier}
             isSelected={selectedTier === t.tier}
+            selectedPrice={selectedTier === t.tier ? selectedPrice : null}
             onSelect={() => handleSelect(selectedTier === t.tier ? null : t.tier)}
+            onCustomPrice={(price) => handleSelect(t.tier, price)}
             pending={pending}
             currentCommissionPct={row.currentCommissionPct}
             targetProfit={targetProfit}
@@ -835,14 +850,16 @@ function TariffRow({ row, targetProfit }: { row: TariffRow; targetProfit: number
 }
 
 function TierCell({
-  tier, isCurrent, isRecommended, isSelected, onSelect, pending,
+  tier, isCurrent, isRecommended, isSelected, selectedPrice, onSelect, onCustomPrice, pending,
   currentCommissionPct, targetProfit,
 }: {
   tier: TierInfo
   isCurrent: boolean
   isRecommended: boolean
   isSelected: boolean
+  selectedPrice: number | null
   onSelect: () => void
+  onCustomPrice: (price: number) => void
   pending: boolean
   currentCommissionPct: number | null
   targetProfit: number
@@ -871,12 +888,48 @@ function TierCell({
     ? currentCommissionPct - tier.commissionPct
     : null
 
+  // Custom price modu
+  const [editing, setEditing] = useState(false)
+  const [customInput, setCustomInput] = useState<string>(
+    selectedPrice !== null ? selectedPrice.toFixed(2) : tier.suggestedPrice?.toFixed(2) ?? ""
+  )
+
+  // Sayfa yenilenirse selectedPrice props değişir → state sync
+  // (basit yaklaşım: editing aktif değilse her render'da güncel selectedPrice'ı kullan)
+  const displayPrice = isSelected && selectedPrice !== null
+    ? selectedPrice
+    : tier.suggestedPrice
+
+  function submitCustom() {
+    const n = Number(customInput.replace(",", "."))
+    if (!Number.isFinite(n) || n <= 0) {
+      toast.error("Geçerli bir fiyat gir")
+      return
+    }
+    // Aralık kontrolü — Kademe 1 üst limit yok, Kademe 4 alt limit yok
+    if (tier.altLimit !== null && n < tier.altLimit) {
+      toast.error(`En az ${tl(tier.altLimit)} olmalı`)
+      return
+    }
+    if (tier.ustLimit !== null && n > tier.ustLimit) {
+      toast.error(`En fazla ${tl(tier.ustLimit)} olmalı`)
+      return
+    }
+    onCustomPrice(n)
+    setEditing(false)
+  }
+
   return (
     <div
       className={`rounded p-1.5 ${bgClass} ${
         isSelected ? "ring-2 ring-primary" : ""
       } ${isRecommended && !isSelected ? "ring-1 ring-amber-400" : ""} cursor-pointer transition-all hover:shadow-sm`}
-      onClick={onSelect}
+      onClick={(e) => {
+        // Input içinde click ise event'i tüketme
+        if (editing) return
+        e.stopPropagation()
+        onSelect()
+      }}
     >
       <div className="flex items-center justify-between mb-0.5">
         <div className="text-[9px] text-muted-foreground truncate">
@@ -892,8 +945,51 @@ function TierCell({
           <div className="text-[10px] font-semibold tabular-nums whitespace-nowrap">%{tier.commissionPct}</div>
         )}
       </div>
-      {tier.suggestedPrice && (
-        <div className="font-bold text-sm tabular-nums">{tl(tier.suggestedPrice)}</div>
+      {/* Fiyat satırı — seçili & editing ise input, değilse text */}
+      {isSelected && editing ? (
+        <div
+          className="flex items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="number"
+            step="0.01"
+            min={tier.altLimit ?? 0}
+            max={tier.ustLimit ?? undefined}
+            value={customInput}
+            autoFocus
+            onChange={(e) => setCustomInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitCustom()
+              if (e.key === "Escape") setEditing(false)
+            }}
+            onBlur={submitCustom}
+            disabled={pending}
+            className="w-full text-sm font-semibold tabular-nums px-1 py-0.5 rounded border bg-background"
+          />
+        </div>
+      ) : (
+        displayPrice && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (isSelected) {
+                setCustomInput(displayPrice.toFixed(2))
+                setEditing(true)
+              } else {
+                onSelect()
+              }
+            }}
+            className="font-bold text-sm tabular-nums hover:text-primary text-left w-full"
+            title={isSelected ? "Tıkla → fiyatı düzenle" : "Tıkla → bu kademeyi seç"}
+          >
+            {tl(displayPrice)}
+            {isSelected && selectedPrice !== null && selectedPrice !== tier.suggestedPrice && (
+              <span className="text-[9px] font-normal text-muted-foreground ml-1">(özel)</span>
+            )}
+          </button>
+        )
       )}
       {tier.netProfit !== null && tier.netProfitPct !== null ? (
         <div className={`text-[10px] tabular-nums font-semibold ${txtClass}`}>

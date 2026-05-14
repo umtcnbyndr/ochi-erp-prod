@@ -84,10 +84,11 @@ export async function uploadTariffAction(formData: FormData): Promise<UploadResu
 export async function selectTariffAction(
   tariffId: number,
   tier: 1 | 2 | 3 | 4 | null,
+  customPrice: number | null = null,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const adminUser = await requireAdmin()
-    await selectTariffTier(tariffId, tier, adminUser.id)
+    await selectTariffTier(tariffId, tier, adminUser.id, customPrice)
     revalidatePath("/komisyon-tarifeleri")
     return { success: true }
   } catch (err) {

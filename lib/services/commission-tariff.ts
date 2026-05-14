@@ -424,12 +424,15 @@ export async function analyzeTariffs(
 }
 
 /**
- * Bir tarifenin seçimini kaydet
+ * Bir tarifenin seçimini kaydet.
+ * - customPrice null/undefined → kademenin alt limit (varsayılan)
+ * - customPrice verilirse → kademe aralığında olmalı, aksi halde hata
  */
 export async function selectTariffTier(
   tariffId: number,
   tier: 1 | 2 | 3 | 4 | null,
   selectedBy: string | null = null,
+  customPrice: number | null = null,
 ): Promise<void> {
   if (tier === null) {
     await prisma.commissionTariff.update({
@@ -448,18 +451,48 @@ export async function selectTariffTier(
   const t = await prisma.commissionTariff.findUnique({ where: { id: tariffId } })
   if (!t) throw new Error("Tarife bulunamadı")
 
-  // Kademedeki suggested price
-  const price =
-    tier === 1 ? t.tier1AltLimit
-    : tier === 2 ? t.tier2AltLimit
-    : tier === 3 ? t.tier3AltLimit
-    : t.tier4UstLimit
+  // Kademe sınırları
+  const altLimit =
+    tier === 1 ? (t.tier1AltLimit ? Number(t.tier1AltLimit) : null)
+    : tier === 2 ? (t.tier2AltLimit ? Number(t.tier2AltLimit) : null)
+    : tier === 3 ? (t.tier3AltLimit ? Number(t.tier3AltLimit) : null)
+    : null // Kademe 4'ün alt limiti yok
+  const ustLimit =
+    tier === 2 ? (t.tier2UstLimit ? Number(t.tier2UstLimit) : null)
+    : tier === 3 ? (t.tier3UstLimit ? Number(t.tier3UstLimit) : null)
+    : tier === 4 ? (t.tier4UstLimit ? Number(t.tier4UstLimit) : null)
+    : null // Kademe 1'in üst limiti yok
+
+  let finalPrice: number
+  if (customPrice !== null && customPrice !== undefined) {
+    // Custom değer — kademe aralığında mı?
+    if (altLimit !== null && customPrice < altLimit) {
+      throw new Error(
+        `Fiyat kademe ${tier} alt limitinin (${altLimit} TL) altında olamaz`,
+      )
+    }
+    if (ustLimit !== null && customPrice > ustLimit) {
+      throw new Error(
+        `Fiyat kademe ${tier} üst limitinin (${ustLimit} TL) üstünde olamaz`,
+      )
+    }
+    finalPrice = customPrice
+  } else {
+    // Varsayılan: alt limit (kademe 4 için üst limit)
+    if (tier === 4) {
+      if (ustLimit === null) throw new Error("Kademe 4 üst limit yok")
+      finalPrice = ustLimit
+    } else {
+      if (altLimit === null) throw new Error(`Kademe ${tier} alt limit yok`)
+      finalPrice = altLimit
+    }
+  }
 
   await prisma.commissionTariff.update({
     where: { id: tariffId },
     data: {
       selectedTier: tier,
-      selectedPrice: price,
+      selectedPrice: finalPrice,
       selectedAt: new Date(),
       selectedBy,
     },
