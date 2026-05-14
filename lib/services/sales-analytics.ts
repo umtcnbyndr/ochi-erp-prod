@@ -597,6 +597,8 @@ export interface OrderTableRow {
   remaining: number // sipariş tutarı - alış - komisyon - kargo - stopaj
   marginPct: number
   matchMethod: string | null
+  /** Ürünün PSF değeri (Perakende Satış Fiyatı) — eczanede satılan referans fiyat */
+  psf: number | null
 }
 
 export interface OrdersListResult {
@@ -685,6 +687,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       line_total: number
       cost_per_unit: number | null
       cost_source: string  // "MAIN" | "STREET_FALLBACK" | "NONE"
+      psf: number | null
       commission_rate: number | null
       shipping_cost: number | null
       withholding_rate: number | null
@@ -730,6 +733,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
         WHEN p."streetPurchasePrice" IS NOT NULL THEN 'STREET_FALLBACK'
         ELSE 'NONE'
       END                                 AS cost_source,
+      p."psf"::float8                     AS psf,
       (${EFFECTIVE_COMMISSION_PCT_SQL})::float8 AS commission_rate,
       m."shippingCost"::float8            AS shipping_cost,
       m."withholdingTax"::float8          AS withholding_rate,
@@ -814,6 +818,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       remaining,
       marginPct,
       matchMethod: r.match_method,
+      psf: r.psf !== null && r.psf !== undefined ? Number(r.psf) : null,
     }
   })
 

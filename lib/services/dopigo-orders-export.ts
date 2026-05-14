@@ -72,6 +72,7 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
       "Alt Kategori",
       "Adet",
       "Birim Fiyat",
+      "PSF",
       "Sipariş Tutarı",
       "Alış Maliyeti",
       "Alış Kaynağı",
@@ -106,6 +107,7 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
       r.subcategoryName ?? "—",
       r.amount,
       r.unitPrice ?? Math.round((r.lineTotal / Math.max(r.amount, 1)) * 100) / 100,
+      r.psf ?? null,
       r.lineTotal,
       r.totalCost,
       COST_SOURCE_LABEL[r.costSource] ?? r.costSource,
@@ -118,12 +120,12 @@ export async function buildOrdersExport(opts: ExportOptions): Promise<Buffer> {
   }
 
   const ordersSheet = XLSX.utils.aoa_to_sheet(ordersSheetData)
-  // Kolon genişlikleri (22 kolon)
+  // Kolon genişlikleri (23 kolon — PSF eklendi)
   ordersSheet["!cols"] = [
     { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 14 },
     { wch: 12 }, { wch: 16 }, { wch: 50 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 6 },
-    { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 10 },
-    { wch: 14 }, { wch: 8 },
+    { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 10 },
+    { wch: 10 }, { wch: 14 }, { wch: 8 },
   ]
 
   // ===== Sheet 2: Dashboard =====

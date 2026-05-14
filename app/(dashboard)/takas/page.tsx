@@ -2,11 +2,14 @@ import Link from "next/link"
 import { prisma } from "@/lib/db"
 import { PageHeader } from "@/components/common/page-header"
 import { Button } from "@/components/ui/button"
+import { getAuthUser } from "@/lib/permissions"
 import { TakasTabs } from "./takas-tabs"
 
 export const dynamic = "force-dynamic"
 
 export default async function TakasPage() {
+  const user = await getAuthUser()
+  const isAdmin = user?.role === "ADMIN"
   const [counterparties, pendingRaw] = await Promise.all([
     prisma.counterparty.findMany({
       orderBy: [{ type: "asc" }, { name: "asc" }],
@@ -61,7 +64,7 @@ export default async function TakasPage() {
           </Button>
         </div>
       ) : (
-        <TakasTabs counterparties={counterparties} pending={pending} />
+        <TakasTabs counterparties={counterparties} pending={pending} isAdmin={isAdmin} />
       )}
     </div>
   )

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import * as XLSX from "xlsx"
 import { prisma } from "@/lib/db"
 import { findProductByBarcode } from "@/lib/services/product-match"
-import { requirePermission } from "@/lib/permissions"
+import { requirePermission, requireAdmin } from "@/lib/permissions"
 import {
   createReceivedExchanges,
   createGivenExchanges,
@@ -165,6 +165,37 @@ export async function cancelExchangeAction(exchangeId: number, reason?: string) 
     return { success: true as const }
   } catch (err) {
     return { success: false as const, error: err instanceof Error ? err.message : "İptal edilemedi" }
+  }
+}
+
+/**
+ * Takası DB'den TAMAMEN sil (admin yetkisi).
+ * - Status iptal değilse önce iptal et (stoğu geri al), sonra sil.
+ * - Stok hareketlerine bağlı counterpartyId varsa silinmiyor, audit kayıtları kalsın.
+ */
+export async function deleteExchangeAction(exchangeId: number) {
+  try {
+    await requireAdmin()
+    const ex = await prisma.exchange.findUnique({
+      where: { id: exchangeId },
+      select: { id: true, status: true },
+    })
+    if (!ex) return { success: false as const, error: "Takas bulunamadı" }
+
+    // Eğer hala PENDING ise önce iptal et (stoğu geri al)
+    if (ex.status === "PENDING") {
+      await cancelExchange(exchangeId, "Admin silmeden önce iptal etti")
+    }
+
+    // Sonra hard delete
+    await prisma.exchange.delete({ where: { id: exchangeId } })
+
+    revalidatePath("/takas")
+    revalidatePath("/urunler")
+    revalidatePath("/stok-hareketleri")
+    return { success: true as const }
+  } catch (err) {
+    return { success: false as const, error: err instanceof Error ? err.message : "Silinemedi" }
   }
 }
 

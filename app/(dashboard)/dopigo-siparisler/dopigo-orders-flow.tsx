@@ -44,7 +44,7 @@ interface TopProductRow { productId: number | null; productName: string; brandNa
 interface UnmatchedItem { itemId: number; orderId: number; salesChannel: string; productName: string; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; price: number; serviceCreatedAt: string }
 interface SyncRun { id: number; startedAt: string; finishedAt: string | null; totalFetched: number; totalCreated: number; totalUpdated: number; totalMatched: number; status: string; errorMessage: string | null; rangeFrom: string | null; rangeTo: string | null }
 interface MonthlyExpense { id: number; marketplaceId: number; commissionPaid: number | null; shippingPaid: number | null; withholdingPaid: number | null; returnCosts: number | null; adSpend: number | null; otherExpenses: number | null; notes: string | null }
-interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; costSource: "MAIN" | "STREET_FALLBACK" | "NONE"; totalCost: number; commission: number; shipping: number; withholding: number; remaining: number; marginPct: number; matchMethod: string | null }
+interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; costSource: "MAIN" | "STREET_FALLBACK" | "NONE"; totalCost: number; commission: number; shipping: number; withholding: number; remaining: number; marginPct: number; matchMethod: string | null; psf: number | null }
 
 interface Props {
   period: string; rangeLabel: string; from?: string; to?: string
@@ -783,6 +783,14 @@ function OrderDetailDrawer({ row, siblings, onSwitchItem, onClose }: {
                 <span className="text-right tabular-nums">
                   {tl(row.unitPrice ?? row.lineTotal / Math.max(row.amount, 1))}
                 </span>
+                {row.psf !== null && (
+                  <>
+                    <span className="text-muted-foreground">PSF:</span>
+                    <span className="text-right tabular-nums text-muted-foreground">
+                      {tl(row.psf)}
+                    </span>
+                  </>
+                )}
                 <span className="font-semibold">Sipariş Tutarı:</span>
                 <span className="text-right tabular-nums font-semibold">{tl(lt)}</span>
 

@@ -10,9 +10,10 @@ import type { CounterpartyOption } from "./actions"
 interface TakasTabsProps {
   counterparties: CounterpartyOption[]
   pending: PendingExchange[]
+  isAdmin?: boolean
 }
 
-export function TakasTabs({ counterparties, pending }: TakasTabsProps) {
+export function TakasTabs({ counterparties, pending, isAdmin = false }: TakasTabsProps) {
   const pendingCount = pending.length
 
   return (
@@ -39,7 +40,7 @@ export function TakasTabs({ counterparties, pending }: TakasTabsProps) {
       </TabsContent>
 
       <TabsContent value="bekleyenler">
-        <PendingList pending={pending} counterparties={counterparties} />
+        <PendingList pending={pending} counterparties={counterparties} isAdmin={isAdmin} />
       </TabsContent>
     </Tabs>
   )

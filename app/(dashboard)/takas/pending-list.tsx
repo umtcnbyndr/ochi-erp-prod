@@ -46,11 +46,13 @@ import {
   completeExchangeAction,
   completeExchangesBatchAction,
   cancelExchangeAction,
+  deleteExchangeAction,
   lookupBarcodeAction,
   exportPendingExchangesAction,
   type CounterpartyOption,
   type ExchangeProductInfo,
 } from "./actions"
+import { Trash2 } from "lucide-react"
 import { formatDateTime } from "@/lib/utils"
 
 export interface PendingExchange {
@@ -68,6 +70,7 @@ export interface PendingExchange {
 interface Props {
   pending: PendingExchange[]
   counterparties: CounterpartyOption[]
+  isAdmin?: boolean
 }
 
 // Gün hesabı — createdAt'ten bugüne
@@ -123,7 +126,7 @@ function groupExchanges(items: PendingExchange[]): PendingGroup[] {
   return Array.from(map.values()).sort((a, b) => b.oldestDays - a.oldestDays)
 }
 
-export function PendingList({ pending, counterparties }: Props) {
+export function PendingList({ pending, counterparties, isAdmin = false }: Props) {
   const [exporting, startExport] = useTransition()
   const [counterpartyFilter, setCounterpartyFilter] = useState<string>("all")
   const [search, setSearch] = useState("")
@@ -423,6 +426,7 @@ export function PendingList({ pending, counterparties }: Props) {
               selectedIds={selectedReceived}
               onToggleItem={toggleReceived}
               onToggleGroup={() => toggleGroupSelection(group, false)}
+              isAdmin={isAdmin}
             />
           ))}
         </TabsContent>
@@ -655,11 +659,13 @@ function PendingGroupCard({
   selectedIds,
   onToggleItem,
   onToggleGroup,
+  isAdmin = false,
 }: {
   group: PendingGroup
   selectedIds: Set<number>
   onToggleItem: (id: number) => void
   onToggleGroup: () => void
+  isAdmin?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const isReceived = group.direction === "RECEIVED"
@@ -777,6 +783,7 @@ function PendingGroupCard({
                 exchange={ex}
                 selected={selectedIds.has(ex.id)}
                 onToggleSelect={() => onToggleItem(ex.id)}
+                isAdmin={isAdmin}
               />
             ))}
           </div>
@@ -790,13 +797,16 @@ function PendingItemRow({
   exchange: ex,
   selected,
   onToggleSelect,
+  isAdmin = false,
 }: {
   exchange: PendingExchange
   selected: boolean
   onToggleSelect: () => void
+  isAdmin?: boolean
 }) {
   const [completing, startComplete] = useTransition()
   const [cancelling, startCancel] = useTransition()
+  const [deleting, startDelete] = useTransition()
   const [diffDialogOpen, setDiffDialogOpen] = useState(false)
   const confirmDialog = useConfirm()
 
@@ -831,6 +841,25 @@ function PendingItemRow({
         return
       }
       toast.success("Takas iptal edildi")
+    })
+  }
+
+  async function runDelete() {
+    const ok = await confirmDialog({
+      title: "Takas TAMAMEN silinecek",
+      description:
+        "⚠ Bu işlem geri alınamaz. Bekleyense önce iptal edilir (stok geri alınır), sonra DB'den silinir. Stok hareket audit kayıtları kalır.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
+    startDelete(async () => {
+      const result = await deleteExchangeAction(ex.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Takas silindi")
     })
   }
 
@@ -936,12 +965,25 @@ function PendingItemRow({
           size="sm"
           variant="ghost"
           onClick={runCancel}
-          disabled={completing || cancelling}
+          disabled={completing || cancelling || deleting}
           className="gap-1.5 h-7 text-xs text-muted-foreground hover:text-destructive ml-auto"
         >
           <XCircle className="h-3 w-3" />
           İptal
         </Button>
+        {isAdmin && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={runDelete}
+            disabled={completing || cancelling || deleting}
+            className="gap-1.5 h-7 text-xs text-destructive hover:bg-destructive/10"
+            title="Admin: takas DB'den tamamen silinir"
+          >
+            <Trash2 className="h-3 w-3" />
+            Sil
+          </Button>
+        )}
       </div>
 
       {scenario === "C" && (
