@@ -86,7 +86,7 @@ export default async function KomisyonTarifeleriPage({ searchParams }: PageProps
     <div className="space-y-4">
       <PageHeader
         title="Komisyon Tarifeleri"
-        description="Trendyol haftalık komisyon tarifelerini yükle ve kâr-aware fiyat seçimi yap"
+        description="Trendyol haftalık komisyon Excel'ini yükle → sistem alışına göre kâr hesaplar → kademe seçip Trendyol'a aynı formatta indir."
       />
 
       <TariffFlow

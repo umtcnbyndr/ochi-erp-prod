@@ -1,8 +1,11 @@
 /**
- * Trendyol Komisyon Tarifesi — seçilen kademelere göre Excel export.
+ * Trendyol Komisyon Tarifesi — Excel export.
  *
- * Output: aynı Excel formatı + "YENİ TSF (FİYAT GÜNCELLE)" kolonu doldurulmuş
- *         + "Tarife Sonuna Kadar Uygula" Hayır/Evet
+ * Davranış: Yüklenen Excel'in TÜM satırları aynı kolon sırasıyla geri yazılır.
+ *   - Kullanıcının seçtiği kademeler için "YENİ TSF (FİYAT GÜNCELLE)" doldurulur.
+ *   - Seçilmemiş satırlarda bu kolon BOŞ → Trendyol mevcut fiyatı korur.
+ *
+ * Trendyol bu dosyayı yüklemek için fiyat güncelleme alanını okur.
  */
 import { NextRequest, NextResponse } from "next/server"
 import * as XLSX from "xlsx"
@@ -24,15 +27,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Upload bulunamadı" }, { status: 404 })
   }
 
+  // TÜM tarife satırları (sadece seçili olanlar değil)
   const tariffs = await prisma.commissionTariff.findMany({
-    where: {
-      uploadId,
-      selectedTier: { not: null },
-      selectedPrice: { not: null },
-    },
+    where: { uploadId },
+    orderBy: { id: "asc" },
   })
 
-  // Trendyol Excel formatı (aynı kolon başlıkları)
+  // Trendyol Excel formatı — orijinal kolon sırası
   const data: (string | number | null)[][] = [
     [
       "ÜRÜN İSMİ",
@@ -57,17 +58,38 @@ export async function GET(req: NextRequest) {
       "GÜNCEL KOMİSYON",
       "GÜNCEL TSF",
       "YENİ TSF (FİYAT GÜNCELLE)",
+      "Hesaplanan Komisyon",
       "Tarife Sonuna Kadar Uygula",
+      "EXTERNAL ID",
       "TARİFE GRUBU",
     ],
   ]
 
   for (const t of tariffs) {
+    // rawJson'dan EXTERNAL ID ve BEDEN gibi alanları geri al
+    const raw = (t.rawJson ?? {}) as Record<string, unknown>
+    const beden = raw["BEDEN"] != null ? String(raw["BEDEN"]) : null
+    const externalId = raw["EXTERNAL ID"] != null ? String(raw["EXTERNAL ID"]) : null
+
+    const yeniTsf = t.selectedPrice ? Number(t.selectedPrice) : null
+    // Hesaplanan Komisyon: yeni TSF varsa kademedeki komisyon yüzdesi × yeni TSF
+    let hesaplananKomisyon: number | null = null
+    if (yeniTsf !== null && t.selectedTier) {
+      const pct =
+        t.selectedTier === 1 ? t.tier1CommissionPct
+        : t.selectedTier === 2 ? t.tier2CommissionPct
+        : t.selectedTier === 3 ? t.tier3CommissionPct
+        : t.tier4CommissionPct
+      if (pct) {
+        hesaplananKomisyon = Number((yeniTsf * Number(pct) / 100).toFixed(2))
+      }
+    }
+
     data.push([
       t.productName,
       t.barcode,
       t.satıcıStokKodu ?? null,
-      null,
+      beden,
       t.modelKodu ?? null,
       t.category ?? null,
       t.brand ?? null,
@@ -85,8 +107,10 @@ export async function GET(req: NextRequest) {
       t.baseCommissionPrice ? Number(t.baseCommissionPrice) : null,
       t.currentCommissionPct ? Number(t.currentCommissionPct) : null,
       t.trendyolPrice ? Number(t.trendyolPrice) : null,
-      t.selectedPrice ? Number(t.selectedPrice) : null, // YENİ TSF — kullanıcı seçimi
+      yeniTsf, // ← Kullanıcı seçimi (sadece seçilenlerde dolu)
+      hesaplananKomisyon,
       t.applyToEnd ? "Evet" : "Hayır",
+      externalId,
       upload.tarifeGrubu ?? null,
     ])
   }
@@ -96,7 +120,7 @@ export async function GET(req: NextRequest) {
     { wch: 50 }, { wch: 16 }, { wch: 16 }, { wch: 8 }, { wch: 16 }, { wch: 18 }, { wch: 18 },
     { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
     { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 8 }, { wch: 12 },
-    { wch: 14 }, { wch: 14 }, { wch: 30 },
+    { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 30 },
   ]
 
   const wb = XLSX.utils.book_new()
@@ -105,7 +129,7 @@ export async function GET(req: NextRequest) {
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" })
 
   const fromDate = upload.effectiveFrom.toISOString().slice(0, 10)
-  const filename = `komisyon-tarifesi-secimleri-${upload.marketplace}-${fromDate}.xlsx`
+  const filename = `komisyon-tarifesi-${upload.marketplace}-${fromDate}.xlsx`
 
   return new NextResponse(new Uint8Array(buffer), {
     status: 200,

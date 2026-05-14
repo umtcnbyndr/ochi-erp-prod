@@ -290,11 +290,18 @@ function UploadCard({
             <Upload className="h-3.5 w-3.5 mr-1" />
             Komisyon Tarifesi Excel Yükle
           </Button>
-          {activeUpload && selectedCount > 0 && (
-            <Button size="sm" variant="default" className="bg-emerald-600 hover:bg-emerald-700" asChild>
+          {activeUpload && (
+            <Button
+              size="sm"
+              variant="default"
+              className={selectedCount > 0 ? "bg-emerald-600 hover:bg-emerald-700" : ""}
+              asChild
+            >
               <a href={exportUrl} download>
                 <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />
-                Seçilenleri İndir ({selectedCount})
+                {selectedCount > 0
+                  ? `Trendyol Excel İndir (${selectedCount} fiyat güncellenecek)`
+                  : "Trendyol Excel İndir"}
               </a>
             </Button>
           )}

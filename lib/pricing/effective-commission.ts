@@ -367,11 +367,16 @@ export function calculateWithEffectiveCommission(input: {
  *   - m: "Marketplace"
  */
 export const COMMISSION_TARIFF_JOIN_SQL = `
-  LEFT JOIN "CommissionTariff" ct
-    ON ct."productId" = i."productId"
-    AND ct.marketplace = m.name
-    AND ct."effectiveFrom" <= o."serviceCreatedAt"
-    AND ct."effectiveTo" >= o."serviceCreatedAt"
+  LEFT JOIN LATERAL (
+    SELECT *
+    FROM "CommissionTariff" ct_inner
+    WHERE ct_inner."productId" = i."productId"
+      AND ct_inner.marketplace = m.name
+      AND ct_inner."effectiveFrom" <= o."serviceCreatedAt"
+      AND ct_inner."effectiveTo" >= o."serviceCreatedAt"
+    ORDER BY ct_inner."effectiveFrom" DESC
+    LIMIT 1
+  ) ct ON true
 `
 
 /**

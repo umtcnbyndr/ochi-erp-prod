@@ -94,28 +94,15 @@ export async function analyzeTariffs(
 ): Promise<{ rows: TariffRowAnalyzed[]; activeUpload: { id: number; effectiveFrom: Date; effectiveTo: Date; matchedCount: number; rowCount: number } | null }> {
   const marketplace = filter.marketplace ?? "Trendyol"
 
-  // Aktif veya seçili upload
+  // Tek doğru kaynak: en son yüklenen tarife (import zaten eski upload'ları siliyor)
   let upload
   if (filter.uploadId) {
     upload = await prisma.commissionTariffUpload.findUnique({ where: { id: filter.uploadId } })
   } else {
-    // Şu an geçerli olan tarifeyi bul (effectiveFrom <= now <= effectiveTo)
-    const now = new Date()
     upload = await prisma.commissionTariffUpload.findFirst({
-      where: {
-        marketplace,
-        effectiveFrom: { lte: now },
-        effectiveTo: { gte: now },
-      },
-      orderBy: { effectiveFrom: "desc" },
+      where: { marketplace },
+      orderBy: { uploadedAt: "desc" },
     })
-    // Yoksa en son yüklenen
-    if (!upload) {
-      upload = await prisma.commissionTariffUpload.findFirst({
-        where: { marketplace },
-        orderBy: { effectiveFrom: "desc" },
-      })
-    }
   }
 
   if (!upload) return { rows: [], activeUpload: null }

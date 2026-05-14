@@ -98,45 +98,14 @@ export async function importCommissionTariff(
   const rows = XLSX.utils.sheet_to_json<TariffExcelRow>(sheet, { defval: null })
   if (rows.length === 0) throw new Error("Excel boş")
 
-  // Önceki snapshot var mı? (override + selection preservation için)
-  const existing = await prisma.commissionTariffUpload.findUnique({
-    where: {
-      marketplace_effectiveFrom: {
-        marketplace: input.marketplace,
-        effectiveFrom: input.effectiveFrom,
-      },
-    },
-    include: {
-      tariffs: {
-        select: {
-          barcode: true,
-          selectedTier: true,
-          selectedPrice: true,
-          applyToEnd: true,
-          selectedAt: true,
-          selectedBy: true,
-        },
-      },
-    },
+  // KARAR: Yeni yükleme = tek doğru kaynak. Aynı marketplace için TÜM eski
+  // upload'lar silinir, eski seçimler hatırlanmaz. Hayalet ürünleri ve overlap
+  // bug'larını ortadan kaldırır.
+  const oldUploads = await prisma.commissionTariffUpload.findMany({
+    where: { marketplace: input.marketplace },
+    select: { id: true },
   })
-
-  const previousSelections = new Map<
-    string,
-    { tier: number; price: Prisma.Decimal; applyToEnd: boolean; at: Date; by: string | null }
-  >()
-  if (existing) {
-    for (const t of existing.tariffs) {
-      if (t.selectedTier && t.selectedPrice) {
-        previousSelections.set(t.barcode, {
-          tier: t.selectedTier,
-          price: t.selectedPrice,
-          applyToEnd: t.applyToEnd,
-          at: t.selectedAt ?? new Date(),
-          by: t.selectedBy,
-        })
-      }
-    }
-  }
+  const oldUploadIds = oldUploads.map((u) => u.id)
 
   // Tüm Excel barkodları
   const barcodes = rows
@@ -192,8 +161,6 @@ export async function importCommissionTariff(
 
     if (productId) matchedCount++
 
-    const previousSel = previousSelections.get(barcode)
-
     records.push({
       marketplace: input.marketplace,
       effectiveFrom: input.effectiveFrom,
@@ -220,21 +187,24 @@ export async function importCommissionTariff(
       tier4UstLimit: toDecimal(row["4.Fiyat Üst Limiti"])?.toFixed(2) ?? null,
       tier4CommissionPct: toDecimal(row["4.KOMİSYON"])?.toFixed(2) ?? null,
       productId,
-      // Önceki seçimleri koru
-      selectedTier: previousSel?.tier ?? null,
-      selectedPrice: previousSel?.price ?? null,
-      applyToEnd: previousSel?.applyToEnd ?? false,
-      selectedAt: previousSel?.at ?? null,
-      selectedBy: previousSel?.by ?? null,
+      // Yeni yüklemede seçim hatırlanmaz — sıfırdan başla
+      selectedTier: null,
+      selectedPrice: null,
+      applyToEnd: false,
+      selectedAt: null,
+      selectedBy: null,
       rawJson: row as Prisma.InputJsonValue,
     })
   }
 
-  // Tek transaction
+  // Tek transaction — tüm eski upload'ları sil, yeniyi yarat
   const uploadId = await prisma.$transaction(
     async (tx) => {
-      if (existing) {
-        await tx.commissionTariffUpload.delete({ where: { id: existing.id } })
+      if (oldUploadIds.length > 0) {
+        // Cascade: CommissionTariff'ler de silinecek (onDelete: Cascade)
+        await tx.commissionTariffUpload.deleteMany({
+          where: { id: { in: oldUploadIds } },
+        })
       }
       const upload = await tx.commissionTariffUpload.create({
         data: {
@@ -270,7 +240,7 @@ export async function importCommissionTariff(
     matchedCount,
     unmatchedCount: rows.length - matchedCount,
     durationMs: Date.now() - start,
-    replaced: existing != null,
+    replaced: oldUploadIds.length > 0,
   }
 }
 
