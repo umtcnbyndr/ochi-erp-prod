@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import { Plus, Trash2, Save, Star, StarOff, Loader2, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -62,6 +63,7 @@ export function ListingsSection({ productId }: { productId: number }) {
     shareStock: true,
   })
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
   async function reload() {
     setLoading(true)
@@ -131,9 +133,15 @@ export function ListingsSection({ productId }: { productId: number }) {
     })
   }
 
-  function deleteRow(idx: number) {
+  async function deleteRow(idx: number) {
     const r = rows[idx]
-    if (!confirm(`"${r.marketplaceName}" listing'ini silmek istediğine emin misin?`)) return
+    const ok = await confirmDialog({
+      title: `"${r.marketplaceName}" listing'i silinecek`,
+      description: "Bu işlem geri alınamaz.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const res = await deleteProductListingAction({ id: r.id })
       if (res.success) {

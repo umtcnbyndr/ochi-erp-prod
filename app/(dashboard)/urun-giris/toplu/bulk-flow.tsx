@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import {
   Upload,
   Loader2,
@@ -51,6 +52,7 @@ export function BulkEntryFlow({ counterparties }: { counterparties: Counterparty
   const [pasted, setPasted] = useState("")
   const [preview, setPreview] = useState<BulkPreviewResult | null>(null)
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
   // Header
   const [source, setSource] = useState<"PURCHASE" | "RETURN">("PURCHASE")
@@ -165,19 +167,17 @@ export function BulkEntryFlow({ counterparties }: { counterparties: Counterparty
     })
   }
 
-  function onSave() {
+  async function onSave() {
     if (!preview || preview.matched.length === 0) {
       toast.error("Eşleşen satır yok")
       return
     }
-    if (
-      !confirm(
-        `${preview.matched.length} ürün için stok girişi yapılacak. Devam?\n\n` +
-          `Toplam adet: ${preview.matched.reduce((s, r) => s + r.quantity, 0)}\n` +
-          `Bulunamayan ${preview.missed.length} satır atlanır.`,
-      )
-    )
-      return
+    const ok = await confirmDialog({
+      title: `${preview.matched.length} ürün için stok girişi`,
+      description: `Toplam adet: ${preview.matched.reduce((s, r) => s + r.quantity, 0)}. Bulunamayan ${preview.missed.length} satır atlanır.`,
+      confirmText: "Kaydet",
+    })
+    if (!ok) return
     startTransition(async () => {
       const res = await executeBulkEntryAction(preview.matched, {
         source,

@@ -13,6 +13,7 @@ import {
   PackagePlus,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -78,6 +79,7 @@ export function PriceListFlow({ brandId, brandName, currentList, latestUpload, c
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const confirmDialog = useConfirm()
 
   // Preview state
   const [preview, setPreview] = useState<PriceListPreview | null>(null)
@@ -121,18 +123,15 @@ export function PriceListFlow({ brandId, brandName, currentList, latestUpload, c
     })
   }
 
-  function handleApply() {
+  async function handleApply() {
     if (!preview) return
     const matchedCount = preview.rows.filter((r) => r.status === "matched").length
-    if (
-      !confirm(
-        `${matchedCount} ürün için liste fiyatı kaydedilecek (${
-          isVatIncluded ? "KDV dahil" : "KDV hariç"
-        }). Devam?`
-      )
-    )
-      return
-
+    const ok = await confirmDialog({
+      title: `${matchedCount} ürün için liste fiyatı kaydedilecek`,
+      description: isVatIncluded ? "KDV dahil olarak yazılacak." : "KDV hariç olarak yazılacak.",
+      confirmText: "Kaydet",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await applyPriceListAction(brandId, filename, preview.rows, isVatIncluded)
       if (!result.success) {
@@ -146,14 +145,14 @@ export function PriceListFlow({ brandId, brandName, currentList, latestUpload, c
     })
   }
 
-  function handleDeleteAll() {
-    if (
-      !confirm(
-        `${brandName} markasının TÜM liste fiyatları silinecek (${currentList.length} ürün). Emin misiniz?`
-      )
-    )
-      return
-
+  async function handleDeleteAll() {
+    const ok = await confirmDialog({
+      title: `${brandName} markasının TÜM liste fiyatları silinecek`,
+      description: `${currentList.length} ürünün liste fiyatı silinir. Bu işlem geri alınamaz.`,
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await deleteBrandPriceListAction(brandId)
       if (!result.success) {
@@ -194,7 +193,7 @@ export function PriceListFlow({ brandId, brandName, currentList, latestUpload, c
 
   const selectedCategory = categories.find((c) => c.id === Number(bulkCategoryId))
 
-  function handleCreateProducts() {
+  async function handleCreateProducts() {
     if (selectedUnmatched.size === 0) return
     if (!bulkCategoryId) {
       toast.error("Kategori seçin")
@@ -216,13 +215,12 @@ export function PriceListFlow({ brandId, brandName, currentList, latestUpload, c
         vatRate: vat,
       }))
 
-    if (
-      !confirm(
-        `${items.length} yeni ürün oluşturulacak ve liste fiyatları kaydedilecek. Devam?`
-      )
-    )
-      return
-
+    const ok = await confirmDialog({
+      title: `${items.length} yeni ürün oluşturulacak`,
+      description: "Liste fiyatları da otomatik kaydedilir.",
+      confirmText: "Oluştur",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await createProductsFromUnmatchedAction(brandId, items, isVatIncluded)
       if (!result.success) {

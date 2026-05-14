@@ -4,6 +4,7 @@ import { useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Undo2, GitMerge } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -35,13 +36,18 @@ interface Props {
 
 export function MergeHistorySection({ history }: Props) {
   const router = useRouter()
+  const confirmDialog = useConfirm()
   const [pending, startTransition] = useTransition()
 
   if (history.length === 0) return null
 
-  function handleRevert(id: number, name: string) {
-    if (!confirm(`"${name}" birleştirmesi geri alınacak. Ürün tekrar oluşturulacak ve stoklar düşülecek. Devam?`)) return
-
+  async function handleRevert(id: number, name: string) {
+    const ok = await confirmDialog({
+      title: `"${name}" birleştirmesi geri alınacak`,
+      description: "Ürün tekrar oluşturulacak ve stoklar düşülecek.",
+      confirmText: "Geri al",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await revertMerge(id)
       if (result.success) {

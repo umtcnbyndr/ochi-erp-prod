@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import Link from "next/link"
 import { AlertTriangle, Trash2, Loader2, ArrowLeft, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -24,24 +25,20 @@ export function ResetFlow({ stats }: { stats: Stats }) {
   const [confirmText, setConfirmText] = useState("")
   const [pending, startTransition] = useTransition()
   const [report, setReport] = useState<ResetReportClient | null>(null)
+  const confirmDialog = useConfirm()
 
-  function onReset() {
+  async function onReset() {
     if (confirmText !== CONFIRM_PHRASE) {
       toast.error(`Onay metnini "${CONFIRM_PHRASE}" olarak yazmanız gerekiyor`)
       return
     }
-    if (
-      !confirm(
-        `SON UYARI:\n\n` +
-          `${stats.stockMovementCount} stok hareketi silinecek\n` +
-          `${stats.entrySessionCount} mal kabul seansı silinecek\n` +
-          `${stats.priceHistoryCount} alış fiyatı geçmişi silinecek\n` +
-          `${stats.productCount} ürünün stok ve alış değerleri sıfırlanacak\n\n` +
-          `BU İŞLEM GERİ ALINAMAZ.\nDevam etmek istiyor musun?`,
-      )
-    ) {
-      return
-    }
+    const ok = await confirmDialog({
+      title: "SON UYARI: Sistem sıfırlanacak",
+      description: `${stats.stockMovementCount} stok hareketi, ${stats.entrySessionCount} mal kabul seansı, ${stats.priceHistoryCount} alış fiyatı geçmişi silinecek. ${stats.productCount} ürünün stok + alış değerleri sıfırlanacak. BU İŞLEM GERİ ALINAMAZ.`,
+      confirmText: "Evet, sıfırla",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const res = await resetStockHistoryAction(confirmText)
       if (res.success) {

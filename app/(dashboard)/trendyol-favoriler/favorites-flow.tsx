@@ -4,6 +4,7 @@ import { useState, useTransition, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import {
   Upload,
   Loader2,
@@ -121,6 +122,7 @@ export function FavoritesFlow({ runs, topProducts, unmatched, filters }: Props) 
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
   const today = new Date().toISOString().slice(0, 10)
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400e3).toISOString().slice(0, 10)
@@ -250,8 +252,14 @@ export function FavoritesFlow({ runs, topProducts, unmatched, filters }: Props) 
     })
   }
 
-  function handleDeleteRun(runId: number) {
-    if (!confirm("Bu periyot ve tüm snapshot'ları silinecek. Emin misin?")) return
+  async function handleDeleteRun(runId: number) {
+    const ok = await confirmDialog({
+      title: "Periyot silinecek",
+      description: "Tüm snapshot'ları kalıcı olarak silinir.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await deleteFavoriteRunAction(runId)
       if (!result.success) {

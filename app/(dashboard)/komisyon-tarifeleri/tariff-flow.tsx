@@ -4,6 +4,7 @@ import { useState, useTransition, useRef, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import {
   Upload, Calendar, Filter, Search, FileSpreadsheet, Loader2,
   AlertTriangle, AlertCircle, Package, Building2, X, Check, ExternalLink,
@@ -506,9 +507,15 @@ function BulkActionBar({
 }) {
   const [pending, startTransition] = useTransition()
   const [showMenu, setShowMenu] = useState(false)
+  const confirmDialog = useConfirm()
 
-  const handleBulkFixed = (tier: 1 | 2 | 3 | 4) => {
-    if (!confirm(`${totalRows} filtrelenmiş ürün için Kademe ${tier} seçilecek. Devam?`)) return
+  const handleBulkFixed = async (tier: 1 | 2 | 3 | 4) => {
+    const ok = await confirmDialog({
+      title: `${totalRows} ürün için Kademe ${tier}`,
+      description: "Filtrelenmiş tüm ürünlerin kademesi değişecek.",
+      confirmText: "Uygula",
+    })
+    if (!ok) return
     startTransition(async () => {
       const res = await bulkSelectAction({ tariffIds: allTariffIds, mode: "FIXED_TIER", fixedTier: tier })
       if (res.success) toast.success(`${res.updated} ürün için kademe ${tier} seçildi`)
@@ -517,13 +524,18 @@ function BulkActionBar({
     setShowMenu(false)
   }
 
-  const handleApplyRecommended = () => {
+  const handleApplyRecommended = async () => {
     const eligible = visibleRows.filter((r) => r.recommendedTier !== null)
     if (eligible.length === 0) {
       toast.error("Önerilen kademe olan ürün yok")
       return
     }
-    if (!confirm(`Görünen ${eligible.length} ürün için sistemin önerdiği kademeler uygulanacak. Devam?`)) return
+    const ok = await confirmDialog({
+      title: `${eligible.length} ürün için önerilen kademe`,
+      description: "Sistemin önerdiği kademeler uygulanacak.",
+      confirmText: "Uygula",
+    })
+    if (!ok) return
     startTransition(async () => {
       const res = await bulkApplyRecommendedAction(
         eligible.map((r) => ({ tariffId: r.tariffId, tier: r.recommendedTier! })),
@@ -534,8 +546,14 @@ function BulkActionBar({
     setShowMenu(false)
   }
 
-  const handleClear = () => {
-    if (!confirm(`${totalRows} ürünün seçimleri temizlenecek. Devam?`)) return
+  const handleClear = async () => {
+    const ok = await confirmDialog({
+      title: `${totalRows} ürünün seçimi temizlenecek`,
+      description: "Devam etmek istiyor musun?",
+      confirmText: "Temizle",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const res = await bulkSelectAction({ tariffIds: allTariffIds, mode: "CLEAR" })
       if (res.success) toast.success("Tüm seçimler temizlendi")

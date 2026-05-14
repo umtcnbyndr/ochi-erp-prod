@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef, useMemo } from "react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import {
   RefreshCw,
   Upload,
@@ -80,6 +81,7 @@ export function MatchFlow({ brands, initialStatus }: Props) {
   const [status, setStatus] = useState<SnapshotStatus>(initialStatus)
   const [brandId, setBrandId] = useState<string>("_all")
   const [showOnly, setShowOnly] = useState<"ALL" | "MISSING" | "FUZZY" | "ORPHAN">("ALL")
+  const confirmDialog = useConfirm()
   const [match, setMatch] = useState<{
     rows: ThreeWayMatchRow[]
     summary: ThreeWayMatchSummary
@@ -266,22 +268,23 @@ export function MatchFlow({ brands, initialStatus }: Props) {
       toast.info("Threshold üstünde fuzzy eşleşme yok")
       return
     }
-    if (
-      !confirm(
-        `${items.length} fuzzy eşleşmeyi (>%${(threshold * 100).toFixed(0)} güveni olanları) toplu onayla?`
-      )
-    )
-      return
-    startBulkApprove(async () => {
-      const result = await bulkAttachBarcodesAction(items)
-      if (!result.success) {
-        toast.error("Toplu onay başarısız")
-        return
-      }
-      toast.success(
-        `${result.attached} eşleşme eklendi · ${result.skipped} atlandı`
-      )
-      handleBuild()
+    confirmDialog({
+      title: `${items.length} fuzzy eşleşme toplu onaylanacak`,
+      description: `Threshold > %${(threshold * 100).toFixed(0)}. Devam etmek istiyor musun?`,
+      confirmText: "Onayla",
+    }).then((ok) => {
+      if (!ok) return
+      startBulkApprove(async () => {
+        const result = await bulkAttachBarcodesAction(items)
+        if (!result.success) {
+          toast.error("Toplu onay başarısız")
+          return
+        }
+        toast.success(
+          `${result.attached} eşleşme eklendi · ${result.skipped} atlandı`
+        )
+        handleBuild()
+      })
     })
   }
 

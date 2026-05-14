@@ -3,6 +3,7 @@
 import { useTransition } from "react"
 import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import { Button } from "@/components/ui/button"
 import { refreshTrendyolListingsAction } from "./actions"
 
@@ -30,19 +31,16 @@ function formatRelative(date: Date): string {
 
 export function TrendyolSyncButton({ lastSync }: Props) {
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
-  function onClick() {
-    if (
-      !confirm(
-        "Trendyol senkronu başlatılsın mı?\n\n" +
-          "İki adım:\n" +
-          "1) Listing & stok tazele (TY kolonu)\n" +
-          "2) BuyBox & rakip fiyat tazele (BuyBox kolonu)\n\n" +
-          "~60-120 saniye sürebilir.",
-      )
-    ) {
-      return
-    }
+  async function onClick() {
+    const ok = await confirmDialog({
+      title: "Trendyol senkronu başlatılsın mı?",
+      description:
+        "İki adım: 1) Listing & stok tazele (TY kolonu), 2) BuyBox & rakip fiyat tazele. ~60-120 saniye sürebilir.",
+      confirmText: "Başlat",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await refreshTrendyolListingsAction()
       if (!result.success) {

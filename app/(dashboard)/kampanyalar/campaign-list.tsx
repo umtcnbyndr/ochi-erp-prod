@@ -4,6 +4,7 @@ import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import {
   Megaphone,
   CheckCircle2,
@@ -69,15 +70,17 @@ export function CampaignList({ campaigns, isAdmin }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>("active")
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
-  function handleDelete(e: React.MouseEvent, c: Campaign) {
+  async function handleDelete(e: React.MouseEvent, c: Campaign) {
     e.stopPropagation()
-    if (
-      !confirm(
-        `"${c.name}" kampanyası ve bağlı tüm kayıtlar (${c.saleCount} satış, ${c.productCount} ürün) kalıcı olarak silinecek.\n\nBu işlem GERİ ALINAMAZ.`,
-      )
-    )
-      return
+    const ok = await confirmDialog({
+      title: `"${c.name}" silinecek`,
+      description: `Kampanya ve bağlı tüm kayıtlar (${c.saleCount} satış, ${c.productCount} ürün) kalıcı olarak silinir. Bu işlem GERİ ALINAMAZ.`,
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await deleteCampaignAction(c.id)
       if (!result.success) {
