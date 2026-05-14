@@ -56,7 +56,7 @@ export function OrderItems({ orderId, items, canReceive, orderStatus }: Props) {
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
-          <Table className="text-[12px]">
+          <Table className="text-[12px] min-w-[700px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Ürün</TableHead>

@@ -7,6 +7,7 @@ import { Menu, PanelLeft, PanelLeftClose, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Sidebar } from "./sidebar"
+import { ThemeToggle } from "./theme-toggle"
 import { navGroups } from "./nav-items"
 import type { UserPermissionMap } from "@/lib/permissions"
 
@@ -146,6 +147,8 @@ export function Topbar({
           </span>
         ))}
       </nav>
+
+      <ThemeToggle />
     </header>
   )
 }

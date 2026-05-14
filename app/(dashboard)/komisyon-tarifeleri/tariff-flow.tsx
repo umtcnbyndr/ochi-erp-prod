@@ -132,7 +132,7 @@ export function TariffFlow(props: Props) {
   return (
     <div className="space-y-4">
       {/* Marketplace tabs */}
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1 border-b overflow-x-auto scrollbar-none">
         {["Trendyol", "Hepsiburada", "N11"].map((mp) => (
           <button
             key={mp}
@@ -161,7 +161,7 @@ export function TariffFlow(props: Props) {
       {props.activeUpload === null ? null : (
         <>
           {/* KPI'lar */}
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
             <Stat label="Toplam ürün" value={props.stats.totalRows} icon={Package} />
             <Stat label="Seçim yapıldı" value={props.stats.selectedCount} icon={Check} accent="text-emerald-600" />
             <Stat label={`≥%${props.targetProfit} kâr`} value={props.stats.profitableCount} icon={Sparkles} accent="text-emerald-600" />
@@ -267,8 +267,8 @@ function UploadCard({
   return (
     <Card>
       <CardContent className="pt-4 pb-4 space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3">
+          <Calendar className="hidden sm:block h-4 w-4 text-muted-foreground" />
           {activeUpload ? (
             <>
               <span className="text-sm">
@@ -386,11 +386,13 @@ function FilterAndSortBar({
     <Card>
       <CardContent className="pt-4 pb-3 space-y-2">
         {/* Sort + hedef kâr ayrı satır */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-muted-foreground">Sıralama:</span>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-muted-foreground shrink-0">Sıralama:</span>
+          </div>
           <Select value={sortBy} onValueChange={(v) => onChange("sortBy", v)}>
-            <SelectTrigger className="w-[220px] h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[220px] h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="stock_priority">⭐ Stok önceliği (önerilen)</SelectItem>
               <SelectItem value="main_stock">Ana stok (çoktan aza)</SelectItem>
@@ -402,7 +404,7 @@ function FilterAndSortBar({
             </SelectContent>
           </Select>
 
-          <span className="ml-4 text-muted-foreground">Hedef kâr (renklendirme eşiği):</span>
+          <span className="sm:ml-4 text-muted-foreground">Hedef kâr (renklendirme eşiği):</span>
           <form
             onSubmit={(e) => {
               e.preventDefault()
@@ -429,14 +431,14 @@ function FilterAndSortBar({
         </div>
 
         {/* Filtre satırı */}
-        <div className="flex flex-wrap items-center gap-2 text-xs border-t pt-2">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 text-xs border-t pt-2">
+          <Filter className="hidden sm:block h-3.5 w-3.5 text-muted-foreground" />
 
           <Select
             value={currentFilters.brandId ? String(currentFilters.brandId) : "all"}
             onValueChange={(v) => onChange("brand", v === "all" ? null : v)}
           >
-            <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue placeholder="Marka" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs"><SelectValue placeholder="Marka" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tüm markalar</SelectItem>
               {brands.map((b) => (<SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>))}
@@ -447,7 +449,7 @@ function FilterAndSortBar({
             value={currentFilters.categoryId ? String(currentFilters.categoryId) : "all"}
             onValueChange={(v) => onChange("category", v === "all" ? null : v)}
           >
-            <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue placeholder="Kategori" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs"><SelectValue placeholder="Kategori" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tüm kategoriler</SelectItem>
               {categories.map((c) => (<SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>))}
@@ -458,7 +460,7 @@ function FilterAndSortBar({
             value={currentFilters.stockStatus}
             onValueChange={(v) => onChange("stock", v)}
           >
-            <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[180px] h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Tüm stok durumları</SelectItem>
               <SelectItem value="WITH_MAIN">Ana stoğu olanlar</SelectItem>
@@ -563,21 +565,23 @@ function BulkActionBar({
   }
 
   return (
-    <div className="flex items-center gap-2 text-xs">
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
       <span className="text-muted-foreground">
         {totalRows} ürün filtreli{" "}
         {visibleRows.length < totalRows && `(${visibleRows.length} görünüyor)`}
       </span>
       <div className="flex-1" />
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={pending}
-        onClick={handleApplyRecommended}
-      >
-        <Star className="h-3.5 w-3.5 mr-1" />
-        Önerilen Kademeleri Uygula (görünen {visibleRows.filter((r) => r.recommendedTier).length})
-      </Button>
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={handleApplyRecommended}
+          className="whitespace-nowrap shrink-0"
+        >
+          <Star className="h-3.5 w-3.5 mr-1" />
+          Önerilen Kademeleri Uygula ({visibleRows.filter((r) => r.recommendedTier).length})
+        </Button>
       <div className="relative">
         <Button size="sm" variant="outline" onClick={() => setShowMenu(!showMenu)} disabled={pending}>
           {pending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
@@ -607,6 +611,7 @@ function BulkActionBar({
           </div>
         )}
       </div>
+      </div>
     </div>
   )
 }
@@ -621,12 +626,12 @@ function PaginationBar({
   onChange: (key: string, value: string | null, resetPage?: boolean) => void
 }) {
   return (
-    <div className="flex items-center justify-between text-xs">
-      <div className="text-muted-foreground">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+      <div className="text-muted-foreground text-center sm:text-left">
         {((page - 1) * pageSize + 1).toLocaleString("tr-TR")}–{Math.min(page * pageSize, totalRows).toLocaleString("tr-TR")} / {totalRows.toLocaleString("tr-TR")}
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-muted-foreground">Sayfa başı:</span>
+      <div className="flex items-center justify-center gap-2">
+        <span className="text-muted-foreground hidden sm:inline">Sayfa başı:</span>
         <Select value={String(pageSize)} onValueChange={(v) => onChange("pageSize", v)}>
           <SelectTrigger className="h-8 w-[80px] text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -676,7 +681,7 @@ function TariffTable({ rows, targetProfit }: { rows: TariffRow[]; targetProfit: 
     <Card>
       <CardContent className="pt-2 px-2 pb-2">
         <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
+          <table className="w-full text-xs border-collapse min-w-[900px]">
             <thead className="border-b sticky top-0 bg-card z-10">
               <tr>
                 <th className="px-2 py-2 text-left font-medium">Ürün</th>

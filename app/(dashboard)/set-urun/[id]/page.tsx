@@ -68,7 +68,7 @@ export default async function SetDetailPage({
   const isPriceStale = Math.abs(storedPrice - computedPrice) > 0.01
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-3">
         <Link
@@ -180,11 +180,11 @@ export default async function SetDetailPage({
 
       {/* Tabs */}
       <Tabs defaultValue="bilesenler" className="mt-2">
-        <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="bilesenler">Bileşenler</TabsTrigger>
-          <TabsTrigger value="marketplace">Marketplace Fiyatları</TabsTrigger>
-          <TabsTrigger value="genel">Genel</TabsTrigger>
-          <TabsTrigger value="gecmis">Fiyat Geçmişi</TabsTrigger>
+        <TabsList className="w-full sm:w-auto overflow-x-auto scrollbar-none">
+          <TabsTrigger value="bilesenler" className="shrink-0">Bileşenler</TabsTrigger>
+          <TabsTrigger value="marketplace" className="shrink-0">Marketplace</TabsTrigger>
+          <TabsTrigger value="genel" className="shrink-0">Genel</TabsTrigger>
+          <TabsTrigger value="gecmis" className="shrink-0">Fiyat Geçmişi</TabsTrigger>
         </TabsList>
 
         {/* --- BİLEŞENLER --- */}
@@ -197,8 +197,8 @@ export default async function SetDetailPage({
             </Card>
           ) : (
             <Card>
-              <CardContent className="p-0">
-                <Table>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table className="min-w-[700px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Ürün</TableHead>
@@ -340,7 +340,8 @@ export default async function SetDetailPage({
                   Henüz hesaplanmadı. Alış fiyatı oluşursa otomatik hesaplanır.
                 </p>
               ) : (
-                <Table>
+                <div className="overflow-x-auto">
+                <Table className="min-w-[500px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Marketplace</TableHead>
@@ -375,6 +376,7 @@ export default async function SetDetailPage({
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -525,8 +527,8 @@ export default async function SetDetailPage({
             </Card>
           ) : (
             <Card>
-              <CardContent className="p-0">
-                <Table>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table className="min-w-[550px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Tarih</TableHead>

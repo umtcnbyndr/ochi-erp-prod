@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { ThemeProvider } from "@/components/layout/theme-provider"
 
 export const metadata: Metadata = {
   title: "Ochi ERP",
@@ -28,10 +29,12 @@ export default function RootLayout({
   return (
     <html lang="tr" suppressHydrationWarning>
       <body className="min-h-dvh antialiased">
-        <TooltipProvider delayDuration={200}>
-          {children}
-        </TooltipProvider>
-        <Toaster />
+        <ThemeProvider>
+          <TooltipProvider delayDuration={200}>
+            {children}
+          </TooltipProvider>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   )

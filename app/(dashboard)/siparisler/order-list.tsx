@@ -183,7 +183,7 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
   return (
     <>
       {/* Tab filtreleri */}
-      <div className="flex gap-1 border-b pb-0">
+      <div className="flex gap-1 border-b pb-0 overflow-x-auto scrollbar-none -mx-3 px-3 sm:mx-0 sm:px-0">
         <TabButton
           active={filter === "all"}
           onClick={() => setFilter("all")}
@@ -228,9 +228,9 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
       ) : (
         <>
           {/* Normal sipariş filtre + tablo */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
             <Select value={brandFilter} onValueChange={setBrandFilter}>
-              <SelectTrigger className="w-[180px] h-9 text-sm">
+              <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">
                 <SelectValue placeholder="Tüm Markalar" />
               </SelectTrigger>
               <SelectContent>
@@ -248,7 +248,7 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-[150px] h-9 text-sm"
+                className="flex-1 sm:w-[150px] h-9 text-sm"
                 aria-label="Başlangıç tarihi"
               />
               <span className="text-muted-foreground text-sm">-</span>
@@ -256,7 +256,7 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-[150px] h-9 text-sm"
+                className="flex-1 sm:w-[150px] h-9 text-sm"
                 aria-label="Bitiş tarihi"
               />
             </div>
@@ -265,7 +265,7 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-9 text-xs text-muted-foreground"
+                className="h-9 text-xs text-muted-foreground self-start"
                 onClick={() => {
                   setBrandFilter("all")
                   setStartDate("")
@@ -278,13 +278,13 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
           </div>
 
           <Card>
-            <CardContent className="p-0">
-              <Table className="text-[13px]">
+            <CardContent className="p-0 overflow-x-auto">
+              <Table className="text-[13px] min-w-[800px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>No</TableHead>
                     <TableHead>Markalar</TableHead>
-                    <TableHead>Not</TableHead>
+                    <TableHead className="hidden sm:table-cell">Not</TableHead>
                     <TableHead className="text-center">Ürün</TableHead>
                     <TableHead className="text-center">Adet</TableHead>
                     <TableHead className="text-right">Tutar (Net)</TableHead>
@@ -355,7 +355,7 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
                               <span className="text-muted-foreground">--</span>
                             )}
                           </TableCell>
-                          <TableCell className="max-w-[150px] truncate text-[12px] text-muted-foreground">
+                          <TableCell className="max-w-[150px] truncate text-[12px] text-muted-foreground hidden sm:table-cell">
                             {order.note || (
                               <span className="text-muted-foreground">--</span>
                             )}
@@ -526,11 +526,11 @@ function SuggestionsView({
 
               {/* Ürün detayları */}
               {isExpanded && (
-                <div className="border-t">
-                  <Table className="text-[12px]">
+                <div className="border-t overflow-x-auto">
+                  <Table className="text-[12px] min-w-[700px]">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="pl-11">Ürün</TableHead>
+                        <TableHead className="pl-4 sm:pl-11">Ürün</TableHead>
                         <TableHead className="text-center">Ana Stok</TableHead>
                         <TableHead className="text-center">Ecz. Stok</TableHead>
                         <TableHead className="text-center">Günlük Satış</TableHead>
@@ -656,7 +656,7 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+      className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 ${
         active
           ? "border-primary text-primary"
           : "border-transparent text-muted-foreground hover:text-foreground"
