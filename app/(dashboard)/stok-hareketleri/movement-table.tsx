@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table"
 import { EmptyState } from "@/components/common/empty-state"
 import { useConfirm } from "@/components/common/confirm-provider"
-import { formatDate, formatCurrency } from "@/lib/utils"
+import { formatDateTime, formatCurrency } from "@/lib/utils"
 import type { MovementType } from "@prisma/client"
 import {
   deleteStockMovementAction,
@@ -224,7 +224,7 @@ export function StockMovementTable({ items, isAdmin = false }: Props) {
                     </TableCell>
                   )}
                   <TableCell className="text-sm tabular-nums whitespace-nowrap">
-                    {formatDate(item.createdAt)}
+                    {formatDateTime(item.createdAt)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={typeVariant(item.type)} className="text-xs">
@@ -308,7 +308,7 @@ export function StockMovementTable({ items, isAdmin = false }: Props) {
                 </Badge>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span className="tabular-nums">{formatDate(item.createdAt)}</span>
+                <span className="tabular-nums">{formatDateTime(item.createdAt)}</span>
                 <span className={qtyClass(item.type)}>
                   {signedQty(item.type, item.quantity)} adet
                 </span>

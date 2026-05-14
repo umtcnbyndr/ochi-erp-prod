@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { toast } from "sonner"
 import { useConfirm } from "@/components/common/confirm-provider"
 import {
@@ -14,8 +14,13 @@ import {
   Clock,
   ArrowDownToLine,
   ArrowUpFromLine,
+  ChevronDown,
+  ChevronRight,
+  Users,
+  Search,
+  X,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,6 +28,13 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -40,6 +52,7 @@ import {
   type CounterpartyOption,
   type ExchangeProductInfo,
 } from "./actions"
+import { formatDateTime } from "@/lib/utils"
 
 export interface PendingExchange {
   id: number
@@ -73,19 +86,76 @@ function waitingLabel(days: number): { label: string; urgent: boolean; warn: boo
   return { label: `${days} gün`, urgent: true, warn: true }
 }
 
-export function PendingList({ pending }: Props) {
+// Group by counterparty + same minute timestamp
+interface PendingGroup {
+  key: string
+  counterparty: PendingExchange["counterparty"]
+  direction: "GIVEN" | "RECEIVED"
+  createdAt: string
+  items: PendingExchange[]
+  totalQty: number
+  oldestDays: number
+}
+
+function groupExchanges(items: PendingExchange[]): PendingGroup[] {
+  const map = new Map<string, PendingGroup>()
+  for (const ex of items) {
+    // Aynı dakikada aynı cari + aynı yön — tek batch
+    const minuteBucket = Math.floor(new Date(ex.createdAt).getTime() / (60 * 1000))
+    const key = `${ex.counterparty.id}__${ex.direction}__${minuteBucket}`
+    const existing = map.get(key)
+    if (existing) {
+      existing.items.push(ex)
+      existing.totalQty += ex.quantity
+      const d = daysSince(ex.createdAt)
+      if (d > existing.oldestDays) existing.oldestDays = d
+    } else {
+      map.set(key, {
+        key,
+        counterparty: ex.counterparty,
+        direction: ex.direction,
+        createdAt: ex.createdAt,
+        items: [ex],
+        totalQty: ex.quantity,
+        oldestDays: daysSince(ex.createdAt),
+      })
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.oldestDays - a.oldestDays)
+}
+
+export function PendingList({ pending, counterparties }: Props) {
   const [exporting, startExport] = useTransition()
+  const [counterpartyFilter, setCounterpartyFilter] = useState<string>("all")
+  const [search, setSearch] = useState("")
+
+  // Filtre uygulanmış pending
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return pending.filter((ex) => {
+      if (counterpartyFilter !== "all" && String(ex.counterparty.id) !== counterpartyFilter) return false
+      if (q) {
+        const hay = (ex.product.name + " " + ex.product.primaryBarcode + " " + ex.counterparty.name).toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      return true
+    })
+  }, [pending, counterpartyFilter, search])
 
   // Giriş / Çıkış ayrımı
-  const receivedPending = pending.filter((ex) => ex.direction === "RECEIVED")
-  const givenPending = pending.filter((ex) => ex.direction === "GIVEN")
+  const receivedPending = filtered.filter((ex) => ex.direction === "RECEIVED")
+  const givenPending = filtered.filter((ex) => ex.direction === "GIVEN")
 
   // Eski bekleyenler - 7 gün ve üstü
-  const overdueCount = pending.filter((ex) => daysSince(ex.createdAt) >= 7).length
+  const overdueCount = filtered.filter((ex) => daysSince(ex.createdAt) >= 7).length
   const receivedOverdue = receivedPending.filter((ex) => daysSince(ex.createdAt) >= 7).length
   const givenOverdue = givenPending.filter((ex) => daysSince(ex.createdAt) >= 7).length
 
-  // Selection state — giriş ve çıkış ayrı
+  // Grupla
+  const receivedGroups = useMemo(() => groupExchanges(receivedPending), [receivedPending])
+  const givenGroups = useMemo(() => groupExchanges(givenPending), [givenPending])
+
+  // Selection state — exchange id bazlı
   const [selectedReceived, setSelectedReceived] = useState<Set<number>>(new Set())
   const [selectedGiven, setSelectedGiven] = useState<Set<number>>(new Set())
 
@@ -120,8 +190,27 @@ export function PendingList({ pending }: Props) {
     }
   }
 
+  function toggleGroupSelection(group: PendingGroup, isGiven: boolean) {
+    const ids = group.items.map((i) => i.id)
+    const setterIs = isGiven ? selectedGiven : selectedReceived
+    const allSelected = ids.every((id) => setterIs.has(id))
+    if (isGiven) {
+      setSelectedGiven((prev) => {
+        const next = new Set(prev)
+        ids.forEach((id) => (allSelected ? next.delete(id) : next.add(id)))
+        return next
+      })
+    } else {
+      setSelectedReceived((prev) => {
+        const next = new Set(prev)
+        ids.forEach((id) => (allSelected ? next.delete(id) : next.add(id)))
+        return next
+      })
+    }
+  }
+
   function handleExport(direction: "ALL" | "RECEIVED" | "GIVEN" = "ALL") {
-    if (pending.length === 0) return
+    if (filtered.length === 0) return
     startExport(async () => {
       const result = await exportPendingExchangesAction({ direction })
       if (!result.success) {
@@ -160,13 +249,19 @@ export function PendingList({ pending }: Props) {
     )
   }
 
+  // Aktif cari'leri filter dropdown için say
+  const activeCounterpartyIds = new Set(pending.map((p) => p.counterparty.id))
+  const availableCounterparties = counterparties.filter((c) => activeCounterpartyIds.has(c.id))
+
+  const hasFilter = counterpartyFilter !== "all" || search.trim() !== ""
+
   return (
     <div className="space-y-4">
       {/* Header — genel özet + Excel (hepsi) butonu */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 px-4 py-3">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-muted-foreground">
-            <span className="font-medium text-foreground tabular-nums">{pending.length}</span> bekleyen takas
+            <span className="font-medium text-foreground tabular-nums">{filtered.length}</span> bekleyen takas
             <span className="ml-1 text-xs">
               ({receivedPending.length} giriş, {givenPending.length} çıkış)
             </span>
@@ -192,6 +287,61 @@ export function PendingList({ pending }: Props) {
           {exporting ? "Hazırlanıyor…" : "Hepsini Excel'e İndir"}
         </Button>
       </div>
+
+      {/* Filter bar — cari + arama */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Ürün adı, barkod veya cari ara..."
+                className="pl-9 h-9 text-sm"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-2.5"
+                >
+                  <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                </button>
+              )}
+            </div>
+
+            <Select value={counterpartyFilter} onValueChange={setCounterpartyFilter}>
+              <SelectTrigger className="w-full sm:w-[220px] h-9 text-sm">
+                <Users className="h-3.5 w-3.5 mr-1.5" />
+                <SelectValue placeholder="Tüm Cariler" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tüm Cariler ({availableCounterparties.length})</SelectItem>
+                {availableCounterparties.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {hasFilter && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch("")
+                  setCounterpartyFilter("all")
+                }}
+                className="h-9 text-xs text-muted-foreground"
+              >
+                Temizle
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs
         defaultValue={receivedPending.length >= givenPending.length ? "giris" : "cikis"}
@@ -237,7 +387,7 @@ export function PendingList({ pending }: Props) {
             overdueCount={receivedOverdue}
             onExport={() => handleExport("RECEIVED")}
             exporting={exporting}
-            emptyMessage="Bekleyen giriş takası yok."
+            emptyMessage={hasFilter ? "Filtreye uyan giriş takası yok." : "Bekleyen giriş takası yok."}
             allSelected={
               receivedPending.length > 0 && selectedReceived.size === receivedPending.length
             }
@@ -250,12 +400,13 @@ export function PendingList({ pending }: Props) {
               onClear={() => setSelectedReceived(new Set())}
             />
           )}
-          {receivedPending.map((ex) => (
-            <PendingCard
-              key={ex.id}
-              exchange={ex}
-              selected={selectedReceived.has(ex.id)}
-              onToggleSelect={() => toggleReceived(ex.id)}
+          {receivedGroups.map((group) => (
+            <PendingGroupCard
+              key={group.key}
+              group={group}
+              selectedIds={selectedReceived}
+              onToggleItem={toggleReceived}
+              onToggleGroup={() => toggleGroupSelection(group, false)}
             />
           ))}
         </TabsContent>
@@ -267,7 +418,7 @@ export function PendingList({ pending }: Props) {
             overdueCount={givenOverdue}
             onExport={() => handleExport("GIVEN")}
             exporting={exporting}
-            emptyMessage="Bekleyen çıkış takası yok."
+            emptyMessage={hasFilter ? "Filtreye uyan çıkış takası yok." : "Bekleyen çıkış takası yok."}
             allSelected={givenPending.length > 0 && selectedGiven.size === givenPending.length}
             onToggleAll={toggleAllGiven}
           />
@@ -278,12 +429,13 @@ export function PendingList({ pending }: Props) {
               onClear={() => setSelectedGiven(new Set())}
             />
           )}
-          {givenPending.map((ex) => (
-            <PendingCard
-              key={ex.id}
-              exchange={ex}
-              selected={selectedGiven.has(ex.id)}
-              onToggleSelect={() => toggleGiven(ex.id)}
+          {givenGroups.map((group) => (
+            <PendingGroupCard
+              key={group.key}
+              group={group}
+              selectedIds={selectedGiven}
+              onToggleItem={toggleGiven}
+              onToggleGroup={() => toggleGroupSelection(group, true)}
             />
           ))}
         </TabsContent>
@@ -351,8 +503,6 @@ function SubSectionHeader({
 }
 
 // ==================== Batch Action Bar ====================
-// Seçim olduğunda üste sabitlenmiş şekilde çıkan toplu işlem bar'ı.
-
 function BatchActionBar({
   kind,
   selected,
@@ -365,7 +515,6 @@ function BatchActionBar({
   const [submitting, startSubmit] = useTransition()
   const confirmDialog = useConfirm()
 
-  // Çıkış (GIVEN) — PHARMACY / non-PHARMACY analiz
   const pharmacyItems = selected.filter((ex) => ex.counterparty.type === "PHARMACY")
   const nonPharmacyItems = selected.filter((ex) => ex.counterparty.type !== "PHARMACY")
   const allPharmacy = kind === "GIVEN" && pharmacyItems.length === selected.length
@@ -390,9 +539,7 @@ function BatchActionBar({
       }
       const { completed, errors } = result.data
       if (errors.length > 0) {
-        toast.warning(
-          `${completed} tamamlandı, ${errors.length} tanesi atlandı`
-        )
+        toast.warning(`${completed} tamamlandı, ${errors.length} tanesi atlandı`)
       } else {
         toast.success(`${completed} takas toplu olarak tamamlandı`)
       }
@@ -424,9 +571,7 @@ function BatchActionBar({
               className="gap-1.5"
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
-              {submitting
-                ? "İşleniyor…"
-                : `Tümünü Onayla (${selected.length})`}
+              {submitting ? "İşleniyor…" : `Tümünü Onayla (${selected.length})`}
             </Button>
           )}
 
@@ -436,17 +581,14 @@ function BatchActionBar({
               onClick={() =>
                 runBatch(
                   "COMPLETE",
-                  `${selected.length} takasın tümü için "fatura kesildi" olarak kapat? ` +
-                    `Takas stoktan düşülecek.`
+                  `${selected.length} takasın tümü için "fatura kesildi" olarak kapat? Takas stoktan düşülecek.`
                 )
               }
               disabled={submitting}
               className="gap-1.5"
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
-              {submitting
-                ? "İşleniyor…"
-                : `Tümünün Faturası Kesildi (${selected.length})`}
+              {submitting ? "İşleniyor…" : `Tümünün Faturası Kesildi (${selected.length})`}
             </Button>
           )}
 
@@ -456,26 +598,21 @@ function BatchActionBar({
               onClick={() =>
                 runBatch(
                   "RETURNED_SAME",
-                  `${selected.length} takasın tümü için "aynı ürün geri geldi" olarak işaretle? ` +
-                    `Takas stoktan çıkıp ana stoğa geri dönecek.`
+                  `${selected.length} takasın tümü için "aynı ürün geri geldi" olarak işaretle? Takas stoktan çıkıp ana stoğa geri dönecek.`
                 )
               }
               disabled={submitting}
               className="gap-1.5"
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
-              {submitting
-                ? "İşleniyor…"
-                : `Hepsinden Aynı Ürün Geldi (${selected.length})`}
+              {submitting ? "İşleniyor…" : `Hepsinden Aynı Ürün Geldi (${selected.length})`}
             </Button>
           )}
 
           {mixedGiven && (
             <div className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5 max-w-sm">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>
-                Eczane + dış cari karışık. Toplu tamamlama için ya hepsi Eczane ya hepsi dış cari olmalı.
-              </span>
+              <span>Eczane + dış cari karışık. Toplu tamamlama için ya hepsi Eczane ya hepsi dış cari olmalı.</span>
             </div>
           )}
 
@@ -495,7 +632,121 @@ function BatchActionBar({
   )
 }
 
-function PendingCard({
+// ==================== Grouped Card ====================
+
+function PendingGroupCard({
+  group,
+  selectedIds,
+  onToggleItem,
+  onToggleGroup,
+}: {
+  group: PendingGroup
+  selectedIds: Set<number>
+  onToggleItem: (id: number) => void
+  onToggleGroup: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const isReceived = group.direction === "RECEIVED"
+  const isPharmacy = group.counterparty.type === "PHARMACY"
+  const scenario = isReceived ? "A" : isPharmacy ? "B" : "C"
+  const waiting = waitingLabel(group.oldestDays)
+
+  const groupAllSelected = group.items.every((i) => selectedIds.has(i.id))
+  const groupPartial = !groupAllSelected && group.items.some((i) => selectedIds.has(i.id))
+
+  const scenarioLabel = {
+    A: "Giriş (A — eczaneden alındı)",
+    B: "Çıkış (B — müşteriye verildi)",
+    C: "Çıkış (C — dış cari)",
+  }[scenario]
+
+  const cardBorderClass =
+    groupAllSelected || groupPartial
+      ? "border-primary/60 ring-1 ring-primary/20 bg-primary/5"
+      : waiting.urgent
+        ? "border-destructive/50 shadow-sm shadow-destructive/10"
+        : waiting.warn
+          ? "border-amber-500/50"
+          : ""
+
+  return (
+    <Card className={cardBorderClass}>
+      <CardContent className="p-4 space-y-3">
+        {/* Header — tıklanabilir (expand/collapse) */}
+        <div className="flex items-start gap-3">
+          <div className="pt-0.5">
+            <Checkbox
+              checked={groupAllSelected ? true : groupPartial ? "indeterminate" : false}
+              onCheckedChange={onToggleGroup}
+              aria-label="Grup seç"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex-1 text-left flex items-start justify-between gap-2 flex-wrap min-w-0"
+          >
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                {isReceived ? (
+                  <Badge variant="secondary" className="gap-1">
+                    <Package className="h-3 w-3" />
+                    Alındı
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                    <RefreshCw className="h-3 w-3" />
+                    Verildi
+                  </Badge>
+                )}
+                <span className="text-sm font-semibold">{group.counterparty.name}</span>
+                <Badge variant="outline" className="text-[10px]">
+                  {group.items.length} kalem · {group.totalQty} adet
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className={
+                    "gap-1 text-[10px] " +
+                    (waiting.urgent
+                      ? "border-destructive/50 text-destructive"
+                      : waiting.warn
+                        ? "border-amber-500/50 text-amber-700 dark:text-amber-400"
+                        : "text-muted-foreground")
+                  }
+                >
+                  <Clock className="h-3 w-3" />
+                  {waiting.label}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {scenarioLabel} · {formatDateTime(group.createdAt)}
+              </p>
+            </div>
+            <div className="shrink-0 text-muted-foreground">
+              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </div>
+          </button>
+        </div>
+
+        {/* Expanded: kalemler */}
+        {expanded && (
+          <div className="space-y-2 pl-7 border-l-2 border-muted ml-2">
+            {group.items.map((ex) => (
+              <PendingItemRow
+                key={ex.id}
+                exchange={ex}
+                selected={selectedIds.has(ex.id)}
+                onToggleSelect={() => onToggleItem(ex.id)}
+              />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function PendingItemRow({
   exchange: ex,
   selected,
   onToggleSelect,
@@ -513,9 +764,6 @@ function PendingCard({
   const isPharmacy = ex.counterparty.type === "PHARMACY"
   const scenario = isReceived ? "A" : isPharmacy ? "B" : "C"
   const passThrough = ex.quantity - ex.quantityToStock
-
-  const days = daysSince(ex.createdAt)
-  const waiting = waitingLabel(days)
 
   function runComplete(mode: "COMPLETE" | "RETURNED_SAME") {
     startComplete(async () => {
@@ -546,178 +794,115 @@ function PendingCard({
     })
   }
 
-  const scenarioLabel = {
-    A: "Giriş (A — eczaneden alındı)",
-    B: "Çıkış (B — müşteriye verildi)",
-    C: "Çıkış (C — dış cari)",
-  }[scenario]
-
-  // Kart kenar rengi — eski ise kırmızı/sarı + seçili ise primary
-  const cardBorderClass = selected
-    ? "border-primary/60 ring-1 ring-primary/20 bg-primary/5"
-    : waiting.urgent
-    ? "border-destructive/50 shadow-sm shadow-destructive/10"
-    : waiting.warn
-    ? "border-amber-500/50"
-    : ""
-
   return (
-    <Card className={cardBorderClass}>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2 flex-wrap">
-          <div className="flex items-start gap-3 min-w-0 flex-1">
-            {/* Seçim checkbox'ı */}
-            <div className="pt-0.5">
-              <Checkbox
-                checked={selected}
-                onCheckedChange={onToggleSelect}
-                aria-label={`#${ex.id} seç`}
-              />
-            </div>
-            <div className="space-y-1 min-w-0 flex-1">
-            <CardTitle className="text-sm font-medium flex items-center gap-2 flex-wrap">
-              {isReceived ? (
-                <Badge variant="secondary" className="gap-1">
-                  <Package className="h-3 w-3" />
-                  Alındı
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
-                  <RefreshCw className="h-3 w-3" />
-                  Verildi
-                </Badge>
-              )}
-              <span>{ex.product.name}</span>
-              <span className="text-xs text-muted-foreground font-normal">
-                × <span className="tabular-nums font-semibold text-foreground">{ex.quantity}</span>
+    <div
+      className={`rounded-md border bg-background p-3 space-y-2 ${
+        selected ? "border-primary/60 bg-primary/5" : ""
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={onToggleSelect}
+          className="mt-0.5"
+          aria-label={`#${ex.id} seç`}
+        />
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium">{ex.product.name}</span>
+            <span className="text-xs text-muted-foreground">
+              × <span className="tabular-nums font-semibold text-foreground">{ex.quantity}</span>
+            </span>
+            <Badge variant="outline" className="text-[9px] tabular-nums">
+              #{ex.id}
+            </Badge>
+          </div>
+          <div className="text-[11px] text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
+            <span>
+              Barkod: <span className="text-foreground tabular-nums">{ex.product.primaryBarcode}</span>
+            </span>
+            <span>
+              Mevcut stok: <span className="text-foreground tabular-nums">{ex.product.mainStock}</span>
+            </span>
+            <span>
+              Takasta: <span className="text-foreground tabular-nums">{ex.product.exchangeStock}</span>
+            </span>
+            {isReceived && ex.quantityToStock > 0 && (
+              <span>
+                Stoğa: <span className="text-foreground tabular-nums">{ex.quantityToStock}</span>
+                {ex.unitPrice != null && ` · ₺${ex.unitPrice.toFixed(2)}/adet`}
               </span>
-              {/* Bekleme süresi badge */}
-              <Badge
-                variant="outline"
-                className={
-                  "gap-1 " +
-                  (waiting.urgent
-                    ? "border-destructive/50 text-destructive"
-                    : waiting.warn
-                    ? "border-amber-500/50 text-amber-700 dark:text-amber-400"
-                    : "text-muted-foreground")
-                }
-              >
-                <Clock className="h-3 w-3" />
-                {waiting.label}
-              </Badge>
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {scenarioLabel} · Cari: <span className="text-foreground">{ex.counterparty.name}</span> ·{" "}
-              {new Date(ex.createdAt).toLocaleString("tr-TR")}
-            </p>
-            </div>
+            )}
+            {isReceived && passThrough > 0 && (
+              <span>
+                Doğrudan satışa: <span className="text-foreground tabular-nums">{passThrough}</span>
+              </span>
+            )}
           </div>
-          <Badge variant="outline" className="tabular-nums">
-            #{ex.id}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0 space-y-3">
-        {waiting.urgent && (
-          <div className="rounded-md bg-destructive/10 text-destructive text-xs p-2 flex items-center gap-1.5">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            Bu takas 2 haftadan fazla bekliyor. Cariyi aramayı / hatırlatmayı düşün.
-          </div>
-        )}
-        {!waiting.urgent && waiting.warn && (
-          <div className="rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs p-2 flex items-center gap-1.5">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            7+ gündür bekliyor — takip etmeyi unutma.
-          </div>
-        )}
-
-        <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
-          <span>
-            Barkod: <span className="text-foreground tabular-nums">{ex.product.primaryBarcode}</span>
-          </span>
-          <span>
-            Mevcut stok: <span className="text-foreground tabular-nums">{ex.product.mainStock}</span>
-          </span>
-          <span>
-            Takasta: <span className="text-foreground tabular-nums">{ex.product.exchangeStock}</span>
-          </span>
-          {isReceived && ex.quantityToStock > 0 && (
-            <span>
-              Stoğa eklenen: <span className="text-foreground tabular-nums">{ex.quantityToStock}</span>
-              {ex.unitPrice != null && ` · ₺${ex.unitPrice.toFixed(2)}/adet`}
-            </span>
-          )}
-          {isReceived && passThrough > 0 && (
-            <span>
-              Doğrudan satışa: <span className="text-foreground tabular-nums">{passThrough}</span>
-            </span>
+          {ex.note && (
+            <p className="text-[11px] italic text-muted-foreground border-l-2 pl-2 py-0.5">{ex.note}</p>
           )}
         </div>
+      </div>
 
-        {ex.note && (
-          <p className="text-xs italic text-muted-foreground border-l-2 pl-2 py-0.5">{ex.note}</p>
-        )}
-
-        {/* Aksiyonlar */}
-        <div className="flex flex-wrap gap-2 pt-1">
-          {scenario === "A" && (
-            <Button
-              size="sm"
-              onClick={() => runComplete("COMPLETE")}
-              disabled={completing || cancelling}
-              className="gap-1.5"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Eczane Onayladı
-            </Button>
-          )}
-          {scenario === "B" && (
-            <Button
-              size="sm"
-              onClick={() => runComplete("COMPLETE")}
-              disabled={completing || cancelling}
-              className="gap-1.5"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Fatura Kesildi (Düş)
-            </Button>
-          )}
-          {scenario === "C" && (
-            <>
-              <Button
-                size="sm"
-                onClick={() => runComplete("RETURNED_SAME")}
-                disabled={completing || cancelling}
-                className="gap-1.5"
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Aynı Ürün Geldi
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setDiffDialogOpen(true)}
-                disabled={completing || cancelling}
-                className="gap-1.5"
-              >
-                <Repeat className="h-3.5 w-3.5" />
-                Farklı Ürünle Karşılık
-              </Button>
-            </>
-          )}
+      {/* Aksiyonlar */}
+      <div className="flex flex-wrap gap-1.5 pt-1">
+        {scenario === "A" && (
           <Button
             size="sm"
-            variant="ghost"
-            onClick={runCancel}
+            onClick={() => runComplete("COMPLETE")}
             disabled={completing || cancelling}
-            className="gap-1.5 text-muted-foreground hover:text-destructive ml-auto"
+            className="gap-1.5 h-7 text-xs"
           >
-            <XCircle className="h-3.5 w-3.5" />
-            İptal
+            <CheckCircle2 className="h-3 w-3" />
+            Eczane Onayladı
           </Button>
-        </div>
-      </CardContent>
+        )}
+        {scenario === "B" && (
+          <Button
+            size="sm"
+            onClick={() => runComplete("COMPLETE")}
+            disabled={completing || cancelling}
+            className="gap-1.5 h-7 text-xs"
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            Fatura Kesildi
+          </Button>
+        )}
+        {scenario === "C" && (
+          <>
+            <Button
+              size="sm"
+              onClick={() => runComplete("RETURNED_SAME")}
+              disabled={completing || cancelling}
+              className="gap-1.5 h-7 text-xs"
+            >
+              <CheckCircle2 className="h-3 w-3" />
+              Aynı Ürün Geldi
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDiffDialogOpen(true)}
+              disabled={completing || cancelling}
+              className="gap-1.5 h-7 text-xs"
+            >
+              <Repeat className="h-3 w-3" />
+              Farklı Ürünle Karşılık
+            </Button>
+          </>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={runCancel}
+          disabled={completing || cancelling}
+          className="gap-1.5 h-7 text-xs text-muted-foreground hover:text-destructive ml-auto"
+        >
+          <XCircle className="h-3 w-3" />
+          İptal
+        </Button>
+      </div>
 
       {scenario === "C" && (
         <DifferentReturnDialog
@@ -726,7 +911,7 @@ function PendingCard({
           exchange={ex}
         />
       )}
-    </Card>
+    </div>
   )
 }
 

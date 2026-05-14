@@ -3,6 +3,7 @@ import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ThemeProvider } from "@/components/layout/theme-provider"
+import { getUserTheme } from "./theme-action"
 
 export const metadata: Metadata = {
   title: "Ochi ERP",
@@ -21,15 +22,17 @@ export const viewport: Viewport = {
   userScalable: false,
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const initialTheme = await getUserTheme()
+
   return (
     <html lang="tr" suppressHydrationWarning>
       <body className="min-h-dvh antialiased">
-        <ThemeProvider>
+        <ThemeProvider initialTheme={initialTheme}>
           <TooltipProvider delayDuration={200}>
             {children}
           </TooltipProvider>

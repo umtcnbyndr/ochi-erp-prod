@@ -2,13 +2,20 @@
 
 import { ThemeProvider as NextThemesProvider } from "next-themes"
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
+interface ThemeProviderProps {
+  children: React.ReactNode
+  /** Server'dan gelen başlangıç teması — kullanıcı/cookie bazlı */
+  initialTheme?: "light" | "dark" | "system"
+}
+
+export function ThemeProvider({ children, initialTheme = "system" }: ThemeProviderProps) {
   return (
     <NextThemesProvider
       attribute="class"
-      defaultTheme="system"
+      defaultTheme={initialTheme}
       enableSystem
       disableTransitionOnChange
+      storageKey="ochi-theme-local"
     >
       {children}
     </NextThemesProvider>

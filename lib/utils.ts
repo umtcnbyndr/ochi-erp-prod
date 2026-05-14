@@ -54,3 +54,17 @@ export function formatDate(d: Date | string | null | undefined): string {
     day: "2-digit",
   }).format(date)
 }
+
+/** Tarih + saat (dd.MM.yyyy HH:mm) */
+export function formatDateTime(d: Date | string | null | undefined): string {
+  if (!d) return "—"
+  const date = typeof d === "string" ? new Date(d) : d
+  if (Number.isNaN(date.getTime())) return "—"
+  return new Intl.DateTimeFormat("tr-TR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)
+}

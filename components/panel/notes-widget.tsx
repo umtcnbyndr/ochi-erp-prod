@@ -76,7 +76,7 @@ export function NotesWidget({ notes }: Props) {
 
   return (
     <Card className="h-full">
-      <CardContent className="p-4 space-y-3 h-full flex flex-col">
+      <CardContent className="p-5 space-y-3 h-full flex flex-col">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <StickyNote className="h-4 w-4 text-yellow-500" />
