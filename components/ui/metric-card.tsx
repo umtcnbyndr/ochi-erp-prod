@@ -72,7 +72,7 @@ export function MetricCard({
   const content = (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-xl border bg-card p-4 shadow-sm transition-all",
+        "group relative overflow-hidden rounded-xl border bg-card p-5 shadow-sm transition-all",
         href && "hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 cursor-pointer",
         className,
       )}
@@ -98,13 +98,13 @@ export function MetricCard({
       </div>
 
       {/* Value */}
-      <p className="mt-3 text-3xl font-bold tracking-tight tabular-nums leading-none">
+      <p className="mt-4 text-3xl font-bold tracking-tight tabular-nums leading-none">
         {value}
       </p>
 
       {/* Footer: delta + subtitle */}
       {(delta || subtitle || statusDot?.label) && (
-        <div className="mt-2 flex items-center gap-1.5 text-[11px] tabular-nums">
+        <div className="mt-3 flex items-center gap-1.5 text-[11px] tabular-nums">
           {delta && (
             <span
               className={cn(

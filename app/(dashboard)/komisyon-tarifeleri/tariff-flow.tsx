@@ -208,12 +208,12 @@ export function TariffFlow(props: Props) {
 function Stat({ label, value, icon: Icon, accent }: { label: string; value: number; icon: typeof Package; accent?: string }) {
   return (
     <Card>
-      <CardContent className="p-3">
-        <div className="flex items-center justify-between">
+      <CardContent className="p-4 space-y-2">
+        <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] text-muted-foreground truncate">{label}</p>
-          <Icon className={`h-3 w-3 ${accent ?? "text-muted-foreground"}`} />
+          <Icon className={`h-3.5 w-3.5 shrink-0 ${accent ?? "text-muted-foreground"}`} />
         </div>
-        <p className={`mt-1 text-xl font-bold tabular-nums ${accent ?? ""}`}>{value}</p>
+        <p className={`text-xl font-bold tabular-nums ${accent ?? ""}`}>{value}</p>
       </CardContent>
     </Card>
   )

@@ -32,12 +32,12 @@ export default async function TrendyolFavorilerPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Yüklenen Periyot</p>
               <Database className="h-4 w-4 text-muted-foreground" />
             </div>
-            <p className="mt-1 text-2xl font-bold tabular-nums">
+            <p className="text-2xl font-bold tabular-nums">
               {stats.totalRuns}
             </p>
             <p className="text-[10px] text-muted-foreground">
@@ -46,24 +46,24 @@ export default async function TrendyolFavorilerPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Toplam Snapshot</p>
               <Heart className="h-4 w-4 text-pink-600" />
             </div>
-            <p className="mt-1 text-2xl font-bold tabular-nums">
+            <p className="text-2xl font-bold tabular-nums">
               {stats.totalSnapshots.toLocaleString("tr-TR")}
             </p>
             <p className="text-[10px] text-muted-foreground">ürün × periyot</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Köklülük Skorlu</p>
               <Trophy className="h-4 w-4 text-amber-600" />
             </div>
-            <p className="mt-1 text-2xl font-bold tabular-nums">
+            <p className="text-2xl font-bold tabular-nums">
               {stats.productsWithLifetime}
             </p>
             <p className="text-[10px] text-muted-foreground">
@@ -72,12 +72,12 @@ export default async function TrendyolFavorilerPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Son Yükleme</p>
               <AlertCircle className="h-4 w-4 text-muted-foreground" />
             </div>
-            <p className="mt-1 text-sm font-bold">
+            <p className="text-sm font-bold">
               {stats.lastRun ? formatDate(stats.lastRun.uploadedAt) : "Hiç yüklenmedi"}
             </p>
             <p className="text-[10px] text-muted-foreground truncate">

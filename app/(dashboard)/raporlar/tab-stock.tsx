@@ -195,16 +195,16 @@ function StatCard({
           : ""
   return (
     <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
+      <CardContent className="p-5 space-y-2">
+        <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">{label}</p>
-          <Icon className={`h-4 w-4 ${accentClass || "text-muted-foreground"}`} />
+          <Icon className={`h-4 w-4 shrink-0 ${accentClass || "text-muted-foreground"}`} />
         </div>
-        <p className={`mt-1 text-2xl font-bold tabular-nums ${accentClass}`}>
+        <p className={`text-2xl font-bold tabular-nums ${accentClass}`}>
           {value}
         </p>
         {subtitle && (
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{subtitle}</p>
+          <p className="text-[11px] text-muted-foreground">{subtitle}</p>
         )}
       </CardContent>
     </Card>
