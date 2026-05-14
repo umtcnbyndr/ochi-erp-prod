@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -63,6 +64,7 @@ const ROLE_LABELS: Record<string, { label: string; icon: typeof Shield; variant:
 
 export function UserList({ users, modules }: Props) {
   const router = useRouter()
+  const confirmDialog = useConfirm()
   const [pending, startTransition] = useTransition()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<UserRow | null>(null)
@@ -77,10 +79,14 @@ export function UserList({ users, modules }: Props) {
     setDialogOpen(true)
   }
 
-  function handleToggleActive(user: UserRow) {
+  async function handleToggleActive(user: UserRow) {
     const action = user.isActive ? "deaktif" : "aktif"
-    if (!confirm(`"${user.name ?? user.username}" kullanıcısını ${action} yapmak istiyor musunuz?`)) return
-
+    const ok = await confirmDialog({
+      title: `"${user.name ?? user.username}" ${action} yapılacak`,
+      description: "Devam etmek istiyor musun?",
+      confirmText: "Onayla",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await updateUserAction(user.id, { isActive: !user.isActive })
       if (result.success) {
@@ -92,9 +98,14 @@ export function UserList({ users, modules }: Props) {
     })
   }
 
-  function handleDelete(user: UserRow) {
-    if (!confirm(`"${user.name ?? user.username}" kullanıcısını silmek istiyor musunuz? Bu işlem geri alınamaz.`)) return
-
+  async function handleDelete(user: UserRow) {
+    const ok = await confirmDialog({
+      title: `"${user.name ?? user.username}" silinecek`,
+      description: "Bu işlem geri alınamaz.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await deleteUserAction(user.id)
       if (result.success) {

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import {
   CheckCircle2,
   XCircle,
@@ -362,6 +363,7 @@ function BatchActionBar({
   onClear: () => void
 }) {
   const [submitting, startSubmit] = useTransition()
+  const confirmDialog = useConfirm()
 
   // Çıkış (GIVEN) — PHARMACY / non-PHARMACY analiz
   const pharmacyItems = selected.filter((ex) => ex.counterparty.type === "PHARMACY")
@@ -370,8 +372,13 @@ function BatchActionBar({
   const allNonPharmacy = kind === "GIVEN" && nonPharmacyItems.length === selected.length
   const mixedGiven = kind === "GIVEN" && !allPharmacy && !allNonPharmacy
 
-  function runBatch(mode: "COMPLETE" | "RETURNED_SAME", confirmMsg: string) {
-    if (!confirm(confirmMsg)) return
+  async function runBatch(mode: "COMPLETE" | "RETURNED_SAME", confirmMsg: string) {
+    const ok = await confirmDialog({
+      title: "Toplu işlem onayı",
+      description: confirmMsg,
+      confirmText: "Onayla",
+    })
+    if (!ok) return
     startSubmit(async () => {
       const result = await completeExchangesBatchAction({
         exchangeIds: selected.map((ex) => ex.id),
@@ -500,6 +507,7 @@ function PendingCard({
   const [completing, startComplete] = useTransition()
   const [cancelling, startCancel] = useTransition()
   const [diffDialogOpen, setDiffDialogOpen] = useState(false)
+  const confirmDialog = useConfirm()
 
   const isReceived = ex.direction === "RECEIVED"
   const isPharmacy = ex.counterparty.type === "PHARMACY"
@@ -520,8 +528,14 @@ function PendingCard({
     })
   }
 
-  function runCancel() {
-    if (!confirm("Bu takası iptal etmek istediğinize emin misiniz? Stok hareketleri geri alınır.")) return
+  async function runCancel() {
+    const ok = await confirmDialog({
+      title: "Takas iptal edilecek",
+      description: "Stok hareketleri geri alınır. Bu işlem geri alınamaz.",
+      confirmText: "Evet, iptal et",
+      variant: "destructive",
+    })
+    if (!ok) return
     startCancel(async () => {
       const result = await cancelExchangeAction(ex.id)
       if (!result.success) {

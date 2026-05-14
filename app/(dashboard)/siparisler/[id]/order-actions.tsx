@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
+import { useConfirm } from "@/components/common/confirm-provider"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { buildOrderWorkbook, buildOrderFilename } from "@/lib/excel/order-export"
@@ -35,15 +36,16 @@ interface Props {
 
 export function OrderActions({ orderId, status, isAdmin }: Props) {
   const router = useRouter()
+  const confirmDialog = useConfirm()
   const [pending, startTransition] = useTransition()
 
-  function handleConfirm() {
-    if (
-      !confirm(
-        "Bu siparişi onaylıyorsun, satıcıya gönderildi olarak işaretlenecek. Devam?"
-      )
-    )
-      return
+  async function handleConfirm() {
+    const ok = await confirmDialog({
+      title: "Sipariş onaylanacak",
+      description: "Satıcıya gönderildi olarak işaretlenecek. Devam?",
+      confirmText: "Onayla",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await confirmOrderAction(orderId)
       if (result.success) {
@@ -55,8 +57,14 @@ export function OrderActions({ orderId, status, isAdmin }: Props) {
     })
   }
 
-  function handleCancel() {
-    if (!confirm("Bu siparişi iptal etmek istediğine emin misin?")) return
+  async function handleCancel() {
+    const ok = await confirmDialog({
+      title: "Sipariş iptal edilecek",
+      description: "Devam etmek istiyor musun?",
+      confirmText: "Evet, iptal et",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await cancelOrderAction(orderId)
       if (result.success) {
@@ -68,13 +76,14 @@ export function OrderActions({ orderId, status, isAdmin }: Props) {
     })
   }
 
-  function handleDelete() {
-    if (
-      !confirm(
-        "Bu taslak siparişi tamamen silmek istediğine emin misin? Bu işlem geri alınamaz."
-      )
-    )
-      return
+  async function handleDelete() {
+    const ok = await confirmDialog({
+      title: "Taslak sipariş silinecek",
+      description: "Bu işlem geri alınamaz.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await deleteOrderAction(orderId)
       if (result.success) {
@@ -86,13 +95,14 @@ export function OrderActions({ orderId, status, isAdmin }: Props) {
     })
   }
 
-  function handleClose() {
-    if (
-      !confirm(
-        "Eksik kalemler olsa bile siparişi kapatmak istiyor musun? Bakiyeler yeni siparişte uyarı olarak gösterilecek."
-      )
-    )
-      return
+  async function handleClose() {
+    const ok = await confirmDialog({
+      title: "Sipariş kapatılacak",
+      description:
+        "Eksik kalemler olsa bile sipariş kapatılır. Bakiyeler yeni siparişte uyarı olarak gösterilir.",
+      confirmText: "Evet, kapat",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await closeOrderAction(orderId)
       if (result.success) {
@@ -104,13 +114,14 @@ export function OrderActions({ orderId, status, isAdmin }: Props) {
     })
   }
 
-  function handleForceDelete() {
-    if (
-      !confirm(
-        "Bu siparişi kalıcı olarak silmek istiyor musun? Tüm kalemleri ile birlikte silinecek. Bu işlem geri alınamaz!"
-      )
-    )
-      return
+  async function handleForceDelete() {
+    const ok = await confirmDialog({
+      title: "Sipariş KALICI silinecek",
+      description: "Tüm kalemleri ile birlikte silinir. Bu işlem geri alınamaz.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const result = await forceDeleteOrderAction(orderId)
       if (result.success) {

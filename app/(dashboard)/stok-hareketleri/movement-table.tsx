@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { EmptyState } from "@/components/common/empty-state"
+import { useConfirm } from "@/components/common/confirm-provider"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import type { MovementType } from "@prisma/client"
 import {
@@ -81,6 +82,7 @@ function qtyClass(type: MovementType): string {
 export function StockMovementTable({ items, isAdmin = false }: Props) {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
   function toggle(id: number) {
     setSelected((prev) => {
@@ -95,15 +97,15 @@ export function StockMovementTable({ items, isAdmin = false }: Props) {
     else setSelected(new Set(items.map((i) => i.id)))
   }
 
-  function deleteOne(id: number) {
-    if (
-      !confirm(
-        "Bu stok hareketini silmek istediğine emin misin?\n\n" +
-          "⚠️ Stok adetleri OTOMATIK GÜNCELLENMEZ — sadece kayıt silinir.\n" +
-          "Audit izi kaybolur. Geri alınamaz.",
-      )
-    )
-      return
+  async function deleteOne(id: number) {
+    const ok = await confirmDialog({
+      title: "Stok hareketi silinecek",
+      description:
+        "⚠ Stok adetleri OTOMATİK GÜNCELLENMEZ — sadece kayıt silinir. Audit izi kaybolur. Geri alınamaz.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const r = await deleteStockMovementAction(id)
       if (r.success) {
@@ -114,17 +116,17 @@ export function StockMovementTable({ items, isAdmin = false }: Props) {
     })
   }
 
-  function bulkDelete() {
+  async function bulkDelete() {
     const ids = Array.from(selected)
     if (ids.length === 0) return
-    if (
-      !confirm(
-        `${ids.length} stok hareketi silinecek.\n\n` +
-          `⚠️ Stok adetleri OTOMATİK GÜNCELLENMEZ — sadece kayıtlar silinir.\n` +
-          `Audit izi kaybolur. Bu işlem GERİ ALINAMAZ. Emin misin?`,
-      )
-    )
-      return
+    const ok = await confirmDialog({
+      title: `${ids.length} stok hareketi silinecek`,
+      description:
+        "⚠ Stok adetleri OTOMATİK GÜNCELLENMEZ — sadece kayıtlar silinir. Audit izi kaybolur. Bu işlem GERİ ALINAMAZ.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const r = await bulkDeleteStockMovementsAction(ids)
       if (r.success) {
