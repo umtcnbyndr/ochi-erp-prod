@@ -479,6 +479,7 @@ export async function getDashboardSnapshot(userId: string) {
     expiring,
     passiveCandidates,
     notes,
+    invoiceAlerts,
   ] = await Promise.all([
     getDataFreshness(),
     getCriticalStock(8),
@@ -488,6 +489,7 @@ export async function getDashboardSnapshot(userId: string) {
     getExpiringStock(5),
     getPassiveCandidates(5),
     getUserNotes(userId),
+    getInvoiceAlerts(),
   ])
 
   return {
@@ -499,5 +501,47 @@ export async function getDashboardSnapshot(userId: string) {
     expiring,
     passiveCandidates,
     notes,
+    invoiceAlerts,
   }
+}
+
+/**
+ * Alış faturaları için panel uyarısı:
+ *   - Vadesi geçen (overdue)
+ *   - Vadesi 7 gün içinde olan (dueSoon)
+ *   - Toplam bekleyen alacak
+ */
+export async function getInvoiceAlerts() {
+  const now = new Date()
+  const sevenDaysAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+
+  const items = await prisma.purchaseInvoice.findMany({
+    where: {
+      discountStatus: { in: ["OPEN", "PARTIAL"] },
+      discountDueDate: { not: null, lte: sevenDaysAhead },
+    },
+    include: {
+      brand: { select: { name: true } },
+      counterparty: { select: { name: true } },
+      collections: { select: { amount: true } },
+    },
+    orderBy: { discountDueDate: "asc" },
+    take: 10,
+  })
+
+  return items.map((inv) => {
+    const collected = inv.collections.reduce((s, p) => s + Number(p.amount), 0)
+    const remaining = Number(inv.discountAmount) - collected
+    const due = inv.discountDueDate!
+    const days = Math.floor((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    return {
+      id: inv.id,
+      brandName: inv.brand?.name ?? "Karışık",
+      counterpartyName: inv.counterparty.name,
+      remaining,
+      dueDate: due,
+      daysUntil: days, // negative = overdue
+      isOverdue: days < 0,
+    }
+  })
 }

@@ -153,6 +153,7 @@ model Brand {
   priceListItems BrandPriceList[]
   campaigns      Campaign[]
   marketplaceFloors BrandMarketplaceFloor[]
+  purchaseInvoices PurchaseInvoice[]
 
   @@index([pharmacyId])
 }
@@ -482,6 +483,7 @@ model Counterparty {
   exchanges      Exchange[]
   stockMovements StockMovement[]
   entrySessions  EntrySession[]
+  purchaseInvoices PurchaseInvoice[]
 }
 
 model Exchange {
@@ -1365,4 +1367,219 @@ model CommissionTariff {
   @@unique([uploadId, barcode])
   @@index([productId, marketplace])
   @@index([marketplace, effectiveFrom, effectiveTo])
+}
+
+// ===== Finans: Alış Faturaları =====
+// Aracı eczaneden Ochi'ye gelen alış faturası + bizim karşı keseceğimiz iskonto faturası (alacak).
+//
+// Akış:
+//  - Eczane bize fatura keser → grossAmount (bizim ödeyeceğimiz)
+//  - Marka yıl sonu iskonto verir (örn %10) → discountAmount = gross × %/100 (bizim alacağımız)
+//  - Alacak vadesi: discountDueDate (yıl sonu / quarter sonu / manuel tarih)
+//  - Tahsilat parçalı: PurchaseInvoicePayment kayıtları = alacak tahsilatları
+//  - discountStatus: tahsilat tamamlandı mı? (OPEN/PARTIAL/COLLECTED)
+//
+// brandId nullable → "Karışık" (yıl sonu iskonto kapsam dışı kayıtlar)
+// Aynı (brand, period) için birden fazla fatura olabilir — ara kesimler yüzünden.
+
+model PurchaseInvoice {
+  id             Int      @id @default(autoincrement())
+  /** Eczanenin fatura kesim tarihi */
+  invoiceDate    DateTime
+  /** YYYY-MM (örn "2026-01") — gruplama ve filtre için */
+  period         String
+  /** Eczane fatura no (opsiyonel) */
+  invoiceNumber  String?
+  /** Marka — null = "Karışık" (yıl sonu iskonto harici) */
+  brandId        Int?
+  /** Aracı eczane (Counterparty.type = PHARMACY) */
+  counterpartyId Int
+  /** Brüt tutar — eczane bize ne kestiyse (ödenecek) */
+  grossAmount    Decimal  @db.Decimal(14, 2)
+  /** İskonto yüzdesi (0-100). Marka × dönem bazında, manuel girilir. */
+  discountPct    Decimal  @default(0) @db.Decimal(5, 2)
+  /** İskonto tutarı (alacak) — application-side hesaplanır: gross × (%/100) */
+  discountAmount Decimal  @db.Decimal(14, 2)
+  /** İskonto alacağının vade tarihi (yıl sonu/quarter sonu/manuel). Null = vade yok. */
+  discountDueDate DateTime?
+  /** OPEN | PARTIAL | COLLECTED — tahsilat toplamına göre otomatik */
+  discountStatus String   @default("OPEN")
+  note           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  brand        Brand?       @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+  collections  PurchaseInvoicePayment[]
+
+  @@index([period])
+  @@index([brandId, period])
+  @@index([counterpartyId])
+  @@index([discountStatus])
+  @@index([invoiceDate])
+  @@index([discountDueDate])
+}
+
+/// İskonto alacağı tahsilatı (markadan/eczaneden geri alınan parçalı).
+/// "PurchaseInvoicePayment" tabloyu rename etmeden devam — anlamı tahsilat olarak değişti.
+model PurchaseInvoicePayment {
+  id          Int      @id @default(autoincrement())
+  invoiceId   Int
+  /** Tahsilat tarihi */
+  paymentDate DateTime
+  /** Tahsil edilen tutar (alacaktan düşülür) */
+  amount      Decimal  @db.Decimal(14, 2)
+  /** Bizim karşı kestiğimiz fatura numarası (opsiyonel) */
+  invoiceNumber String?
+  /** Tahsilat notu (örn "havale", "kasa", "mahsup") */
+  note        String?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+
+  invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([paymentDate])
+}
+
+// ===== Finans: Gider Yönetimi =====
+// Operasyonel giderler — kira, maaş, elektrik, ofis, koli vs.
+// Pazaryeri brüt giderleri (komisyon/kargo/stopaj) Dopigo siparişlerden otomatik hesaplanır,
+// bu tabloda DEĞİL.
+
+enum ExpenseCategory {
+  // Personel
+  SALARY        // Maaş
+  BONUS         // Prim
+  MEAL          // Yemek
+  INSURANCE     // Sigorta / SGK
+
+  // İşyeri
+  RENT          // Kira
+  BUILDING_FEE  // Aidat
+  ELECTRICITY   // Elektrik
+  GAS           // Doğalgaz
+  WATER         // Su
+  INTERNET      // İnternet
+  CLEANING      // Temizlik
+
+  // Operasyonel paketleme
+  BOX           // Koli
+  NYLON         // Naylon
+  LABEL         // Etiket
+  TAPE          // Bant
+  OFFICE        // Ofis malzemeleri
+
+  // Yazılım/Servis
+  SOFTWARE      // Yazılım abonelikleri (MS365, Excel, Mail, Shopify, vs)
+  HOSTING       // Sunucu/Hosting
+  DOMAIN        // Alan adı
+  DOPIGO        // Dopigo aboneliği
+  INTEGRATION   // Diğer entegrasyonlar
+  SMS           // SMS gateway
+  CREDIT        // Telefon kontör
+
+  // Pazarlama
+  ADVERTISING   // Reklam (Meta/Google Ads)
+  CONTENT       // İçerik üretici / Influencer
+
+  // Mali
+  ACCOUNTING    // Muhasebe
+  TAX           // Vergi (KDV/gelir)
+  BANK_FEE      // Banka komisyon / havale
+
+  OTHER         // Diğer (customCategory ile detay)
+}
+
+enum ExpensePeriodicity {
+  ONE_TIME      // Tek seferlik
+  MONTHLY       // Aylık tekrarlayan
+  QUARTERLY     // Üç aylık
+  YEARLY        // Yıllık
+}
+
+model Expense {
+  id             Int                @id @default(autoincrement())
+  /** Ödeme/gider tarihi */
+  expenseDate    DateTime
+  /** YYYY-MM — gruplama için */
+  period         String
+  category       ExpenseCategory
+  /** Kategori OTHER ise serbest metin (ya da diğerleri için detay) */
+  customCategory String?
+  amount         Decimal            @db.Decimal(14, 2)
+  /** Tekrarlama: tek seferlik mi sürekli mi (rapor amaçlı tag, otomatik kayıt değil) */
+  periodicity    ExpensePeriodicity @default(ONE_TIME)
+  /** Açıklama / kim için */
+  description    String?
+  /** Vendor (ödeme yapılan firma/kişi) */
+  vendor         String?
+  /** Personel ID — sadece SALARY/BONUS/MEAL/INSURANCE kategorilerinde anlamlı */
+  employeeId     Int?
+  employee       Employee?          @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  /** Fatura no opsiyonel */
+  invoiceNumber  String?
+  note           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  @@index([period])
+  @@index([category])
+  @@index([expenseDate])
+  @@index([employeeId])
+}
+
+/// Personel kaydı — maaş/prim/yemek/sigorta giderleri için referans.
+model Employee {
+  id        Int       @id @default(autoincrement())
+  name      String
+  position  String?   // Pozisyon: depo, satış, muhasebe vs (opsiyonel)
+  isActive  Boolean   @default(true)
+  hiredAt   DateTime?
+  leftAt    DateTime?
+  note      String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  expenses  Expense[]
+
+  @@index([isActive])
+  @@index([name])
+}
+
+/// Aylık gelir/gider kaydı (snapshot).
+/// İki kaynak:
+///   - Manuel: kullanıcının elle girdiği geçmiş ay verileri (Oca-Nis 2026 vb)
+///   - Otomatik: ay sonu Dopigo'dan hesaplanıp kaydedilen (May 2026+)
+/// Snapshot varsa gelir/gider sayfası bunu kullanır, yoksa Dopigo'dan canlı hesaplar.
+model MonthlySalesSnapshot {
+  id          Int      @id @default(autoincrement())
+  year        Int
+  month       Int      // 1-12
+  /** Bu ayın cirosu (satış toplamı) */
+  revenue     Decimal  @db.Decimal(14, 2) @default(0)
+  /** Alış maliyeti (ürün maliyeti toplamı) */
+  cost        Decimal  @db.Decimal(14, 2) @default(0)
+  /** Komisyon */
+  commission  Decimal  @db.Decimal(14, 2) @default(0)
+  /** Kargo */
+  shipping    Decimal  @db.Decimal(14, 2) @default(0)
+  /** Stopaj */
+  withholding Decimal  @db.Decimal(14, 2) @default(0)
+  /** Manuel mi otomatik (Dopigo'dan) mı kaydedildi */
+  isManual    Boolean  @default(true)
+  note        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  @@unique([year, month])
+  @@index([year])
 }

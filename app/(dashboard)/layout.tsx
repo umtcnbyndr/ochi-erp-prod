@@ -21,14 +21,32 @@ export default async function DashboardLayout({
   const userId = session?.user?.id
   const userRole = (session?.user as { role?: string } | undefined)?.role
 
-  const [pendingTakasCount, overdueTakasCount] = await Promise.all([
-    prisma.exchange.count({ where: { status: "PENDING" } }),
-    prisma.exchange.count({
-      where: { status: "PENDING", createdAt: { lte: sevenDaysAgo } },
-    }),
-  ]).catch(() => [0, 0] as const)
+  const now = new Date()
+  const sevenDaysAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+
+  const [pendingTakasCount, overdueTakasCount, overdueInvoiceCount, dueSoonInvoiceCount] =
+    await Promise.all([
+      prisma.exchange.count({ where: { status: "PENDING" } }),
+      prisma.exchange.count({
+        where: { status: "PENDING", createdAt: { lte: sevenDaysAgo } },
+      }),
+      prisma.purchaseInvoice.count({
+        where: {
+          discountStatus: { in: ["OPEN", "PARTIAL"] },
+          discountDueDate: { not: null, lt: now },
+        },
+      }),
+      prisma.purchaseInvoice.count({
+        where: {
+          discountStatus: { in: ["OPEN", "PARTIAL"] },
+          discountDueDate: { not: null, gte: now, lte: sevenDaysAhead },
+        },
+      }),
+    ]).catch(() => [0, 0, 0, 0] as const)
 
   const hasOverdueTakas = overdueTakasCount > 0
+  const invoiceAlertCount = overdueInvoiceCount + dueSoonInvoiceCount
+  const hasOverdueInvoices = overdueInvoiceCount > 0
 
   // ADMIN olmayan kullanıcılar için izinleri yükle
   if (userId && userRole !== "ADMIN") {
@@ -41,6 +59,8 @@ export default async function DashboardLayout({
       userEmail={session?.user?.email}
       pendingTakasCount={pendingTakasCount}
       hasOverdueTakas={hasOverdueTakas}
+      invoiceAlertCount={invoiceAlertCount}
+      hasOverdueInvoices={hasOverdueInvoices}
       permissions={permissions}
     >
       {children}

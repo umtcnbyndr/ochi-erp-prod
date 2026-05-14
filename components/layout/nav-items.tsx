@@ -23,6 +23,7 @@ import {
   ShoppingBasket,
   Ticket,
   Percent,
+  Receipt,
 } from "lucide-react"
 
 export interface NavItem {
@@ -77,6 +78,13 @@ export const navGroups: NavGroup[] = [
       { label: "Komisyon Tarifeleri", href: "/komisyon-tarifeleri", icon: Percent, moduleKey: "komisyon-tarifeleri" },
       { label: "Kupon Önerileri", href: "/kupon-onerileri", icon: Ticket, moduleKey: "kupon-onerileri" },
       { label: "Dopigo Siparişler", href: "/dopigo-siparisler", icon: ShoppingBasket, moduleKey: "dopigo-siparisler" },
+    ],
+  },
+  {
+    title: "Finans",
+    items: [
+      { label: "Alış Faturaları", href: "/finans/faturalar", icon: Receipt, moduleKey: "finans-faturalar" },
+      { label: "Gelir / Gider", href: "/finans/gelir-gider", icon: BarChart3, moduleKey: "finans-gelir-gider" },
     ],
   },
   {

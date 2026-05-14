@@ -15,6 +15,8 @@ interface DashboardShellProps {
   userEmail?: string | null
   pendingTakasCount?: number
   hasOverdueTakas?: boolean
+  invoiceAlertCount?: number
+  hasOverdueInvoices?: boolean
   permissions?: UserPermissionMap | null
 }
 
@@ -24,6 +26,8 @@ export function DashboardShell({
   userEmail,
   pendingTakasCount = 0,
   hasOverdueTakas = false,
+  invoiceAlertCount = 0,
+  hasOverdueInvoices = false,
   permissions,
 }: DashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false)
@@ -63,6 +67,8 @@ export function DashboardShell({
             userEmail={userEmail}
             pendingTakasCount={pendingTakasCount}
             hasOverdueTakas={hasOverdueTakas}
+            invoiceAlertCount={invoiceAlertCount}
+            hasOverdueInvoices={hasOverdueInvoices}
             permissions={permissions}
           />
         </div>
@@ -75,6 +81,8 @@ export function DashboardShell({
           userEmail={userEmail}
           pendingTakasCount={pendingTakasCount}
           hasOverdueTakas={hasOverdueTakas}
+          invoiceAlertCount={invoiceAlertCount}
+          hasOverdueInvoices={hasOverdueInvoices}
           permissions={permissions}
           sidebarCollapsed={collapsed}
           onToggleSidebar={toggleSidebar}

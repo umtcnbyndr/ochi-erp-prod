@@ -872,6 +872,84 @@ export async function getUnmatchedItems(
   }))
 }
 
+// ===== Aylık Aggregate (gelir/gider sayfası için) =====
+
+export interface MonthlySalesRow {
+  month: number // 1-12
+  revenue: number
+  orders: number
+  units: number
+  cost: number // ürün maliyeti
+  commission: number
+  shipping: number
+  withholding: number
+}
+
+/**
+ * Yıllık 12 ay × (ciro + brüt giderler) matrisi.
+ * Gelir/Gider sayfasında pivot tablo için.
+ */
+export async function getMonthlyAggregates(year: number): Promise<MonthlySalesRow[]> {
+  const fromDate = new Date(Date.UTC(year, 0, 1))
+  const toDate = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999))
+
+  const rows = await prisma.$queryRaw<
+    Array<{
+      month: number
+      revenue: number | null
+      orders: number | null
+      units: number | null
+      cost: number | null
+      commission: number | null
+      shipping: number | null
+      withholding: number | null
+    }>
+  >`
+    SELECT
+      EXTRACT(MONTH FROM o."serviceCreatedAt")::int AS month,
+      COALESCE(SUM(i.price), 0)::float8 AS revenue,
+      COUNT(DISTINCT o.id)::int AS orders,
+      COALESCE(SUM(i.amount), 0)::int AS units,
+      COALESCE(SUM(
+        CASE WHEN p."mainPurchasePrice" IS NOT NULL
+             THEN p."mainPurchasePrice" * i.amount
+             ELSE 0
+        END
+      ), 0)::float8 AS cost,
+      COALESCE(SUM(i.price * COALESCE(m."commissionRate", 0) / 100), 0)::float8 AS commission,
+      COALESCE(SUM(m."shippingCost"), 0)::float8 AS shipping,
+      COALESCE(SUM(i.price * COALESCE(m."withholdingTax", 0) / 100), 0)::float8 AS withholding
+    FROM "DopigoOrderItem" i
+    JOIN "DopigoOrder" o ON o.id = i."orderId"
+    LEFT JOIN "Product" p ON p.id = i."productId"
+    LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
+    WHERE o."serviceCreatedAt" >= ${fromDate}
+      AND o."serviceCreatedAt" <= ${toDate}
+      AND o."derivedStatus" != 'CANCELLED'
+      AND o."derivedStatus" != 'RETURNED'
+      AND o.archived = false
+    GROUP BY EXTRACT(MONTH FROM o."serviceCreatedAt")
+    ORDER BY month
+  `
+
+  // 12 ay için boş kayıtlar
+  const result: MonthlySalesRow[] = []
+  for (let m = 1; m <= 12; m++) {
+    const row = rows.find((r) => Number(r.month) === m)
+    result.push({
+      month: m,
+      revenue: row ? Number(row.revenue ?? 0) : 0,
+      orders: row ? Number(row.orders ?? 0) : 0,
+      units: row ? Number(row.units ?? 0) : 0,
+      cost: row ? Number(row.cost ?? 0) : 0,
+      commission: row ? Number(row.commission ?? 0) : 0,
+      shipping: row ? Number(row.shipping ?? 0) : 0,
+      withholding: row ? Number(row.withholding ?? 0) : 0,
+    })
+  }
+  return result
+}
+
 // ===== Helpers =====
 
 interface QueryParts {

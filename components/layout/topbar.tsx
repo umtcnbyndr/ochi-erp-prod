@@ -16,6 +16,8 @@ interface TopbarProps {
   userEmail?: string | null
   pendingTakasCount?: number
   hasOverdueTakas?: boolean
+  invoiceAlertCount?: number
+  hasOverdueInvoices?: boolean
   permissions?: UserPermissionMap | null
   sidebarCollapsed?: boolean
   onToggleSidebar?: () => void
@@ -26,6 +28,8 @@ export function Topbar({
   userEmail,
   pendingTakasCount,
   hasOverdueTakas,
+  invoiceAlertCount,
+  hasOverdueInvoices,
   permissions,
   sidebarCollapsed,
   onToggleSidebar,
@@ -93,6 +97,8 @@ export function Topbar({
             userEmail={userEmail}
             pendingTakasCount={pendingTakasCount}
             hasOverdueTakas={hasOverdueTakas}
+            invoiceAlertCount={invoiceAlertCount}
+            hasOverdueInvoices={hasOverdueInvoices}
             permissions={permissions}
           />
         </SheetContent>

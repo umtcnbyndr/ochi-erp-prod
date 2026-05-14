@@ -414,3 +414,42 @@ gerçek komisyonu kademeye göre %3.6-%19 arası değişiyor.
 
 ### Faz 1.5: VPS Deploy (~7 saat)
 - Coolify + Postgres + domain + SSL + cron
+
+---
+
+## ⭐ Drive Yedekleme — Ay Sonu Otomatik Paketi (Plan)
+
+**Tetikleyici:** Ay sonu otomatik veya manuel "Drive'a yedekle" butonu.
+
+**Yedeklenecek paketler (tek seferde, ay klasörüne):**
+1. **Stok yedeği** — tüm ürünler + ana stok + eczane stok + alış fiyatları (Excel)
+2. **Satış raporu** — Dopigo siparişlerin tümü (Excel, dopigo-orders-export ile aynı)
+3. **Faturalar Excel** — Finans/Faturalar modülünden o ayın faturaları + tahsilatlar
+4. **Gelir/Gider raporu** — o ayın gelir + gider + net kâr özeti (modül bitince)
+5. **Komisyon tarifesi snapshot** — son yüklenen Trendyol tarifesi
+6. **Trendyol favori snapshot** — talep skoru + köklülük
+
+**Drive yapısı:**
+```
+/Ochi-Yedekleme/
+  2026-01/
+    stok.xlsx
+    satislar.xlsx
+    faturalar.xlsx
+    gelir-gider.xlsx
+    komisyon-tarifesi.xlsx
+    favoriler.xlsx
+  2026-02/
+    ...
+```
+
+**Teknik:**
+- Google Drive API + OAuth (service account veya kullanıcı OAuth)
+- Cron job: her ayın 1'inde önceki ayın paketini hazırla
+- Manuel buton: ayarlar/yedekleme sayfası
+
+**Faz:**
+- Önce Gelir/Gider sayfası bitsin
+- Sonra Drive entegrasyonu (tek noktadan tüm export'lar tetiklenir)
+- Drive sonrası fatura PDF/JPG upload da Drive'a gider
+

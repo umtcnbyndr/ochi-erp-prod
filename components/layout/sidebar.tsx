@@ -17,6 +17,10 @@ interface SidebarProps {
   pendingTakasCount?: number
   /** 7+ gün bekleyen takas var mı — badge'i kırmızıya çevirir */
   hasOverdueTakas?: boolean
+  /** Vadesi geçen + yaklaşan fatura sayısı — /finans/faturalar badge'i */
+  invoiceAlertCount?: number
+  /** Vadesi geçen fatura var mı — kırmızı yapar */
+  hasOverdueInvoices?: boolean
   /** Kullanıcı izinleri — null ise tüm menüler gösterilir (ADMIN) */
   permissions?: UserPermissionMap | null
 }
@@ -28,6 +32,8 @@ export function Sidebar({
   userEmail,
   pendingTakasCount = 0,
   hasOverdueTakas = false,
+  invoiceAlertCount = 0,
+  hasOverdueInvoices = false,
   permissions,
 }: SidebarProps) {
   const pathname = usePathname()
@@ -79,9 +85,13 @@ export function Sidebar({
                 const dynamicBadge =
                   item.href === "/takas" && pendingTakasCount > 0
                     ? String(pendingTakasCount)
-                    : null
+                    : item.href === "/finans/faturalar" && invoiceAlertCount > 0
+                      ? String(invoiceAlertCount)
+                      : null
                 const badgeText = dynamicBadge ?? item.badge
                 const takasOverdue = item.href === "/takas" && hasOverdueTakas
+                const invoiceOverdue = item.href === "/finans/faturalar" && hasOverdueInvoices
+                const isOverdue = takasOverdue || invoiceOverdue
                 return (
                   <Link
                     key={item.href}
@@ -110,7 +120,7 @@ export function Sidebar({
                       <span
                         className={cn(
                           "ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
-                          takasOverdue
+                          isOverdue
                             ? active
                               ? "bg-destructive text-destructive-foreground ring-1 ring-destructive/30"
                               : "bg-destructive text-destructive-foreground"
