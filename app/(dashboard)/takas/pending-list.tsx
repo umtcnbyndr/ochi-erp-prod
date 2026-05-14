@@ -15,7 +15,6 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   ChevronDown,
-  ChevronRight,
   Users,
   Search,
   X,
@@ -209,10 +208,23 @@ export function PendingList({ pending, counterparties }: Props) {
     }
   }
 
-  function handleExport(direction: "ALL" | "RECEIVED" | "GIVEN" = "ALL") {
+  function handleExport(
+    direction: "ALL" | "RECEIVED" | "GIVEN" = "ALL",
+    counterpartyIdOverride?: number | null,
+  ) {
     if (filtered.length === 0) return
+    // Cari filtresi seçiliyse + override yoksa o cariye göre export
+    const cpId =
+      counterpartyIdOverride !== undefined
+        ? counterpartyIdOverride
+        : counterpartyFilter !== "all"
+          ? Number(counterpartyFilter)
+          : null
     startExport(async () => {
-      const result = await exportPendingExchangesAction({ direction })
+      const result = await exportPendingExchangesAction({
+        direction,
+        counterpartyId: cpId,
+      })
       if (!result.success) {
         toast.error(result.error)
         return
@@ -284,7 +296,11 @@ export function PendingList({ pending, counterparties }: Props) {
           className="gap-1.5"
         >
           <FileSpreadsheet className="h-3.5 w-3.5" />
-          {exporting ? "Hazırlanıyor…" : "Hepsini Excel'e İndir"}
+          {exporting
+            ? "Hazırlanıyor…"
+            : counterpartyFilter !== "all"
+              ? `${availableCounterparties.find((c) => String(c.id) === counterpartyFilter)?.name ?? "Cari"} — Excel`
+              : "Hepsini Excel'e İndir"}
         </Button>
       </div>
 
@@ -664,73 +680,97 @@ function PendingGroupCard({
     groupAllSelected || groupPartial
       ? "border-primary/60 ring-1 ring-primary/20 bg-primary/5"
       : waiting.urgent
-        ? "border-destructive/50 shadow-sm shadow-destructive/10"
+        ? "border-destructive/40 shadow-sm shadow-destructive/10"
         : waiting.warn
-          ? "border-amber-500/50"
-          : ""
+          ? "border-amber-500/40"
+          : "hover:border-primary/30 hover:shadow-sm"
+
+  // İkonun arkaplan rengi senaryoya göre
+  const iconBgClass = isReceived
+    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+    : isPharmacy
+      ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+      : "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-400"
+
+  const scenarioInfo = {
+    A: { label: "Giriş", sub: "Eczaneden alındı" },
+    B: { label: "Çıkış", sub: "Müşteriye verildi" },
+    C: { label: "Çıkış", sub: "Dış cari" },
+  }[scenario]
 
   return (
-    <Card className={cardBorderClass}>
-      <CardContent className="p-4 space-y-3">
+    <Card className={`transition-all ${cardBorderClass}`}>
+      <CardContent className="p-0">
         {/* Header — tıklanabilir (expand/collapse) */}
-        <div className="flex items-start gap-3">
-          <div className="pt-0.5">
+        <div className="flex items-stretch gap-3 p-4">
+          <div className="flex items-center pt-1">
             <Checkbox
               checked={groupAllSelected ? true : groupPartial ? "indeterminate" : false}
               onCheckedChange={onToggleGroup}
               aria-label="Grup seç"
             />
           </div>
+
+          {/* İkon */}
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconBgClass}`}>
+            {isReceived ? <Package className="h-5 w-5" /> : <RefreshCw className="h-5 w-5" />}
+          </div>
+
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="flex-1 text-left flex items-start justify-between gap-2 flex-wrap min-w-0"
+            className="flex-1 text-left flex items-center justify-between gap-3 min-w-0"
           >
-            <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex-1 min-w-0">
+              {/* Üst satır: Cari adı + senaryo etiketi */}
               <div className="flex items-center gap-2 flex-wrap">
-                {isReceived ? (
-                  <Badge variant="secondary" className="gap-1">
-                    <Package className="h-3 w-3" />
-                    Alındı
+                <span className="text-sm font-semibold truncate">{group.counterparty.name}</span>
+                <Badge variant="outline" className="text-[10px] font-medium">
+                  {scenarioInfo.label} · {scenarioInfo.sub}
+                </Badge>
+                {waiting.urgent ? (
+                  <Badge variant="outline" className="gap-1 text-[10px] border-destructive/40 text-destructive">
+                    <AlertTriangle className="h-2.5 w-2.5" />
+                    {waiting.label}
+                  </Badge>
+                ) : waiting.warn ? (
+                  <Badge variant="outline" className="gap-1 text-[10px] border-amber-500/40 text-amber-700 dark:text-amber-400">
+                    <Clock className="h-2.5 w-2.5" />
+                    {waiting.label}
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
-                    <RefreshCw className="h-3 w-3" />
-                    Verildi
+                  <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
+                    <Clock className="h-2.5 w-2.5" />
+                    {waiting.label}
                   </Badge>
                 )}
-                <span className="text-sm font-semibold">{group.counterparty.name}</span>
-                <Badge variant="outline" className="text-[10px]">
-                  {group.items.length} kalem · {group.totalQty} adet
-                </Badge>
-                <Badge
-                  variant="outline"
-                  className={
-                    "gap-1 text-[10px] " +
-                    (waiting.urgent
-                      ? "border-destructive/50 text-destructive"
-                      : waiting.warn
-                        ? "border-amber-500/50 text-amber-700 dark:text-amber-400"
-                        : "text-muted-foreground")
-                  }
-                >
-                  <Clock className="h-3 w-3" />
-                  {waiting.label}
-                </Badge>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {scenarioLabel} · {formatDateTime(group.createdAt)}
-              </p>
+              {/* Alt satır: kalem · adet · tarih */}
+              <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
+                <span className="font-medium text-foreground tabular-nums">
+                  {group.items.length} kalem
+                </span>
+                <span>·</span>
+                <span className="tabular-nums">{group.totalQty} adet</span>
+                <span>·</span>
+                <span className="tabular-nums">{formatDateTime(group.createdAt)}</span>
+              </div>
             </div>
-            <div className="shrink-0 text-muted-foreground">
-              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            <div
+              className={`shrink-0 flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                expanded ? "bg-accent text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${expanded ? "rotate-0" : "-rotate-90"}`}
+              />
             </div>
           </button>
         </div>
 
         {/* Expanded: kalemler */}
         {expanded && (
-          <div className="space-y-2 pl-7 border-l-2 border-muted ml-2">
+          <div className="border-t bg-muted/30 px-4 py-3 space-y-2">
             {group.items.map((ex) => (
               <PendingItemRow
                 key={ex.id}
