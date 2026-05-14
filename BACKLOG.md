@@ -453,3 +453,78 @@ gerçek komisyonu kademeye göre %3.6-%19 arası değişiyor.
 - Sonra Drive entegrasyonu (tek noktadan tüm export'lar tetiklenir)
 - Drive sonrası fatura PDF/JPG upload da Drive'a gider
 
+
+---
+
+## 🚧 Faz 3 — Sistem Sağlamlaştırma (Deploy sonrası eksikler)
+
+### 1. Lot / Seri Takibi
+**Problem:** SKT (son kullanma tarihi) tutuluyor ama lot bazlı değil — aynı ürünün farklı lot'larında farklı SKT olabilir. Üreticinin geri çağırma durumunda hangi lot etkilendiği bilinmiyor.
+
+**Çözüm:**
+- Yeni model: `ProductLot` (productId, lotNumber, expirationDate, quantity, supplierBatchInfo)
+- Ürün giriş ekranında: lot numarası + SKT zorunlu alan
+- Stok hareketi: hangi lot'tan kaç adet düştü (FIFO mantığı)
+- Rapor: hangi lot ne zaman geldi, kaç sattık, kalan
+
+### 2. Tahmin / Forecast (Talep Tahmini)
+**Problem:** Şu an "günlük satış ortalaması" var ama trend hesabı zayıf. Mevsimsellik, kampanya etkisi, BuyBox kazanma vs hesaba katılmıyor.
+
+**Çözüm:**
+- Geçmiş 90 günlük satışı + son 30 gün trend
+- Mevsimsellik faktörü (Aralık/Ocak güneş kremi satmaz vb)
+- Kampanya etkisi (kampanya olan ayda artış)
+- Tahmini günlük satış → kritik stok eşiği daha akıllı
+- Sipariş önerilerinde "30 gün sonra X adet lazım" mesajı
+
+### 3. ABC Analizi (Stok Sınıflandırma)
+**Problem:** Tüm ürünler aynı önemde gibi davranılıyor. Halbuki %20 ürün cironun %80'ini yapar.
+
+**Çözüm:**
+- A sınıfı: cironun %70'i (genelde top 20 ürün)
+- B sınıfı: cironun %20'si (orta hareketli)
+- C sınıfı: cironun %10'u (yavaş)
+- Otomatik hesap: son 6 ay ciro × marj
+- Stok yönetiminde: A için her zaman var, C için yıllık 1 kez
+
+### 4. Monitoring / Hata Yakalama (Sentry / vs.)
+**Problem:** Production'da hata oluşunca Coolify logs'a bakmak gerekiyor. Hata aliter sistemi yok.
+
+**Çözüm:**
+- Sentry.io (free tier var, 5K event/ay) veya self-hosted GlitchTip
+- Server + client error tracking
+- Source maps upload
+- Slack/Discord webhook ile uyarı
+
+### 5. Otomatik Backup (Drive)
+**Problem:** Şu an Coolify Postgres backup belki var, app verisi backup yok.
+
+**Çözüm:** (BACKLOG'da zaten detaylı plan var)
+- Drive entegrasyonu + ay sonu otomatik paket
+- Stok + satış + faturalar + gelir-gider Excel'leri
+
+### 6. Webhook / Cron Sistemi
+**Problem:**
+- Dopigo sync manuel tetikleniyor
+- Trendyol favori upload manuel
+- Vade hatırlatma email gönderme yok
+- Komisyon tarife otomatik check yok
+
+**Çözüm:**
+- `scheduled_jobs` tablo + cron-job.org veya Coolify cron
+- Her sabah 09:00: Dopigo son 24 saat sipariş çek
+- Her sabah 09:00: vade dolan/yaklaşan fatura listesi panele yaz
+- Her Pazartesi: haftalık komisyon tarife reminder
+
+### 7. WhatsApp / Email Otomasyon
+**Problem:**
+- Vade dolan faturada hatırlatma yok
+- Düşük stok uyarısı email yok
+- Critical bug oluşunca admin'e mesaj yok
+
+**Çözüm (basit):**
+- Resend.com (10K email/ay free) veya Postmark
+- Şablonlar: "Vade yaklaşıyor", "Kritik stok", "BuyBox kaybı"
+- Admin email setting
+- WhatsApp Business API (ücretli, 2. öncelik)
+
