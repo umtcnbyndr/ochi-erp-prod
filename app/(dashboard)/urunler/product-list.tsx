@@ -23,6 +23,7 @@ import {
   Megaphone,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -126,6 +127,7 @@ export function ProductList({
   isAdmin = false,
 }: ProductListProps) {
   const router = useRouter()
+  const confirmDialog = useConfirm()
   const pathname = usePathname()
   const params = useSearchParams()
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -151,8 +153,14 @@ export function ProductList({
     )
   }
 
-  function onDelete(id: number, name: string) {
-    if (!confirm(`"${name}" ürününü silmek istediğinize emin misiniz?`)) return
+  async function onDelete(id: number, name: string) {
+    const ok = await confirmDialog({
+      title: `"${name}" silinecek`,
+      description: "Bu işlem geri alınamaz. Emin misin?",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const r = await deleteProduct(id)
       if (!r.success) toast.error(r.error)
@@ -173,10 +181,15 @@ export function ProductList({
     router.push(`${pathname}?${next.toString()}`)
   }
 
-  function onBulkStatus(status: "ACTIVE" | "PASSIVE") {
+  async function onBulkStatus(status: "ACTIVE" | "PASSIVE") {
     const ids = Array.from(selected)
     const label = status === "PASSIVE" ? "pasife al" : "aktif et"
-    if (!confirm(`${ids.length} ürünü ${label}mak istediğinize emin misiniz?`)) return
+    const ok = await confirmDialog({
+      title: `${ids.length} ürün ${label}ınacak`,
+      description: "Devam etmek istiyor musun?",
+      confirmText: "Onayla",
+    })
+    if (!ok) return
     startTransition(async () => {
       const r = await bulkUpdateProductStatus(ids, status)
       if (!r.success) {
@@ -188,18 +201,17 @@ export function ProductList({
     })
   }
 
-  function onBulkDelete() {
+  async function onBulkDelete() {
     const ids = Array.from(selected)
     if (ids.length === 0) return
-    const msg =
-      `${ids.length} ürün KALICI olarak silinecek.\n\n` +
-      `Cascade ile silinecek bağlı kayıtlar:\n` +
-      `• Barkodlar, marketplace fiyatları, BuyBox gözlemleri\n` +
-      `• Kampanya satışları, favorilenme snapshot'ları\n` +
-      `• Birleştirme geçmişi\n\n` +
-      `Stok hareketi olan ürünler ATLANIR (önce pasife al).\n\n` +
-      `Bu işlem GERİ ALINAMAZ. Emin misin?`
-    if (!confirm(msg)) return
+    const ok = await confirmDialog({
+      title: `${ids.length} ürün KALICI silinecek`,
+      description:
+        "Bağlı tüm kayıtlar (barkod, fiyat, BuyBox gözlemi, kampanya satışı, favori snapshot, birleştirme geçmişi) cascade ile silinir. Stok hareketi olan ürünler atlanır (önce pasife al). Bu işlem GERİ ALINAMAZ.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const r = await bulkDeleteProductsAction(ids)
       if (!r.success) {
@@ -215,13 +227,12 @@ export function ProductList({
 
       // Atlanan ürünler var → admin'e force-delete teklifi
       const skippedIds = skipped.map((s) => s.id)
-      const force = confirm(
-        `${deleted.length} silindi, ${skipped.length} atlandı.\n\n` +
-          `Atlanan ${skipped.length} üründe stok hareketi var.\n` +
-          `(SADECE ADMIN) Stok hareketleriyle BİRLİKTE zorla silmek ister misin?\n\n` +
-          `⚠️ DİKKAT: Stok hareket geçmişi DE silinir. Audit izi kaybolur.\n` +
-          `Bu işlem GERİ ALINAMAZ.`,
-      )
+      const force = await confirmDialog({
+        title: `${deleted.length} silindi, ${skipped.length} atlandı`,
+        description: `Atlanan ${skipped.length} üründe stok hareketi var. (SADECE ADMIN) Stok hareketleriyle BİRLİKTE zorla silmek ister misin? ⚠ Stok hareket geçmişi de silinir, audit izi kaybolur. GERİ ALINAMAZ.`,
+        confirmText: "Evet, zorla sil",
+        variant: "destructive",
+      })
       if (!force) {
         toast.warning(
           `${deleted.length} silindi, ${skipped.length} atlandı (stok hareketi var)`,
@@ -1169,6 +1180,7 @@ function MergeDialog({
 }) {
   const [targetId, setTargetId] = useState<number | null>(products[0]?.id ?? null)
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
   if (products.length < 2) return null
 
@@ -1181,21 +1193,16 @@ function MergeDialog({
   const totalValidStock = valueParts.reduce((s, i) => s + i.stock, 0)
   const avgPrice = totalValidStock > 0 ? totalValue / totalValidStock : null
 
-  function onMerge() {
+  async function onMerge() {
     if (!targetId) return
     const sourceIds = products.filter((p) => p.id !== targetId).map((p) => p.id)
     const targetName = products.find((p) => p.id === targetId)?.name
-    if (
-      !confirm(
-        `${sourceIds.length} ürün "${targetName}" ürünüyle birleştirilecek.\n\n` +
-          `Yeni toplam stok: ${totalStock}\n` +
-          (avgPrice
-            ? `Yeni ortalama alış (weighted avg): ₺${avgPrice.toFixed(2)}\n`
-            : "") +
-          `\nDevam?`,
-      )
-    )
-      return
+    const ok = await confirmDialog({
+      title: `${sourceIds.length} ürün "${targetName}" ile birleştirilecek`,
+      description: `Yeni toplam stok: ${totalStock}${avgPrice ? `. Yeni ortalama alış (weighted avg): ₺${avgPrice.toFixed(2)}` : ""}.`,
+      confirmText: "Birleştir",
+    })
+    if (!ok) return
     startTransition(async () => {
       const r = await mergeProducts(targetId, sourceIds)
       if (!r.success) {

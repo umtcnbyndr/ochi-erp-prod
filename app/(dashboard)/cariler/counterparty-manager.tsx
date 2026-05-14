@@ -13,6 +13,7 @@ import {
   MapPin,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -87,9 +88,16 @@ export function AddCounterpartyButton() {
 export function CounterpartyList({ list }: { list: Counterparty[] }) {
   const [editing, setEditing] = useState<Counterparty | null>(null)
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
-  function onDelete(id: number, name: string) {
-    if (!confirm(`"${name}" carisini silmek istediğinize emin misiniz?`)) return
+  async function onDelete(id: number, name: string) {
+    const ok = await confirmDialog({
+      title: `"${name}" carisi silinecek`,
+      description: "Bu işlem geri alınamaz. Bağlı kayıtlar etkilenebilir.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const r = await deleteCounterparty(id)
       if (!r.success) toast.error(r.error)

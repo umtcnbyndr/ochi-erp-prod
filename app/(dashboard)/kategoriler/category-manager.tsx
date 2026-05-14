@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { ChevronRight, Folder, FolderPlus, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/common/confirm-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -57,6 +58,7 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
   const [dialog, setDialog] = useState<DialogState>({ kind: "none" })
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
   function toggle(id: number) {
     setExpanded((prev) => {
@@ -67,9 +69,15 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
     })
   }
 
-  function handleDelete(kind: "category" | "subcategory", id: number, name: string) {
-    const msg = kind === "category" ? "kategoriyi" : "alt kategoriyi"
-    if (!confirm(`"${name}" ${msg} silmek istediğinize emin misiniz?`)) return
+  async function handleDelete(kind: "category" | "subcategory", id: number, name: string) {
+    const label = kind === "category" ? "Kategori" : "Alt kategori"
+    const ok = await confirmDialog({
+      title: `${label}: "${name}" silinecek`,
+      description: "Bu işlem geri alınamaz. Bağlı ürünler etkilenebilir.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const r = kind === "category" ? await deleteCategory(id) : await deleteSubcategory(id)
       if (!r.success) toast.error(r.error)

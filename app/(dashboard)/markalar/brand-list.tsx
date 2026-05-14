@@ -25,6 +25,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { BrandDialog } from "./brand-dialog"
 import { deleteBrand } from "./actions"
 import { formatNumber, formatPercent } from "@/lib/utils"
+import { useConfirm } from "@/components/common/confirm-provider"
 
 interface Brand {
   id: number
@@ -50,9 +51,16 @@ interface Brand {
 export function BrandList({ brands }: { brands: Brand[] }) {
   const [editing, setEditing] = useState<Brand | null>(null)
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
-  function onDelete(id: number, name: string) {
-    if (!confirm(`"${name}" markasını silmek istediğinize emin misiniz?`)) return
+  async function onDelete(id: number, name: string) {
+    const ok = await confirmDialog({
+      title: `"${name}" markası silinecek`,
+      description: "Bu işlem geri alınamaz. Marka altındaki ürünler etkilenebilir.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const r = await deleteBrand(id)
       if (!r.success) toast.error(r.error)

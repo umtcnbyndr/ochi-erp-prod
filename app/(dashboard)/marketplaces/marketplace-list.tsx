@@ -15,6 +15,7 @@ import {
 import { MarketplaceDialog } from "./marketplace-dialog"
 import { deleteMarketplace } from "./actions"
 import { formatCurrency, formatPercent } from "@/lib/utils"
+import { useConfirm } from "@/components/common/confirm-provider"
 
 interface Marketplace {
   id: number
@@ -47,9 +48,16 @@ export function AddMarketplaceButton() {
 export function MarketplaceList({ marketplaces }: { marketplaces: Marketplace[] }) {
   const [editing, setEditing] = useState<Marketplace | null>(null)
   const [pending, startTransition] = useTransition()
+  const confirmDialog = useConfirm()
 
-  function onDelete(id: number, name: string) {
-    if (!confirm(`"${name}" pazar yerini silmek istediğinize emin misiniz?`)) return
+  async function onDelete(id: number, name: string) {
+    const ok = await confirmDialog({
+      title: `"${name}" pazar yeri silinecek`,
+      description: "Bu işlem geri alınamaz.",
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
     startTransition(async () => {
       const r = await deleteMarketplace(id)
       if (!r.success) toast.error(r.error)
