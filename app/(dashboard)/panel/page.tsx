@@ -67,28 +67,33 @@ export default async function PanelPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{greeting}</h1>
-          <p className="text-xs text-muted-foreground mt-1 capitalize">{today}</p>
-        </div>
-        {/* Mobilde yatay scroll, desktop'ta tek satır pill bar */}
-        <div className="-mx-4 px-4 sm:m-0 sm:p-0 overflow-x-auto scrollbar-none">
-          <div className="inline-flex items-center gap-1 rounded-lg border bg-card p-1">
-            {quickActions.map((qa) => {
-              const Icon = qa.icon
-              return (
-                <Link
-                  key={qa.href}
-                  href={qa.href}
-                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors whitespace-nowrap"
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {qa.label}
-                </Link>
-              )
-            })}
+      {/* Header — modernize: subtle gradient + larger spacing */}
+      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/5 via-background to-background p-5 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-primary/70">
+              Panel
+            </p>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl mt-1">{greeting}</h1>
+            <p className="text-xs text-muted-foreground mt-1 capitalize">{today}</p>
+          </div>
+          {/* Quick actions — modernize: backdrop blur + ring */}
+          <div className="-mx-4 px-4 sm:m-0 sm:p-0 overflow-x-auto scrollbar-none">
+            <div className="inline-flex items-center gap-1 rounded-lg border bg-card/80 backdrop-blur p-1 shadow-sm">
+              {quickActions.map((qa) => {
+                const Icon = qa.icon
+                return (
+                  <Link
+                    key={qa.href}
+                    href={qa.href}
+                    className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors whitespace-nowrap"
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {qa.label}
+                  </Link>
+                )
+              })}
+            </div>
           </div>
         </div>
       </div>

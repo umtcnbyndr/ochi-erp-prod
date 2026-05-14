@@ -72,8 +72,8 @@ export function MetricCard({
   const content = (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-xl border bg-card p-4 transition-colors",
-        href && "hover:border-foreground/20 hover:bg-accent/30 cursor-pointer",
+        "group relative overflow-hidden rounded-xl border bg-card p-4 shadow-sm transition-all",
+        href && "hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 cursor-pointer",
         className,
       )}
     >
@@ -88,17 +88,17 @@ export function MetricCard({
         {Icon && (
           <div
             className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-110",
               TONE_ICON_BG[tone],
             )}
           >
-            <Icon className="h-3.5 w-3.5" />
+            <Icon className="h-4 w-4" />
           </div>
         )}
       </div>
 
       {/* Value */}
-      <p className="mt-2 text-2xl font-bold tracking-tight tabular-nums leading-none">
+      <p className="mt-3 text-3xl font-bold tracking-tight tabular-nums leading-none">
         {value}
       </p>
 
