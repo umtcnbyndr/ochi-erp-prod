@@ -40,6 +40,13 @@ export interface CollectInput {
   collectedAt?: Date
 }
 
+export interface CampaignPaymentInput {
+  amount: number
+  paymentDate: Date
+  invoiceNo?: string | null
+  notes?: string | null
+}
+
 // ─── Validation ───────────────────────────────────────────────
 
 function validate(input: CreateCampaignInput) {
@@ -246,6 +253,10 @@ export async function deleteCampaign(id: number) {
   return prisma.campaign.delete({ where: { id } })
 }
 
+/**
+ * @deprecated Tek seferlik tahsilat — parçalı tahsilat için `addCampaignPayment` kullan.
+ * Geriye uyumluluk için tutuluyor (eski "Tahsilat Yap" butonu hala bunu çağırıyor olabilir).
+ */
 export async function collectCampaign(id: number, input: CollectInput) {
   const existing = await prisma.campaign.findUnique({ where: { id } })
   if (!existing) throw new Error("Kampanya bulunamadı")
@@ -259,6 +270,122 @@ export async function collectCampaign(id: number, input: CollectInput) {
       collectedAt: input.collectedAt ?? new Date(),
       collectionInvoiceNo: input.collectionInvoiceNo,
       collectedAmount: input.collectedAmount,
+    },
+  })
+}
+
+/**
+ * Yeni parçalı tahsilat sistemi.
+ * Beklenen tutar = sum(sales.discountAmountTL).
+ * Sum(payments) >= beklenen tutar → otomatik COLLECTED.
+ * Aksi halde kampanya ENDED kalır (Tahsilat Bekleniyor).
+ */
+export async function addCampaignPayment(campaignId: number, input: CampaignPaymentInput) {
+  if (input.amount <= 0) throw new Error("Tahsilat tutarı 0'dan büyük olmalı")
+
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: {
+      id: true,
+      status: true,
+      sales: { select: { discountAmountTL: true } },
+      payments: { select: { amount: true } },
+    },
+  })
+  if (!campaign) throw new Error("Kampanya bulunamadı")
+  if (campaign.status === "CANCELLED") {
+    throw new Error("İptal edilen kampanyaya tahsilat eklenemez")
+  }
+  if (campaign.status === "ACTIVE") {
+    throw new Error("Aktif kampanyada tahsilat yapılamaz — önce 'Kampanyayı Bitir' butonu")
+  }
+
+  const expected = campaign.sales.reduce((s, x) => s + toNumber(x.discountAmountTL), 0)
+  const alreadyPaid = campaign.payments.reduce((s, x) => s + toNumber(x.amount), 0)
+  const newTotal = alreadyPaid + input.amount
+
+  await prisma.campaignPayment.create({
+    data: {
+      campaignId,
+      amount: input.amount,
+      paymentDate: input.paymentDate,
+      invoiceNo: input.invoiceNo ?? null,
+      notes: input.notes ?? null,
+    },
+  })
+
+  // Beklenen tutara ulaşıldıysa otomatik COLLECTED
+  if (newTotal >= expected && expected > 0) {
+    await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        status: "COLLECTED",
+        collectedAt: input.paymentDate,
+        collectedAmount: newTotal,
+        collectionInvoiceNo: input.invoiceNo ?? null,
+      },
+    })
+  }
+
+  return { totalPaid: newTotal, expected, remaining: Math.max(0, expected - newTotal) }
+}
+
+export async function deleteCampaignPayment(paymentId: number) {
+  const payment = await prisma.campaignPayment.findUnique({
+    where: { id: paymentId },
+    select: { id: true, campaignId: true, amount: true },
+  })
+  if (!payment) throw new Error("Tahsilat kaydı bulunamadı")
+
+  await prisma.campaignPayment.delete({ where: { id: paymentId } })
+
+  // Silinince COLLECTED → ENDED dönmesi gerekebilir (toplam expected'in altına düştüyse)
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: payment.campaignId },
+    select: {
+      status: true,
+      sales: { select: { discountAmountTL: true } },
+      payments: { select: { amount: true } },
+    },
+  })
+  if (campaign && campaign.status === "COLLECTED") {
+    const expected = campaign.sales.reduce((s, x) => s + toNumber(x.discountAmountTL), 0)
+    const paid = campaign.payments.reduce((s, x) => s + toNumber(x.amount), 0)
+    if (paid < expected) {
+      await prisma.campaign.update({
+        where: { id: payment.campaignId },
+        data: { status: "ENDED", collectedAt: null },
+      })
+    }
+  }
+  return { campaignId: payment.campaignId }
+}
+
+/**
+ * Manuel olarak kampanyayı kapat (eksik tahsilatla da olabilir — kabul ettik).
+ */
+export async function markCampaignCollected(campaignId: number) {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: {
+      status: true,
+      payments: { select: { amount: true, paymentDate: true, invoiceNo: true }, orderBy: { paymentDate: "desc" } },
+    },
+  })
+  if (!campaign) throw new Error("Kampanya bulunamadı")
+  if (campaign.status !== "ENDED") throw new Error("Sadece 'Tahsilat Bekleniyor' statüsündeki kampanya kapatılabilir")
+  if (campaign.payments.length === 0) throw new Error("Hiç tahsilat kaydı yok — önce en az bir tahsilat ekleyin")
+
+  const total = campaign.payments.reduce((s, x) => s + toNumber(x.amount), 0)
+  const latest = campaign.payments[0]
+
+  return prisma.campaign.update({
+    where: { id: campaignId },
+    data: {
+      status: "COLLECTED",
+      collectedAt: latest.paymentDate,
+      collectedAmount: total,
+      collectionInvoiceNo: latest.invoiceNo,
     },
   })
 }
@@ -531,6 +658,17 @@ export async function getCampaign(id: number) {
           product: { select: { name: true, primaryBarcode: true } },
         },
         orderBy: { saleDate: "desc" },
+      },
+      payments: {
+        select: {
+          id: true,
+          amount: true,
+          paymentDate: true,
+          invoiceNo: true,
+          notes: true,
+          createdAt: true,
+        },
+        orderBy: { paymentDate: "desc" },
       },
     },
   })

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { PageHeader } from "@/components/common/page-header"
+import { getAuthUser } from "@/lib/permissions"
 import {
   getTopLineKPIs,
   getStatusCounts,
@@ -139,9 +140,8 @@ function resolveDateRange(period: string | undefined, from?: string, to?: string
       break
   }
 
-  // default: son 7 gün
-  const weekStart = trDayOffset(6)
-  return { fromDate: weekStart.start, toDate: today.end, label: "Son 7 gün" }
+  // default: bugün
+  return { fromDate: today.start, toDate: today.end, label: "Bugün" }
 }
 
 export default async function DopigoSiparislerPage({ searchParams }: PageProps) {
@@ -163,12 +163,17 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
   const sortBy = (sp.sortBy as "date" | "channel" | "revenue" | "profit" | undefined) ?? "date"
   const sortDir = (sp.sortDir as "asc" | "desc" | undefined) ?? "desc"
 
+  // Kullanıcı bazlı marka kısıtı (SALES rolü için)
+  const authUser = await getAuthUser()
+  const allowedBrandIds = authUser?.allowedBrandIds ?? null
+
   // KPI'lar için filter — exclude cancelled/returned default true
   const baseFilter = {
     fromDate,
     toDate,
     brandId,
     categoryId,
+    allowedBrandIds,
     salesChannel,
     derivedStatus: null as null,
     searchQuery,
@@ -183,6 +188,7 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
     toDate,
     brandId,
     categoryId,
+    allowedBrandIds,
     salesChannel,
     derivedStatus: statusFilter,
     searchQuery,
@@ -213,7 +219,11 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
     tableData,
   ] = await Promise.all([
     prisma.dopigoConfig.findUnique({ where: { id: 1 } }),
-    prisma.brand.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.brand.findMany({
+      where: allowedBrandIds !== null ? { id: { in: allowedBrandIds } } : undefined,
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
     prisma.category.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.marketplace.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getTopLineKPIs(baseFilter),
@@ -302,7 +312,7 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
       />
 
       <DopigoOrdersFlow
-        period={sp.period ?? "week"}
+        period={sp.period ?? "today"}
         rangeLabel={label}
         from={sp.from}
         to={sp.to}

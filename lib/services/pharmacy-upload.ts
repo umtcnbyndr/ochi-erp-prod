@@ -111,10 +111,91 @@ export interface PharmacyImportResult {
 
 // ---------------- Parsers ----------------
 
+/**
+ * Eczane ham Excel'i çoğu zaman 2 satır header ile gelir:
+ *   Row 0 → grup başlığı ("Ürün Bilgisi", "Alis Bilgisi", "Satis Bilgisi" ...)
+ *   Row 1 → asıl kolon isimleri ("Barkod", "Ürün Adi", "S.Alis Fiyat", "Satis Fiyati", "Bakiye" ...)
+ *   Row 2+ → veri
+ *
+ * Default XLSX.sheet_to_json row 0'ı header sanıp data'yı yanlış key'lere bağlar.
+ * Burada otomatik tespit edip doğru header satırını kullanıyoruz.
+ */
+const KNOWN_PHARMACY_HEADERS = [
+  "barkod",
+  "ürün ad",
+  "urun ad",
+  "ürün adi",
+  "urun adi",
+  "bakiye",
+  "kdv",
+  "alis",
+  "alış",
+  "satis fiyat",
+  "satış fiyat",
+  "ürün kod",
+  "urun kod",
+]
+
+function detectHeaderRowIndex(aoa: unknown[][]): number {
+  if (aoa.length < 2) return 0
+  const row0 = (aoa[0] ?? []) as unknown[]
+  const row1 = (aoa[1] ?? []) as unknown[]
+  const totalCols = Math.max(row0.length, row1.length, 1)
+
+  const nonNull = (row: unknown[]) =>
+    row.filter((c) => c != null && String(c).trim() !== "").length
+
+  const row0Fill = nonNull(row0) / totalCols
+  const row1Fill = nonNull(row1) / totalCols
+
+  const row1Text = row1
+    .map((c) => String(c ?? "").toLocaleLowerCase("tr"))
+    .join("|")
+  const knownHits = KNOWN_PHARMACY_HEADERS.filter((h) => row1Text.includes(h)).length
+
+  // Row 0 seyrek + Row 1 yoğun + Row 1'de bilinen pharmacy header'lardan ≥ 3 varsa
+  // → Row 0 grup başlığı, Row 1 gerçek header.
+  if (row0Fill < 0.5 && row1Fill > 0.5 && knownHits >= 3) {
+    return 1
+  }
+  return 0
+}
+
 export function parseExcelBuffer(buffer: ArrayBuffer | Buffer): Record<string, unknown>[] {
   const wb = XLSX.read(buffer, { type: Buffer.isBuffer(buffer) ? "buffer" : "array" })
   const sheet = wb.Sheets[wb.SheetNames[0]]
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null })
+
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null })
+  if (aoa.length < 2) return []
+
+  const headerRowIndex = detectHeaderRowIndex(aoa)
+
+  if (headerRowIndex === 0) {
+    return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null })
+  }
+
+  // 2-row header: row[headerRowIndex] = gerçek header, sonrasi = data
+  const headerRow = (aoa[headerRowIndex] ?? []) as unknown[]
+  const headers = headerRow.map((h, i) => {
+    const s = h != null ? String(h).trim() : ""
+    return s !== "" ? s : `Col_${i + 1}`
+  })
+
+  // Duplicate kolon isimlerine suffix ekle
+  const seen = new Map<string, number>()
+  const uniqueHeaders = headers.map((h) => {
+    const c = (seen.get(h) ?? 0) + 1
+    seen.set(h, c)
+    return c === 1 ? h : `${h} (${c})`
+  })
+
+  return aoa.slice(headerRowIndex + 1).map((row) => {
+    const obj: Record<string, unknown> = {}
+    uniqueHeaders.forEach((key, i) => {
+      obj[key] = (row as unknown[])[i] ?? null
+    })
+    return obj
+  })
 }
 
 export function parseCSVText(text: string): Record<string, unknown>[] {
@@ -148,19 +229,58 @@ export function suggestPharmacyMapping(columns: string[]): PharmacyColumnMapping
     name: find([(n) => n.includes("ürün ad") || n.includes("urun ad") || n === "ad" || n === "name"]),
     vatRate: find([(n) => n.includes("kdv") || n.includes("vat")]),
     streetPurchasePrice: find([
+      // Düzenlenmiş Excel: "Eczane Alış Fiyatı" / "Cadde Alış Fiyatı"
       (n) => (n.includes("eczane") || n.includes("cadde")) && (n.includes("alış") || n.includes("alis")),
+      // Ham eczane export: "S.Alis Fiyat" / "Son Alış Fiyat" / "S.Alış Fiyat"
+      (n) =>
+        (n.startsWith("s.alis") || n.startsWith("s.alış") || n.startsWith("son alis") || n.startsWith("son alış")) &&
+        n.includes("fiyat") &&
+        !n.includes("tutar"),
+      // Generic alış fiyat (toplam/tutar/net hariç)
+      (n) =>
+        (n.includes("alis fiyat") || n.includes("alış fiyat")) &&
+        !n.includes("tutar") &&
+        !n.includes("toplam") &&
+        !n.includes("net"),
     ]),
-    psf: find([(n) => n.includes("psf")]),
-    streetStock: find([(n) => (n.includes("eczane") || n.includes("cadde")) && n.includes("stok")]),
+    psf: find([
+      (n) => n.includes("psf"),
+      // Ham eczane export: "Satis Fiyati" / "Satış Fiyatı" — PSF = perakende satış fiyatı
+      (n) =>
+        (n.includes("satis fiyat") || n.includes("satış fiyat")) &&
+        !n.includes("net") &&
+        !n.includes("brüt") &&
+        !n.includes("brut") &&
+        !n.includes("toplam") &&
+        !n.includes("tutar") &&
+        !n.includes("iskonto"),
+    ]),
+    streetStock: find([
+      (n) => (n.includes("eczane") || n.includes("cadde")) && n.includes("stok"),
+      // Ham eczane export: "Bakiye" — son bakiye = mevcut stok
+      (n) => n === "bakiye" || n.startsWith("bakiye") || n.includes("son bakiye"),
+    ]),
     categoryName: find([
       (n) =>
         (n === "kategori" || n === "category") ||
         ((n.includes("kategori") || n.includes("category")) && !n.includes("alt") && !n.includes("sub")),
+      // Ham eczane export: "Grubu" → kategori (ör. "ITRİYAT")
+      (n) => n === "grubu" || n === "grup",
     ]),
     subcategoryName: find([
       (n) => n.includes("alt kategori") || n.includes("subcategor") || n.includes("alt kat"),
     ]),
-    brandName: find([(n) => n === "marka" || n.includes("marka") || n.includes("brand")]),
+    brandName: find([
+      (n) => n === "marka" || n.includes("marka") || n.includes("brand"),
+      // Ham eczane export: "Ürün G.Adi" / "G.Adi" / "Genel Adı" → marka
+      (n) =>
+        n === "ürün g.adi" ||
+        n === "urun g.adi" ||
+        n === "g.adi" ||
+        n.includes("genel ad") ||
+        n.includes("ürün g.ad") ||
+        n.includes("urun g.ad"),
+    ]),
   }
 }
 

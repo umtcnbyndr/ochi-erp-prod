@@ -28,6 +28,8 @@ export interface DateRangeFilter {
 export interface SalesFilter extends DateRangeFilter {
   brandId?: number | null
   categoryId?: number | null
+  /** Kullanıcı bazlı marka erişim kısıtı — null/undefined: kısıt yok, []: hiçbir markaya erişim yok. */
+  allowedBrandIds?: number[] | null
   salesChannel?: string | null
   /** Spesifik bir derived status'a filtrele (UI chip'leri için).
    *  null/undefined → status filtresi yok (cancelled/returned dahil),
@@ -986,6 +988,16 @@ function buildWhere(filter: SalesFilter): QueryParts {
   if (filter.brandId != null) {
     conditions.push(`p."brandId" = $${idx++}`)
     params.push(filter.brandId)
+  }
+  // Kullanıcı marka erişim kısıtı (SALES rolü için). Boş array → hiçbir markaya erişim yok.
+  if (filter.allowedBrandIds !== undefined && filter.allowedBrandIds !== null) {
+    if (filter.allowedBrandIds.length === 0) {
+      conditions.push(`FALSE`) // hiç sonuç dönmesin
+    } else {
+      const placeholders = filter.allowedBrandIds.map(() => `$${idx++}`).join(",")
+      conditions.push(`p."brandId" IN (${placeholders})`)
+      params.push(...filter.allowedBrandIds)
+    }
   }
   if (filter.categoryId != null) {
     conditions.push(`p."categoryId" = $${idx++}`)

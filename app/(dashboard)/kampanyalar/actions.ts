@@ -10,6 +10,9 @@ import {
   cancelCampaign,
   collectCampaign,
   deleteCampaign,
+  addCampaignPayment,
+  deleteCampaignPayment,
+  markCampaignCollected,
   type CreateCampaignInput,
 } from "@/lib/services/campaign"
 import { writeAuditLog } from "@/lib/services/audit-log"
@@ -217,3 +220,76 @@ export async function collectCampaignAction(
     return fail(err)
   }
 }
+
+
+// ─── Parçalı Tahsilat ──────────────────────────────────────────
+
+const paymentSchema = z.object({
+  campaignId: z.number().int().positive(),
+  amount: z.number().positive(),
+  paymentDate: z.string().min(1, "Tarih zorunlu"),
+  invoiceNo: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+})
+
+export async function addCampaignPaymentAction(rawInput: z.infer<typeof paymentSchema>) {
+  try {
+    const actor = await requirePermission("kampanyalar", "edit")
+    const parsed = paymentSchema.parse(rawInput)
+    const result = await addCampaignPayment(parsed.campaignId, {
+      amount: parsed.amount,
+      paymentDate: new Date(parsed.paymentDate),
+      invoiceNo: parsed.invoiceNo ?? null,
+      notes: parsed.notes ?? null,
+    })
+    await writeAuditLog({
+      userId: actor.id,
+      action: "CAMPAIGN_PAYMENT_ADD",
+      entityType: "Campaign",
+      entityId: parsed.campaignId,
+      after: { amount: parsed.amount, paymentDate: parsed.paymentDate, invoiceNo: parsed.invoiceNo ?? null },
+    })
+    revalidatePath("/kampanyalar")
+    revalidatePath(`/kampanyalar/${parsed.campaignId}`)
+    return ok(result)
+  } catch (err) {
+    return fail(err)
+  }
+}
+
+export async function deleteCampaignPaymentAction(paymentId: number) {
+  try {
+    const actor = await requirePermission("kampanyalar", "edit")
+    const result = await deleteCampaignPayment(paymentId)
+    await writeAuditLog({
+      userId: actor.id,
+      action: "CAMPAIGN_PAYMENT_DELETE",
+      entityType: "CampaignPayment",
+      entityId: String(paymentId),
+    })
+    revalidatePath("/kampanyalar")
+    revalidatePath(`/kampanyalar/${result.campaignId}`)
+    return ok(result)
+  } catch (err) {
+    return fail(err)
+  }
+}
+
+export async function markCampaignCollectedAction(campaignId: number) {
+  try {
+    const actor = await requirePermission("kampanyalar", "edit")
+    const result = await markCampaignCollected(campaignId)
+    await writeAuditLog({
+      userId: actor.id,
+      action: "CAMPAIGN_COLLECT_MANUAL",
+      entityType: "Campaign",
+      entityId: String(campaignId),
+    })
+    revalidatePath("/kampanyalar")
+    revalidatePath(`/kampanyalar/${campaignId}`)
+    return ok(result)
+  } catch (err) {
+    return fail(err)
+  }
+}
+

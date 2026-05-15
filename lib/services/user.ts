@@ -7,20 +7,26 @@ import { BCRYPT_COST } from "@/lib/auth/password-policy"
 
 // ─── Types ────────────────────────────────────────────────────
 
+export type UserRoleT = "ADMIN" | "MANAGER" | "STAFF" | "SALES"
+
 export interface CreateUserInput {
   username: string
   name: string
   password: string
-  role: "ADMIN" | "MANAGER" | "STAFF"
+  role: UserRoleT
   permissions: Record<string, { canView: boolean; canEdit: boolean }>
+  /** Boş array veya undefined → kısıtlama yok (tüm markalara erişim) */
+  allowedBrandIds?: number[]
 }
 
 export interface UpdateUserInput {
   name?: string
   password?: string  // boşsa değiştirme
-  role?: "ADMIN" | "MANAGER" | "STAFF"
+  role?: UserRoleT
   isActive?: boolean
   permissions?: Record<string, { canView: boolean; canEdit: boolean }>
+  /** undefined → değiştirme. [] → tümünü kaldır (tüm markaya erişim). [1,2] → sadece bunlar. */
+  allowedBrandIds?: number[]
 }
 
 export interface UserWithPermissions {
@@ -32,12 +38,13 @@ export interface UserWithPermissions {
   isActive: boolean
   createdAt: Date
   permissions: { module: string; canView: boolean; canEdit: boolean }[]
+  allowedBrandIds: number[]
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────
 
 export async function listUsers(): Promise<UserWithPermissions[]> {
-  return prisma.user.findMany({
+  const users = await prisma.user.findMany({
     select: {
       id: true,
       username: true,
@@ -50,13 +57,18 @@ export async function listUsers(): Promise<UserWithPermissions[]> {
         select: { module: true, canView: true, canEdit: true },
         orderBy: { module: "asc" },
       },
+      allowedBrands: { select: { brandId: true } },
     },
     orderBy: { createdAt: "asc" },
   })
+  return users.map((u) => ({
+    ...u,
+    allowedBrandIds: u.allowedBrands.map((a) => a.brandId),
+  }))
 }
 
 export async function getUserById(id: string): Promise<UserWithPermissions | null> {
-  return prisma.user.findUnique({
+  const u = await prisma.user.findUnique({
     where: { id },
     select: {
       id: true,
@@ -70,8 +82,11 @@ export async function getUserById(id: string): Promise<UserWithPermissions | nul
         select: { module: true, canView: true, canEdit: true },
         orderBy: { module: "asc" },
       },
+      allowedBrands: { select: { brandId: true } },
     },
   })
+  if (!u) return null
+  return { ...u, allowedBrandIds: u.allowedBrands.map((a) => a.brandId) }
 }
 
 export async function createUser(input: CreateUserInput) {
@@ -95,7 +110,7 @@ export async function createUser(input: CreateUserInput) {
       name: input.name,
       email,
       passwordHash,
-      role: input.role as "ADMIN" | "MANAGER" | "STAFF",
+      role: input.role,
       permissions: {
         create: ALL_MODULES.map((mod) => {
           const perm = input.permissions[mod.key]
@@ -106,6 +121,10 @@ export async function createUser(input: CreateUserInput) {
           }
         }),
       },
+      allowedBrands:
+        input.allowedBrandIds && input.allowedBrandIds.length > 0
+          ? { create: input.allowedBrandIds.map((brandId) => ({ brandId })) }
+          : undefined,
     },
     select: { id: true, username: true },
   })
@@ -156,6 +175,17 @@ export async function updateUser(id: string, input: UpdateUserInput) {
           canView: perm?.canView ?? false,
           canEdit: perm?.canEdit ?? false,
         },
+      })
+    }
+  }
+
+  // Allowed brand'leri güncelle (undefined → değiştirme)
+  if (input.allowedBrandIds !== undefined) {
+    await prisma.userAllowedBrand.deleteMany({ where: { userId: id } })
+    if (input.allowedBrandIds.length > 0) {
+      await prisma.userAllowedBrand.createMany({
+        data: input.allowedBrandIds.map((brandId) => ({ userId: id, brandId })),
+        skipDuplicates: true,
       })
     }
   }

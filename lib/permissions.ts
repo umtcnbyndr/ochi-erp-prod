@@ -110,6 +110,12 @@ export interface AuthUser {
   id: string
   role: string
   permissions: UserPermissionMap
+  /**
+   * Kullanıcının erişebileceği markalar.
+   * null → kısıtlama yok (ADMIN veya hiç UserAllowedBrand kaydı olmayan kullanıcı).
+   * [] / [n,...] → sadece bu marka(lar) görülebilir (siparişler vs.).
+   */
+  allowedBrandIds: number[] | null
 }
 
 /**
@@ -128,17 +134,25 @@ export async function getAuthUser(): Promise<AuthUser | null> {
 
   if (!user || !user.isActive) return null
 
-  // ADMIN = full access, permission map doldurmaya gerek yok
+  // ADMIN = full access, permission map doldurmaya gerek yok, marka kısıtı yok
   if (user.role === "ADMIN") {
     const fullPerms: UserPermissionMap = {}
     for (const mod of ALL_MODULES) {
       fullPerms[mod.key] = { canView: true, canEdit: true }
     }
-    return { id: user.id, role: user.role, permissions: fullPerms }
+    return { id: user.id, role: user.role, permissions: fullPerms, allowedBrandIds: null }
   }
 
-  const permissions = await getUserPermissions(user.id)
-  return { id: user.id, role: user.role, permissions }
+  const [permissions, allowedBrands] = await Promise.all([
+    getUserPermissions(user.id),
+    prisma.userAllowedBrand.findMany({
+      where: { userId: user.id },
+      select: { brandId: true },
+    }),
+  ])
+  // Hiç kayıt yoksa → kısıt yok (tüm markalara erişim).
+  const allowedBrandIds = allowedBrands.length > 0 ? allowedBrands.map((b) => b.brandId) : null
+  return { id: user.id, role: user.role, permissions, allowedBrandIds }
 }
 
 /**

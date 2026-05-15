@@ -59,6 +59,14 @@ export default async function KampanyaDetayPage({ params }: Props) {
       saleDate: s.saleDate.toISOString(),
       source: s.source,
     })),
+    payments: campaign.payments.map((p) => ({
+      id: p.id,
+      amount: Number(p.amount),
+      paymentDate: p.paymentDate.toISOString(),
+      invoiceNo: p.invoiceNo,
+      notes: p.notes,
+      createdAt: p.createdAt.toISOString(),
+    })),
   }
 
   const productsSerialized = products.map((p) => ({

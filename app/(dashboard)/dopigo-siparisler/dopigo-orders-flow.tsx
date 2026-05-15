@@ -151,7 +151,7 @@ export function DopigoOrdersFlow(props: Props) {
         case "week": { const w = new Date(today); w.setDate(w.getDate() - 6); from = startOfDay(w); to = endOfDay(today); break }
         case "month": { const m = new Date(today.getFullYear(), today.getMonth(), 1); from = startOfDay(m); to = endOfDay(today); break }
         case "lastMonth": { const s = new Date(today.getFullYear(), today.getMonth() - 1, 1); const e = new Date(today.getFullYear(), today.getMonth(), 0); from = startOfDay(s); to = endOfDay(e); break }
-        default: { const w = new Date(today); w.setDate(w.getDate() - 6); from = startOfDay(w); to = endOfDay(today) }
+        default: { from = startOfDay(today); to = endOfDay(today) }
       }
     }
     p.set("from", from!); p.set("to", to!)

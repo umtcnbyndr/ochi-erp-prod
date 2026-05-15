@@ -41,7 +41,9 @@ import {
   endCampaignAction,
   cancelCampaignAction,
   deleteCampaignAction,
-  collectCampaignAction,
+  addCampaignPaymentAction,
+  deleteCampaignPaymentAction,
+  markCampaignCollectedAction,
 } from "../actions"
 
 interface Sale {
@@ -55,6 +57,15 @@ interface Sale {
   discountAmountTL: number
   saleDate: string
   source: string
+}
+
+interface Payment {
+  id: number
+  amount: number
+  paymentDate: string
+  invoiceNo: string | null
+  notes: string | null
+  createdAt: string
 }
 
 interface Campaign {
@@ -75,6 +86,7 @@ interface Campaign {
   createdAt: string
   endedAt: string | null
   sales: Sale[]
+  payments: Payment[]
 }
 
 interface Product {
@@ -96,9 +108,19 @@ export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
   const confirm = useConfirm()
   const [pending, startTransition] = useTransition()
 
-  const [collectOpen, setCollectOpen] = useState(false)
-  const [invoiceNo, setInvoiceNo] = useState("")
-  const [collectedAmount, setCollectedAmount] = useState("")
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [paymentAmount, setPaymentAmount] = useState("")
+  const [paymentDate, setPaymentDate] = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  })
+  const [paymentInvoiceNo, setPaymentInvoiceNo] = useState("")
+  const [paymentNotes, setPaymentNotes] = useState("")
+
+  const totalPaid = useMemo(
+    () => campaign.payments.reduce((s, p) => s + p.amount, 0),
+    [campaign.payments],
+  )
 
   // Ürün bazlı satış agregasyonu (tahsilat detay raporu)
   const salesByProduct = useMemo(() => {
@@ -199,28 +221,75 @@ export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
     })
   }
 
-  function handleCollect() {
-    if (!invoiceNo.trim()) {
-      toast.error("Fatura no zorunlu")
-      return
-    }
-    const amount = parseFloat(collectedAmount)
+  function handleAddPayment() {
+    const amount = parseFloat(paymentAmount.replace(",", "."))
     if (isNaN(amount) || amount <= 0) {
       toast.error("Geçerli bir tutar girin")
       return
     }
+    if (!paymentDate) {
+      toast.error("Tahsilat tarihi zorunlu")
+      return
+    }
     startTransition(async () => {
-      const result = await collectCampaignAction({
-        id: campaign.id,
-        collectionInvoiceNo: invoiceNo.trim(),
-        collectedAmount: amount,
+      const result = await addCampaignPaymentAction({
+        campaignId: campaign.id,
+        amount,
+        paymentDate,
+        invoiceNo: paymentInvoiceNo.trim() || null,
+        notes: paymentNotes.trim() || null,
       })
       if (!result.success) {
         toast.error(result.error)
         return
       }
-      toast.success("Tahsilat kaydedildi")
-      setCollectOpen(false)
+      const { remaining } = result.data
+      toast.success(
+        remaining > 0
+          ? `Tahsilat eklendi — kalan ${remaining.toLocaleString("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 })}`
+          : "Tahsilat tamamlandı",
+      )
+      setPaymentOpen(false)
+      setPaymentAmount("")
+      setPaymentInvoiceNo("")
+      setPaymentNotes("")
+      router.refresh()
+    })
+  }
+
+  async function handleDeletePayment(paymentId: number, amount: number) {
+    const ok = await confirm({
+      title: "Tahsilat kaydı silinecek",
+      description: `${amount.toLocaleString("tr-TR", { style: "currency", currency: "TRY" })} tutarındaki tahsilat silinsin mi?`,
+      confirmText: "Evet, sil",
+      variant: "destructive",
+    })
+    if (!ok) return
+    startTransition(async () => {
+      const result = await deleteCampaignPaymentAction(paymentId)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Tahsilat silindi")
+      router.refresh()
+    })
+  }
+
+  async function handleMarkCollected() {
+    const ok = await confirm({
+      title: "Tahsilat tamamlandı olarak işaretlensin mi?",
+      description: `Toplam tahsil edilen: ${totalPaid.toLocaleString("tr-TR", { style: "currency", currency: "TRY" })}. Kampanya 'Tahsil Edildi' statüsüne geçer.`,
+      confirmText: "Tamamla",
+    })
+    if (!ok) return
+    startTransition(async () => {
+      const result = await markCampaignCollectedAction(campaign.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Kampanya tahsilatı tamamlandı")
       router.refresh()
     })
   }
@@ -342,17 +411,32 @@ export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
           </>
         )}
         {campaign.status === "ENDED" && (
-          <Button
-            onClick={() => {
-              setCollectedAmount(totalDiscount.toFixed(2))
-              setCollectOpen(true)
-            }}
-            disabled={pending}
-            size="sm"
-          >
-            <Receipt className="h-4 w-4 mr-1.5" />
-            Tahsilat Yap
-          </Button>
+          <>
+            <Button
+              onClick={() => {
+                // Kalan tutarı default ver
+                const remaining = Math.max(0, totalDiscount - totalPaid)
+                setPaymentAmount(remaining > 0 ? remaining.toFixed(2) : "")
+                setPaymentOpen(true)
+              }}
+              disabled={pending}
+              size="sm"
+            >
+              <Receipt className="h-4 w-4 mr-1.5" />
+              Tahsilat Ekle
+            </Button>
+            {campaign.payments.length > 0 && (
+              <Button
+                onClick={handleMarkCollected}
+                disabled={pending}
+                size="sm"
+                variant="outline"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                Tahsilatı Tamamla
+              </Button>
+            )}
+          </>
         )}
 
         {/* Admin-only kalıcı silme butonu — COLLECTED hariç her statüde gösterilir */}
@@ -371,32 +455,108 @@ export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
         )}
       </div>
 
-      {/* Tahsilat tamamlandıysa fatura bilgisi */}
-      {campaign.status === "COLLECTED" && (
-        <Card className="border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20">
-          <CardContent className="p-4 flex items-center gap-3">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-            <div className="flex-1 text-sm">
-              <p className="font-medium">Tahsil edildi</p>
-              <p className="text-xs text-muted-foreground">
-                Fatura No: <span className="font-mono">{campaign.collectionInvoiceNo}</span>
-                {" · "}
-                Tutar:{" "}
-                <span className="font-medium">
-                  {campaign.collectedAmount?.toLocaleString("tr-TR", {
+      {/* Tahsilat Özeti + Liste (ENDED veya COLLECTED) */}
+      {(campaign.status === "ENDED" || campaign.status === "COLLECTED") && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Receipt className="h-4 w-4" />
+              Tahsilat
+              {campaign.status === "COLLECTED" && (
+                <Badge className="bg-emerald-500 text-[10px]">Tamamlandı</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Özet */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-md border bg-muted/30 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Beklenen</p>
+                <p className="text-lg font-bold tabular-nums">
+                  {totalDiscount.toLocaleString("tr-TR", {
                     style: "currency",
                     currency: "TRY",
-                    maximumFractionDigits: 2,
+                    maximumFractionDigits: 0,
                   })}
-                </span>
-                {campaign.collectedAt && (
-                  <>
-                    {" · "}
-                    Tarih: {new Date(campaign.collectedAt).toLocaleDateString("tr-TR")}
-                  </>
-                )}
-              </p>
+                </p>
+              </div>
+              <div className="rounded-md border bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200/50 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Tahsil Edilen</p>
+                <p className="text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {totalPaid.toLocaleString("tr-TR", {
+                    style: "currency",
+                    currency: "TRY",
+                    maximumFractionDigits: 0,
+                  })}
+                </p>
+              </div>
+              <div className={`rounded-md border p-3 ${Math.max(0, totalDiscount - totalPaid) > 0 ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200/50" : "bg-muted/30"}`}>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Kalan</p>
+                <p className={`text-lg font-bold tabular-nums ${Math.max(0, totalDiscount - totalPaid) > 0 ? "text-amber-700 dark:text-amber-400" : ""}`}>
+                  {Math.max(0, totalDiscount - totalPaid).toLocaleString("tr-TR", {
+                    style: "currency",
+                    currency: "TRY",
+                    maximumFractionDigits: 0,
+                  })}
+                </p>
+              </div>
             </div>
+
+            {/* Tahsilat listesi */}
+            {campaign.payments.length === 0 ? (
+              <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                Henüz tahsilat kaydı yok.
+                {campaign.status === "ENDED" && " Yukarıdaki 'Tahsilat Ekle' butonundan ekle."}
+              </div>
+            ) : (
+              <Table className="text-[12px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tarih</TableHead>
+                    <TableHead>Fatura No</TableHead>
+                    <TableHead>Not</TableHead>
+                    <TableHead className="text-right">Tutar</TableHead>
+                    <TableHead className="w-12" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {campaign.payments.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell>
+                        {new Date(p.paymentDate).toLocaleDateString("tr-TR")}
+                      </TableCell>
+                      <TableCell className="font-mono text-[11px]">
+                        {p.invoiceNo ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-[11px]">
+                        {p.notes ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-semibold">
+                        {p.amount.toLocaleString("tr-TR", {
+                          style: "currency",
+                          currency: "TRY",
+                          maximumFractionDigits: 2,
+                        })}
+                      </TableCell>
+                      <TableCell>
+                        {campaign.status === "ENDED" && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 text-destructive hover:text-destructive"
+                            disabled={pending}
+                            onClick={() => handleDeletePayment(p.id, p.amount)}
+                            title="Sil"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       )}
@@ -574,66 +734,87 @@ export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
         </Card>
       )}
 
-      {/* Tahsilat dialog */}
-      <Dialog open={collectOpen} onOpenChange={setCollectOpen}>
+      {/* Yeni Tahsilat Ekle dialog (parçalı ödeme) */}
+      <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Tahsilat Yap</DialogTitle>
+            <DialogTitle>Tahsilat Ekle</DialogTitle>
             <DialogDescription>
-              Markaya kestiğiniz iskonto faturasının bilgilerini girin.
+              Markadan gelen ödemeyi tarihiyle birlikte kaydet. Parçalı tahsilat
+              desteklenir — kalan tutarı daha sonra ekleyebilirsin.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Sistem hesabı özet */}
-            <div className="rounded-md border bg-muted/50 p-3 space-y-1">
-              <p className="text-xs text-muted-foreground font-medium">Sistem Hesabı</p>
-              <div className="flex items-baseline justify-between">
-                <span className="text-sm">{totalQty} adet × ort. indirim</span>
-                <span className="text-lg font-bold tabular-nums text-primary">
-                  {totalDiscount.toLocaleString("tr-TR", {
-                    style: "currency",
-                    currency: "TRY",
-                    maximumFractionDigits: 2,
-                  })}
-                </span>
+            {/* Özet */}
+            <div className="rounded-md border bg-muted/50 p-3 grid grid-cols-3 gap-2 text-xs">
+              <div>
+                <p className="text-muted-foreground">Beklenen</p>
+                <p className="font-semibold tabular-nums">
+                  {totalDiscount.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺
+                </p>
               </div>
-              <p className="text-[10px] text-muted-foreground">
-                PSF × %{campaign.discountRate.toFixed(0)} × satılan adet toplamı
-              </p>
+              <div>
+                <p className="text-muted-foreground">Tahsil Edilen</p>
+                <p className="font-semibold tabular-nums text-emerald-600">
+                  {totalPaid.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Kalan</p>
+                <p className="font-semibold tabular-nums text-amber-600">
+                  {Math.max(0, totalDiscount - totalPaid).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="payment-amount" className="text-sm">Tutar (TL) *</Label>
+                <Input
+                  id="payment-amount"
+                  type="number"
+                  step={0.01}
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  placeholder="30000"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="payment-date" className="text-sm">Tahsilat Tarihi *</Label>
+                <Input
+                  id="payment-date"
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                />
+              </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="invoice-no" className="text-sm">
-                Fatura No
-              </Label>
+              <Label htmlFor="payment-invoice" className="text-sm">Fatura No (opsiyonel)</Label>
               <Input
-                id="invoice-no"
-                value={invoiceNo}
-                onChange={(e) => setInvoiceNo(e.target.value)}
+                id="payment-invoice"
+                value={paymentInvoiceNo}
+                onChange={(e) => setPaymentInvoiceNo(e.target.value)}
                 placeholder="ISK-2026-001"
               />
             </div>
+
             <div className="space-y-1.5">
-              <Label htmlFor="amount" className="text-sm">
-                Fatura Tutarı (TL)
-              </Label>
+              <Label htmlFor="payment-notes" className="text-sm">Not (opsiyonel)</Label>
               <Input
-                id="amount"
-                type="number"
-                step={0.01}
-                value={collectedAmount}
-                onChange={(e) => setCollectedAmount(e.target.value)}
+                id="payment-notes"
+                value={paymentNotes}
+                onChange={(e) => setPaymentNotes(e.target.value)}
+                placeholder="havale, kısmi ödeme vs."
               />
-              <p className="text-xs text-muted-foreground">
-                Sistem hesabıyla dolduruldu — fatura tutarı farklıysa düzenleyin
-              </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCollectOpen(false)}>
+            <Button variant="outline" onClick={() => setPaymentOpen(false)}>
               İptal
             </Button>
-            <Button onClick={handleCollect} disabled={pending}>
+            <Button onClick={handleAddPayment} disabled={pending}>
               {pending && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
               Tahsilatı Kaydet
             </Button>

@@ -33,6 +33,7 @@ interface UserRow {
   role: string
   isActive: boolean
   permissions: { module: string; canView: boolean; canEdit: boolean }[]
+  allowedBrandIds: number[]
 }
 
 interface ModuleInfo {
@@ -40,18 +41,26 @@ interface ModuleInfo {
   label: string
 }
 
+interface BrandInfo {
+  id: number
+  name: string
+}
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   user: UserRow | null // null = yeni oluştur
   modules: ModuleInfo[]
+  brands: BrandInfo[]
 }
 
 interface PermState {
   [moduleKey: string]: { canView: boolean; canEdit: boolean }
 }
 
-export function UserDialog({ open, onOpenChange, user, modules }: Props) {
+type RoleT = "ADMIN" | "MANAGER" | "STAFF" | "SALES"
+
+export function UserDialog({ open, onOpenChange, user, modules, brands }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const isEditing = user !== null
@@ -60,8 +69,9 @@ export function UserDialog({ open, onOpenChange, user, modules }: Props) {
   const [username, setUsername] = useState("")
   const [name, setName] = useState("")
   const [password, setPassword] = useState("")
-  const [role, setRole] = useState<"ADMIN" | "MANAGER" | "STAFF">("STAFF")
+  const [role, setRole] = useState<RoleT>("STAFF")
   const [perms, setPerms] = useState<PermState>({})
+  const [allowedBrandIds, setAllowedBrandIds] = useState<Set<number>>(new Set())
 
   // Dialog açıldığında formu doldur
   useEffect(() => {
@@ -71,7 +81,7 @@ export function UserDialog({ open, onOpenChange, user, modules }: Props) {
       setUsername(user.username)
       setName(user.name ?? "")
       setPassword("")
-      setRole(user.role as "ADMIN" | "MANAGER" | "STAFF")
+      setRole(user.role as RoleT)
 
       const map: PermState = {}
       for (const mod of modules) {
@@ -82,6 +92,7 @@ export function UserDialog({ open, onOpenChange, user, modules }: Props) {
         }
       }
       setPerms(map)
+      setAllowedBrandIds(new Set(user.allowedBrandIds))
     } else {
       setUsername("")
       setName("")
@@ -93,6 +104,7 @@ export function UserDialog({ open, onOpenChange, user, modules }: Props) {
         map[mod.key] = { canView: false, canEdit: false }
       }
       setPerms(map)
+      setAllowedBrandIds(new Set())
     }
   }, [open, user, modules])
 
@@ -149,14 +161,25 @@ export function UserDialog({ open, onOpenChange, user, modules }: Props) {
     })
   }
 
+  function toggleBrand(id: number) {
+    setAllowedBrandIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   function handleSubmit() {
     startTransition(async () => {
+      const brandIdsArray = Array.from(allowedBrandIds)
       if (isEditing) {
         const result = await updateUserAction(user.id, {
           name: name || undefined,
           password: password || undefined,
           role,
           permissions: perms,
+          allowedBrandIds: brandIdsArray,
         })
         if (result.success) {
           toast.success("Kullanıcı güncellendi")
@@ -172,6 +195,7 @@ export function UserDialog({ open, onOpenChange, user, modules }: Props) {
           password,
           role,
           permissions: perms,
+          allowedBrandIds: brandIdsArray,
         })
         if (result.success) {
           toast.success(`"${result.data?.username}" oluşturuldu`)
@@ -253,6 +277,7 @@ export function UserDialog({ open, onOpenChange, user, modules }: Props) {
                   <SelectItem value="ADMIN">Admin (Tam erişim)</SelectItem>
                   <SelectItem value="MANAGER">Yönetici</SelectItem>
                   <SelectItem value="STAFF">Personel</SelectItem>
+                  <SelectItem value="SALES">Satışçı</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -344,6 +369,55 @@ export function UserDialog({ open, onOpenChange, user, modules }: Props) {
               </div>
             )}
           </div>
+
+          {/* Marka Erişim Kısıtı — sadece non-admin */}
+          {!isAdmin && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm font-medium">Marka Erişim Kısıtı</Label>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {allowedBrandIds.size === 0
+                        ? "Hiçbiri seçili değil → tüm markalara erişim"
+                        : `${allowedBrandIds.size} marka seçili → sadece bunlarla ilgili siparişleri görür`}
+                    </p>
+                  </div>
+                  {allowedBrandIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAllowedBrandIds(new Set())}
+                      className="text-xs text-muted-foreground hover:text-foreground underline"
+                      disabled={pending}
+                    >
+                      Hepsini temizle
+                    </button>
+                  )}
+                </div>
+                <div className="rounded-md border max-h-48 overflow-y-auto divide-y">
+                  {brands.length === 0 && (
+                    <div className="p-3 text-xs text-muted-foreground text-center">
+                      Marka kaydı yok
+                    </div>
+                  )}
+                  {brands.map((b) => (
+                    <label
+                      key={b.id}
+                      className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/30 cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={allowedBrandIds.has(b.id)}
+                        onCheckedChange={() => toggleBrand(b.id)}
+                        disabled={pending}
+                      />
+                      <span>{b.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <DialogFooter>

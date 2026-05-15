@@ -9,6 +9,7 @@ import {
   Shield,
   ShieldAlert,
   ShieldCheck,
+  Briefcase,
   Eye,
   EyeOff,
   Users,
@@ -44,6 +45,7 @@ interface UserRow {
   isActive: boolean
   createdAt: string
   permissions: { module: string; canView: boolean; canEdit: boolean }[]
+  allowedBrandIds: number[]
 }
 
 interface ModuleInfo {
@@ -51,18 +53,25 @@ interface ModuleInfo {
   label: string
 }
 
+interface BrandInfo {
+  id: number
+  name: string
+}
+
 interface Props {
   users: UserRow[]
   modules: ModuleInfo[]
+  brands: BrandInfo[]
 }
 
 const ROLE_LABELS: Record<string, { label: string; icon: typeof Shield; variant: "default" | "secondary" | "outline" }> = {
   ADMIN:   { label: "Admin",   icon: ShieldAlert,  variant: "default" },
   MANAGER: { label: "Yönetici",icon: ShieldCheck,  variant: "secondary" },
   STAFF:   { label: "Personel",icon: Shield,       variant: "outline" },
+  SALES:   { label: "Satışçı", icon: Briefcase,    variant: "outline" },
 }
 
-export function UserList({ users, modules }: Props) {
+export function UserList({ users, modules, brands }: Props) {
   const router = useRouter()
   const confirmDialog = useConfirm()
   const [pending, startTransition] = useTransition()
@@ -251,6 +260,7 @@ export function UserList({ users, modules }: Props) {
         onOpenChange={setDialogOpen}
         user={editingUser}
         modules={modules}
+        brands={brands}
       />
     </>
   )
