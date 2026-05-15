@@ -388,17 +388,27 @@ export interface StockOnlyInput {
   setComponents?: Array<{ quantity: number; component: { mainStock: number } }>
 }
 
+/**
+ * SET ürünler için güvenlik payı (%50).
+ * Bileşenler aynı zamanda SINGLE olarak da satıldığı için, SET'in tamamını Dopigo'ya
+ * göndermek çakışma riski yaratır (örn. virtual=10, ama 6 SINGLE satılırsa SET kalmaz).
+ * Yarısı kadar push edip arta kalanı bileşenlerin SINGLE satışına bırakıyoruz.
+ */
+export const SET_PUSH_RATIO = 0.5
+
 export function calculateEffectiveStock(p: StockOnlyInput): {
   stock: number
   source: "MAIN" | "PHARMACY_FALLBACK" | "ZERO" | "SET_VIRTUAL"
 } {
-  // Set ürün: bileşenlerin izin verdiği minimum set sayısı (sanal stok)
+  // Set ürün: bileşenlerin izin verdiği minimum set sayısı (sanal stok).
+  // SET_PUSH_RATIO kadarını push ediyoruz (ana stokla çakışma riskine karşı güvenlik payı).
   if (p.productType === "SET" && p.setComponents && p.setComponents.length > 0) {
     const counts = p.setComponents.map((sc) =>
       Math.floor(sc.component.mainStock / Math.max(1, sc.quantity)),
     )
     const virtualStock = counts.length > 0 ? Math.min(...counts) : 0
-    return { stock: Math.max(0, virtualStock), source: "SET_VIRTUAL" }
+    const reservedStock = Math.floor(virtualStock * SET_PUSH_RATIO)
+    return { stock: Math.max(0, reservedStock), source: "SET_VIRTUAL" }
   }
   if (p.mainStock > 0) {
     return { stock: p.mainStock, source: "MAIN" }
