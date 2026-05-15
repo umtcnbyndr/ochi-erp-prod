@@ -284,64 +284,19 @@ export function suggestPharmacyMapping(columns: string[]): PharmacyColumnMapping
   }
 }
 
-// ---------------- Name similarity (kofre detection) ----------------
+// ---------------- Utils ----------------
 
 /**
- * Barkod eşleştiğinde 2 isim aynı ürünü mü işaret ediyor?
- *
- * Kofre/SET ayrımı: bir tarafta kofre/+/çanta var diğerinde yoksa FARKLI ürün
- *   (eczane bazen kofreleri aynı barkod altında listeler — onları conflict tut).
- *
- * Aksi halde token-örtüşmesine bak: ≥ %50 ortak token varsa aynı kabul et.
- *   (ör. "Skinceuticals Collagen Pro Solution 30 ml" = "SC COLLAGEN PRO-SOLUTION 30 ML")
+ * Tria/eczane kodunu normalize et — baştaki sıfırları sil.
+ * Excel bazen numeric (156461) bazen text ("0156461") geliyor; DB'de de iki format olabilir.
+ * Her iki tarafta strip yaparak güvenli eşleştirme.
  */
-const KOFRE_KEYWORDS = ["kofre", "çanta", "canta", " kit ", "+"]
-
-function hasKofreIndicator(s: string): boolean {
-  const lower = s.toLocaleLowerCase("tr")
-  return KOFRE_KEYWORDS.some((k) => lower.includes(k))
+function normalizeTriaCode(s: string | null | undefined): string {
+  if (s == null) return ""
+  const t = String(s).trim()
+  if (!t) return ""
+  return t.replace(/^0+/, "") || "0"
 }
-
-// Marka ve ölçü gibi generic tokenlar — bunlar ortak olsa bile "aynı ürün" demez.
-// Asıl ürün adı (collagen, ferulic, phloretin gibi) tokenlar lazım.
-// Türkçe locale "I" → "ı" dönüştürdüğü için stop listesini de aynı locale ile normalize ediyoruz.
-const STOP_TOKENS = new Set(
-  [
-    "SKINCEUTICALS", "SC", "SKIN", "CEUTICALS",
-    "ML", "GR", "KG", "LT", "LT.", "SPF",
-    // Yaygın hacimler
-    "15", "30", "50", "60", "75", "100", "120", "150", "200", "250", "300", "400", "500",
-    // Diğer marka adayları (ileride genişlet)
-    "MUSTELA", "CERAVE", "LA", "ROCHE", "POSAY", "VICHY", "AVENE", "BIODERMA",
-  ].map((t) => t.toLocaleLowerCase("tr")),
-)
-
-function tokenize(s: string): Set<string> {
-  return new Set(
-    s
-      .toLocaleLowerCase("tr")
-      .replace(/[^a-z0-9çğıöşüâî\s]/g, " ")
-      .split(/\s+/)
-      .filter((t) => t.length >= 2 && !STOP_TOKENS.has(t)),
-  )
-}
-
-export function namesLikelySameProduct(a: string, b: string): boolean {
-  // Tek tarafta kofre var diğerinde yok → FARKLI ürün
-  if (hasKofreIndicator(a) !== hasKofreIndicator(b)) return false
-
-  const ta = tokenize(a)
-  const tb = tokenize(b)
-  // Hiçbir tarafta ayırt edici token yoksa kontrol edemiyoruz → reddet
-  if (ta.size === 0 || tb.size === 0) return false
-
-  let common = 0
-  for (const t of ta) if (tb.has(t)) common++
-  // En az 1 ortak ayırt edici token + ≥ %50 örtüşme
-  return common >= 1 && common / Math.min(ta.size, tb.size) >= 0.5
-}
-
-// ---------------- Utils ----------------
 
 function toStr(v: unknown): string | null {
   if (v == null) return null
@@ -387,16 +342,8 @@ export async function analyzePharmacyUpload(
   const psfThresholdInfo = await getDynamicPsfThreshold()
   preview.psfThreshold = psfThresholdInfo
 
-  // DB lookups (alias-aware)
-  const [allBarcodes, allProductCodes, allBrands, allCategories] = await Promise.all([
-    prisma.productBarcode.findMany({
-      select: {
-        barcode: true,
-        productId: true,
-        product: { select: { id: true, name: true } },
-      },
-    }),
-    // Eczane kodu eşleştirmesi için Product.pharmacyProductCode + streetPharmacyCode dolulari
+  // DB lookups — sadece Tria kodu eşleştirmesi (barkod fallback yok)
+  const [allProductCodes, allBrands, allCategories] = await Promise.all([
     prisma.product.findMany({
       where: {
         OR: [
@@ -415,21 +362,21 @@ export async function analyzePharmacyUpload(
     prisma.category.findMany({ select: { name: true, aliases: true } }),
   ])
 
-  const barcodeMap = new Map<string, { productId: number; productName: string }>()
-  for (const b of allBarcodes) {
-    barcodeMap.set(b.barcode, { productId: b.product.id, productName: b.product.name })
-  }
-
-  // Eczane kodu lookup (Excel'in "Ürün kodu" kolonu — eczane kendi iç kodu)
-  // Hem pharmacyProductCode (ana depo kodu) hem streetPharmacyCode (cadde kodu) eslesir
+  // Tria/eczane kodu lookup (Excel'in "Ürün kodu" kolonu — eczane kendi iç kodu).
+  // Hem pharmacyProductCode hem streetPharmacyCode eşleşir.
+  // NORMALIZE: hem raw hem leading-zero-stripped key'leri map'e koyuyoruz ki
+  // iki taraf farklı formatta yazsa bile eşleşsin (örn DB: "0156461", Excel: "156461").
   const productCodeMap = new Map<string, { productId: number; productName: string }>()
+  function addCodeKey(code: string, ref: { productId: number; productName: string }) {
+    const raw = code.trim()
+    if (raw) productCodeMap.set(raw, ref)
+    const norm = normalizeTriaCode(raw)
+    if (norm && norm !== raw) productCodeMap.set(norm, ref)
+  }
   for (const p of allProductCodes) {
-    if (p.pharmacyProductCode) {
-      productCodeMap.set(p.pharmacyProductCode.trim(), { productId: p.id, productName: p.name })
-    }
-    if (p.streetPharmacyCode) {
-      productCodeMap.set(p.streetPharmacyCode.trim(), { productId: p.id, productName: p.name })
-    }
+    const ref = { productId: p.id, productName: p.name }
+    if (p.pharmacyProductCode) addCodeKey(p.pharmacyProductCode, ref)
+    if (p.streetPharmacyCode) addCodeKey(p.streetPharmacyCode, ref)
   }
 
   // file-level duplicate tracking (by barcode)
@@ -510,36 +457,21 @@ export async function analyzePharmacyUpload(
     if (brandName) brandsSeen.set(norm(brandName), brandName)
     if (categoryName) categoriesSeen.set(norm(categoryName), categoryName)
 
-    // Eşleştirme: ÖNCE eczane kodu (pharmacyProductCode/streetPharmacyCode), SONRA barkod fallback
-    // Eczane kendi iç kodu daha stabil — barkod farklı satırlarda tekrarlanabilir, eczane kodu unique.
-    let existing = productCode ? productCodeMap.get(productCode.trim()) : undefined
-    let matchedByCode = !!existing
-    if (!existing) {
-      existing = barcodeMap.get(barcode)
-      matchedByCode = false
+    // Eşleştirme: SADECE Tria/eczane kodu ile.
+    // Barkod farklı varyantlarda (kofre, set) tekrar edebileceği için fallback kullanmıyoruz.
+    // İsim karşılaştırması da yok — kod 1-1 unique olduğu için isim farkı yanıltıcı.
+    let existing: { productId: number; productName: string } | undefined
+    if (productCode) {
+      const trimmed = productCode.trim()
+      existing =
+        productCodeMap.get(trimmed) ?? productCodeMap.get(normalizeTriaCode(trimmed))
     }
     if (existing) {
-      // Match key güvenliği:
-      //   - Eczane KODU ile bulunduysa → kod 1-1 unique, isim farkı önemli değil
-      //   - BARKOD ile bulunduysa → KOFRE/SET kontrolü yap (tek tarafta kofre kelimesi varsa farklı SKU)
-      //     Kofre yoksa → barkod eşleşmesine güven (eczane yazımı vs DB yazımı normaldir).
-      const isSafeMatch =
-        matchedByCode ||
-        norm(existing.productName) === norm(name) ||
-        namesLikelySameProduct(existing.productName, name)
-      if (isSafeMatch) {
-        preview.rows.push({
-          ...baseRow,
-          decision: { kind: "update", productId: existing.productId, productName: existing.productName },
-        })
-        preview.stats.willUpdate++
-      } else {
-        preview.rows.push({
-          ...baseRow,
-          decision: { kind: "conflict", existingId: existing.productId, existingName: existing.productName },
-        })
-        preview.stats.conflicts++
-      }
+      preview.rows.push({
+        ...baseRow,
+        decision: { kind: "update", productId: existing.productId, productName: existing.productName },
+      })
+      preview.stats.willUpdate++
     } else {
       preview.rows.push({ ...baseRow, decision: { kind: "unknown" } })
       preview.stats.unknown++
