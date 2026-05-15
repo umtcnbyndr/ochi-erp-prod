@@ -36,6 +36,7 @@ export const ALL_MODULES: ModuleDefinition[] = [
   { key: "komisyon-tarifeleri", label: "Komisyon Tarifeleri", routes: ["/komisyon-tarifeleri"] },
   { key: "kupon-onerileri",  label: "Kupon Önerileri",   routes: ["/kupon-onerileri"] },
   { key: "dopigo-siparisler",label: "Dopigo Siparişler",  routes: ["/dopigo-siparisler"] },
+  { key: "stok-uyarilari",   label: "Stok Uyarıları",     routes: ["/stok-uyarilari"] },
   { key: "markalar",         label: "Markalar",           routes: ["/markalar"] },
   { key: "kategoriler",      label: "Kategoriler",        routes: ["/kategoriler"] },
   { key: "marketplaces",     label: "Pazar Yerleri",      routes: ["/marketplaces"] },

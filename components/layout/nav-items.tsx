@@ -25,6 +25,7 @@ import {
   Percent,
   Receipt,
   Archive,
+  AlertTriangle,
 } from "lucide-react"
 
 export interface NavItem {
@@ -79,6 +80,7 @@ export const navGroups: NavGroup[] = [
       { label: "Komisyon Tarifeleri", href: "/komisyon-tarifeleri", icon: Percent, moduleKey: "komisyon-tarifeleri" },
       { label: "Kupon Önerileri", href: "/kupon-onerileri", icon: Ticket, moduleKey: "kupon-onerileri" },
       { label: "Dopigo Siparişler", href: "/dopigo-siparisler", icon: ShoppingBasket, moduleKey: "dopigo-siparisler" },
+      { label: "Stok Uyarıları", href: "/stok-uyarilari", icon: AlertTriangle, moduleKey: "stok-uyarilari" },
     ],
   },
   {

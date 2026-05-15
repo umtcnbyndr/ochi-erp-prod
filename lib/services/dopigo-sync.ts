@@ -379,7 +379,16 @@ export function calculateEffectivePurchasePrice(p: ProductForCalc): number | nul
  *       yoksa → fazla aç (eski davranış)
  *     streetStock <= pharmacyStockRule → 0 (uyarı kayıtlanır)
  */
-export function calculateEffectiveStock(p: ProductForCalc): {
+/** calculateEffectiveStock için minimal input — başka servislerden çağrı için */
+export interface StockOnlyInput {
+  productType?: "SINGLE" | "SET" | "GIFT" | string
+  mainStock: number
+  streetStock: number
+  brand: { pharmacyStockRule: number; pharmacyOpenAmount?: number | null }
+  setComponents?: Array<{ quantity: number; component: { mainStock: number } }>
+}
+
+export function calculateEffectiveStock(p: StockOnlyInput): {
   stock: number
   source: "MAIN" | "PHARMACY_FALLBACK" | "ZERO" | "SET_VIRTUAL"
 } {

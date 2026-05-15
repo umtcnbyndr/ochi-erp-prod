@@ -7,7 +7,7 @@
 - **SET ürünler satılmaz.** Bileşen tekil ürünler düşer. Set sadece "kaç tane yapılabilir" görünümü.
 - **Trendyol Sipariş çekme YOK.** Dopigo API'den çekiyoruz.
 - **Trendyol direkt fiyat push YOK.** Dopigo Excel akışıyla.
-- **Dopigo API: SADECE OKUMA.** Hiçbir koşulda Dopigo'ya veri (sipariş/ürün/fiyat/stok) **POST/PUT/PATCH/DELETE göndermiyoruz**. Sadece GET. Dopigo bizim için sipariş/müşteri kuyusu — yazma o tarafta yapılır.
+- **Dopigo API: OKUMA + SADECE STOK YAZIMI.** Dopigo'ya `PUT /api/v1/products/bulk_update_by_foreign_sku/` ile **sadece `stock` alanı** gönderilebilir (Stok Uyarıları sayfasından). Fiyat (`price`, `listing_price`), `archived` ve diğer alanlar Dopigo Excel akışıyla yönetilir — pazaryeri-bazlı hesaplama orada yapılır. Sipariş/ürün/müşteri için hâlâ sadece GET.
 - **Aktif marka:** Sadece Skinceuticals. Diğerleri sırayla eklenecek.
 
 ## Ürün Tipleri
