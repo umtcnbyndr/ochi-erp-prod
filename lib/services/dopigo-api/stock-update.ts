@@ -57,41 +57,53 @@ export async function pushDopigoStock(
     errors: [],
   }
 
-  // Parallel pool: 5 concurrent
-  const POOL = 5
-  let cursor = 0
+  // Input validation
+  const validItems = items.filter((it) => {
+    if (!it.foreignSku) {
+      result.failed++
+      result.errors.push({ foreignSku: it.foreignSku, message: "foreign_sku boş" })
+      return false
+    }
+    if (!Number.isFinite(it.stock) || it.stock < 0) {
+      result.failed++
+      result.errors.push({ foreignSku: it.foreignSku, message: `geçersiz stok: ${it.stock}` })
+      return false
+    }
+    return true
+  })
+  if (validItems.length === 0) return result
 
-  async function worker() {
-    while (cursor < items.length) {
-      const idx = cursor++
-      const item = items[idx]
-      try {
-        await pushSingle(item, creds!)
-        result.successful++
-      } catch (err) {
-        result.failed++
-        result.errors.push({
-          foreignSku: item.foreignSku,
-          message: err instanceof Error ? err.message : "Bilinmeyen hata",
-        })
+  // Dopigo "bulk" endpoint array body bekliyor. Tek batch'te tüm öğeleri gönderiyoruz.
+  // Eğer Dopigo bir batch limit koyarsa burada chunk'lara böleriz (şimdilik 500'lük chunk).
+  const CHUNK = 500
+  for (let i = 0; i < validItems.length; i += CHUNK) {
+    const chunk = validItems.slice(i, i + CHUNK)
+    try {
+      await pushBatch(chunk, creds)
+      result.successful += chunk.length
+    } catch (err) {
+      // Batch tamamen başarısız → bütün chunk'ı hatalı say
+      const msg = err instanceof Error ? err.message : "Batch hatası"
+      result.failed += chunk.length
+      for (const it of chunk) {
+        result.errors.push({ foreignSku: it.foreignSku, message: msg })
       }
     }
   }
 
-  await Promise.all(Array.from({ length: POOL }, () => worker()))
   return result
 }
 
-async function pushSingle(item: StockUpdateItem, creds: DopigoCredentials) {
-  if (!item.foreignSku) throw new Error("foreign_sku boş")
-  if (!Number.isFinite(item.stock) || item.stock < 0) {
-    throw new Error(`geçersiz stok: ${item.stock}`)
-  }
-
+async function pushBatch(items: StockUpdateItem[], creds: DopigoCredentials) {
   const url = new URL(
-    "/api/v1/products/bulk_update_by_foreign_sku/",
+    "/api/v1/products/bulk_update_product_by_foreign_sku/",
     creds.baseUrl,
   )
+
+  const body = items.map((it) => ({
+    foreign_sku: it.foreignSku,
+    stock: Math.floor(it.stock),
+  }))
 
   const res = await fetch(url.toString(), {
     method: "PUT",
@@ -100,15 +112,12 @@ async function pushSingle(item: StockUpdateItem, creds: DopigoCredentials) {
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({
-      foreign_sku: item.foreignSku,
-      stock: Math.floor(item.stock),
-    }),
+    body: JSON.stringify(body),
     cache: "no-store",
   })
 
   if (!res.ok) {
     const text = await res.text().catch(() => "")
-    throw new Error(`HTTP ${res.status} — ${text.slice(0, 200)}`)
+    throw new Error(`HTTP ${res.status} — ${text.slice(0, 300)}`)
   }
 }
