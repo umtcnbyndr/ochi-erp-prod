@@ -306,8 +306,8 @@ export function StockAlertsFlow({ rows, totals, generatedAt, canEdit, brands, ca
         </CardContent>
       </Card>
 
-      {/* Tablo */}
-      <Card>
+      {/* Tablo (Desktop) */}
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           {filtered.length === 0 ? (
             <div className="p-10 text-center text-sm text-muted-foreground">
@@ -412,6 +412,107 @@ export function StockAlertsFlow({ rows, totals, generatedAt, canEdit, brands, ca
           )}
         </CardContent>
       </Card>
+
+      {/* Mobil kart görünümü */}
+      <div className="md:hidden space-y-2">
+        {filtered.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center text-sm text-muted-foreground">
+              {rows.length === 0 ? "Tüm ürünler tutarlı 🎉" : "Filtreye uyan ürün yok"}
+            </CardContent>
+          </Card>
+        ) : (
+          filtered.map((r) => {
+            const meta = STATUS_META[r.status]
+            const Icon = meta.icon
+            const canPush = r.status !== "UNMATCHED"
+            return (
+              <Card key={r.productId} className={`border-l-4 ${meta.bg.split(" ").find((c) => c.startsWith("border-")) ?? ""}`}>
+                <CardContent className="p-3 space-y-2.5">
+                  {/* Başlık satırı */}
+                  <div className="flex items-start gap-2">
+                    {canEdit && canPush && (
+                      <Checkbox
+                        checked={selected.has(r.productId)}
+                        onCheckedChange={() => toggle(r.productId)}
+                        disabled={pending}
+                        className="mt-0.5"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-medium leading-tight line-clamp-2">
+                        {r.name}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span>{r.brandName}</span>
+                        {r.categoryName && (
+                          <>
+                            <span>·</span>
+                            <span>{r.categoryName}</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="font-mono text-[10px] text-muted-foreground/70 mt-0.5">
+                        {r.barcode}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className={`gap-1 text-[10px] shrink-0 ${meta.color}`}>
+                      <Icon className="h-3 w-3" />
+                      {meta.label}
+                    </Badge>
+                  </div>
+
+                  {/* Büyük rakamlar — Sistem / Satılabilir / Fark */}
+                  <div className="grid grid-cols-3 gap-2 rounded-md border bg-muted/30 p-2 text-center">
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Sistem</p>
+                      <p className="text-base font-bold tabular-nums leading-tight">
+                        {r.systemStock}
+                      </p>
+                      {r.systemSource === "PHARMACY_FALLBACK" && (
+                        <p className="text-[9px] text-muted-foreground">cadde</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Satılabilir</p>
+                      <p className="text-base font-bold tabular-nums leading-tight">
+                        {r.dopigoAvailable ?? "—"}
+                      </p>
+                      {r.dopigoStock != null && r.dopigoStock !== r.dopigoAvailable && (
+                        <p className="text-[9px] text-muted-foreground">depo {r.dopigoStock}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Fark</p>
+                      <p className={`text-base font-bold tabular-nums leading-tight ${r.diff < 0 ? "text-amber-600" : r.diff > 0 ? "text-blue-600" : "text-muted-foreground"}`}>
+                        {r.diff > 0 ? `+${r.diff}` : r.diff}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Ana / Cadde detay */}
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t pt-2">
+                    <span>Ana: <strong className="text-foreground tabular-nums">{r.mainStock}</strong></span>
+                    <span>Cadde: <strong className="text-foreground tabular-nums">{r.streetStock}</strong></span>
+                    {canEdit && canPush && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handlePushOne(r)}
+                        disabled={pending}
+                        className="h-7 gap-1 text-[11px]"
+                      >
+                        <Send className="h-3 w-3" />
+                        Gönder
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })
+        )}
+      </div>
 
       <p className="text-[10px] text-muted-foreground text-right">
         Son güncelleme: {new Date(generatedAt).toLocaleString("tr-TR")}
