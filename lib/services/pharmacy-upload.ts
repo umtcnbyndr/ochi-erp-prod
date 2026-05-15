@@ -284,6 +284,63 @@ export function suggestPharmacyMapping(columns: string[]): PharmacyColumnMapping
   }
 }
 
+// ---------------- Name similarity (kofre detection) ----------------
+
+/**
+ * Barkod eşleştiğinde 2 isim aynı ürünü mü işaret ediyor?
+ *
+ * Kofre/SET ayrımı: bir tarafta kofre/+/çanta var diğerinde yoksa FARKLI ürün
+ *   (eczane bazen kofreleri aynı barkod altında listeler — onları conflict tut).
+ *
+ * Aksi halde token-örtüşmesine bak: ≥ %50 ortak token varsa aynı kabul et.
+ *   (ör. "Skinceuticals Collagen Pro Solution 30 ml" = "SC COLLAGEN PRO-SOLUTION 30 ML")
+ */
+const KOFRE_KEYWORDS = ["kofre", "çanta", "canta", " kit ", "+"]
+
+function hasKofreIndicator(s: string): boolean {
+  const lower = s.toLocaleLowerCase("tr")
+  return KOFRE_KEYWORDS.some((k) => lower.includes(k))
+}
+
+// Marka ve ölçü gibi generic tokenlar — bunlar ortak olsa bile "aynı ürün" demez.
+// Asıl ürün adı (collagen, ferulic, phloretin gibi) tokenlar lazım.
+// Türkçe locale "I" → "ı" dönüştürdüğü için stop listesini de aynı locale ile normalize ediyoruz.
+const STOP_TOKENS = new Set(
+  [
+    "SKINCEUTICALS", "SC", "SKIN", "CEUTICALS",
+    "ML", "GR", "KG", "LT", "LT.", "SPF",
+    // Yaygın hacimler
+    "15", "30", "50", "60", "75", "100", "120", "150", "200", "250", "300", "400", "500",
+    // Diğer marka adayları (ileride genişlet)
+    "MUSTELA", "CERAVE", "LA", "ROCHE", "POSAY", "VICHY", "AVENE", "BIODERMA",
+  ].map((t) => t.toLocaleLowerCase("tr")),
+)
+
+function tokenize(s: string): Set<string> {
+  return new Set(
+    s
+      .toLocaleLowerCase("tr")
+      .replace(/[^a-z0-9çğıöşüâî\s]/g, " ")
+      .split(/\s+/)
+      .filter((t) => t.length >= 2 && !STOP_TOKENS.has(t)),
+  )
+}
+
+export function namesLikelySameProduct(a: string, b: string): boolean {
+  // Tek tarafta kofre var diğerinde yok → FARKLI ürün
+  if (hasKofreIndicator(a) !== hasKofreIndicator(b)) return false
+
+  const ta = tokenize(a)
+  const tb = tokenize(b)
+  // Hiçbir tarafta ayırt edici token yoksa kontrol edemiyoruz → reddet
+  if (ta.size === 0 || tb.size === 0) return false
+
+  let common = 0
+  for (const t of ta) if (tb.has(t)) common++
+  // En az 1 ortak ayırt edici token + ≥ %50 örtüşme
+  return common >= 1 && common / Math.min(ta.size, tb.size) >= 0.5
+}
+
 // ---------------- Utils ----------------
 
 function toStr(v: unknown): string | null {
@@ -463,11 +520,13 @@ export async function analyzePharmacyUpload(
     }
     if (existing) {
       // Match key güvenliği:
-      //   - Eczane KODU ile bulunduysa → kod 1-1 unique olduğu için isim farkı ÖNEMLİ DEĞİL
-      //     (ör. eczane "CERAVE NEMLENDIRICI KREM" — sistem "CeraVe Nemlendirici Krem" → aynı ürün)
-      //     Bu durumda isim farkına bakmadan UPDATE yap.
-      //   - BARKOD ile bulunduysa → barkod farklı ürünlerde tekrar edebilir, isim kontrolü yap.
-      const isSafeMatch = matchedByCode || norm(existing.productName) === norm(name)
+      //   - Eczane KODU ile bulunduysa → kod 1-1 unique, isim farkı önemli değil
+      //   - BARKOD ile bulunduysa → KOFRE/SET kontrolü yap (tek tarafta kofre kelimesi varsa farklı SKU)
+      //     Kofre yoksa → barkod eşleşmesine güven (eczane yazımı vs DB yazımı normaldir).
+      const isSafeMatch =
+        matchedByCode ||
+        norm(existing.productName) === norm(name) ||
+        namesLikelySameProduct(existing.productName, name)
       if (isSafeMatch) {
         preview.rows.push({
           ...baseRow,
