@@ -18,6 +18,8 @@ interface TopbarProps {
   hasOverdueTakas?: boolean
   invoiceAlertCount?: number
   hasOverdueInvoices?: boolean
+  stockAlertCount?: number
+  hasCriticalStock?: boolean
   permissions?: UserPermissionMap | null
   sidebarCollapsed?: boolean
   onToggleSidebar?: () => void
@@ -30,6 +32,8 @@ export function Topbar({
   hasOverdueTakas,
   invoiceAlertCount,
   hasOverdueInvoices,
+  stockAlertCount,
+  hasCriticalStock,
   permissions,
   sidebarCollapsed,
   onToggleSidebar,
@@ -99,6 +103,8 @@ export function Topbar({
             hasOverdueTakas={hasOverdueTakas}
             invoiceAlertCount={invoiceAlertCount}
             hasOverdueInvoices={hasOverdueInvoices}
+            stockAlertCount={stockAlertCount}
+            hasCriticalStock={hasCriticalStock}
             permissions={permissions}
           />
         </SheetContent>

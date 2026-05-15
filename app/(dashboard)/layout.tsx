@@ -2,6 +2,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/db"
 import { DashboardShell } from "@/components/layout/dashboard-shell"
 import { getUserPermissions, type UserPermissionMap } from "@/lib/permissions"
+import { getCachedDopigoAlertSummary } from "@/lib/services/dopigo-stock-alerts"
 
 export const dynamic = "force-dynamic"
 
@@ -48,6 +49,11 @@ export default async function DashboardLayout({
   const invoiceAlertCount = overdueInvoiceCount + dueSoonInvoiceCount
   const hasOverdueInvoices = overdueInvoiceCount > 0
 
+  // Stok uyarı özeti — cache'den (sadece /stok-uyarilari ziyaretiyle yenilenir)
+  const stockSummary = getCachedDopigoAlertSummary()
+  const stockAlertCount = stockSummary?.riskyCount ?? 0
+  const hasCriticalStock = (stockSummary?.criticalCount ?? 0) > 0
+
   // ADMIN olmayan kullanıcılar için izinleri yükle
   if (userId && userRole !== "ADMIN") {
     permissions = await getUserPermissions(userId)
@@ -61,6 +67,8 @@ export default async function DashboardLayout({
       hasOverdueTakas={hasOverdueTakas}
       invoiceAlertCount={invoiceAlertCount}
       hasOverdueInvoices={hasOverdueInvoices}
+      stockAlertCount={stockAlertCount}
+      hasCriticalStock={hasCriticalStock}
       permissions={permissions}
     >
       {children}

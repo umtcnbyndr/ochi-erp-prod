@@ -21,6 +21,10 @@ interface SidebarProps {
   invoiceAlertCount?: number
   /** Vadesi geçen fatura var mı — kırmızı yapar */
   hasOverdueInvoices?: boolean
+  /** Stok uyarısı sayısı (CRITICAL + RISKY) — /stok-uyarilari badge'i */
+  stockAlertCount?: number
+  /** CRITICAL var mı — kırmızı yapar */
+  hasCriticalStock?: boolean
   /** Kullanıcı izinleri — null ise tüm menüler gösterilir (ADMIN) */
   permissions?: UserPermissionMap | null
 }
@@ -34,6 +38,8 @@ export function Sidebar({
   hasOverdueTakas = false,
   invoiceAlertCount = 0,
   hasOverdueInvoices = false,
+  stockAlertCount = 0,
+  hasCriticalStock = false,
   permissions,
 }: SidebarProps) {
   const pathname = usePathname()
@@ -77,21 +83,35 @@ export function Sidebar({
                 {group.title}
               </h3>
               {visibleItems.map((item) => {
-                const active =
-                  pathname === item.href ||
-                  (item.href !== "/panel" && pathname.startsWith(item.href))
+                // Aktif kontrol: tam eşleşme veya sub-path (/.../).
+                // Daha spesifik bir item varsa (örn. /ayarlar/yedekleme), parent (/ayarlar) aktif olmasın.
+                const isExact = pathname === item.href
+                const isSubPath =
+                  item.href !== "/panel" && pathname.startsWith(item.href + "/")
+                const hasMoreSpecific =
+                  isSubPath &&
+                  visibleItems.some(
+                    (other) =>
+                      other.href !== item.href &&
+                      other.href.startsWith(item.href + "/") &&
+                      (pathname === other.href || pathname.startsWith(other.href + "/")),
+                  )
+                const active = isExact || (isSubPath && !hasMoreSpecific)
                 const Icon = item.icon
-                // Takas için dinamik badge — bekleyen sayısı
+                // Dinamik badge'ler
                 const dynamicBadge =
                   item.href === "/takas" && pendingTakasCount > 0
                     ? String(pendingTakasCount)
                     : item.href === "/finans/faturalar" && invoiceAlertCount > 0
                       ? String(invoiceAlertCount)
-                      : null
+                      : item.href === "/stok-uyarilari" && stockAlertCount > 0
+                        ? String(stockAlertCount)
+                        : null
                 const badgeText = dynamicBadge ?? item.badge
                 const takasOverdue = item.href === "/takas" && hasOverdueTakas
                 const invoiceOverdue = item.href === "/finans/faturalar" && hasOverdueInvoices
-                const isOverdue = takasOverdue || invoiceOverdue
+                const stockCritical = item.href === "/stok-uyarilari" && hasCriticalStock
+                const isOverdue = takasOverdue || invoiceOverdue || stockCritical
                 return (
                   <Link
                     key={item.href}

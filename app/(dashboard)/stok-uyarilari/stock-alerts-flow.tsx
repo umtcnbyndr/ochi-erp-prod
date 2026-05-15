@@ -43,7 +43,10 @@ interface Row {
   productId: number
   barcode: string
   name: string
+  brandId: number | null
   brandName: string
+  categoryId: number | null
+  categoryName: string | null
   mainStock: number
   streetStock: number
   systemStock: number
@@ -55,11 +58,23 @@ interface Row {
   pushValue: number
 }
 
+interface BrandInfo {
+  id: number
+  name: string
+}
+
+interface CategoryInfo {
+  id: number
+  name: string
+}
+
 interface Props {
   rows: Row[]
   totals: Record<AlertStatus, number>
   generatedAt: string
   canEdit: boolean
+  brands: BrandInfo[]
+  categories: CategoryInfo[]
 }
 
 const STATUS_META: Record<AlertStatus, { label: string; icon: typeof AlertCircle; color: string; bg: string; description: string }> = {
@@ -71,17 +86,27 @@ const STATUS_META: Record<AlertStatus, { label: string; icon: typeof AlertCircle
   UNMATCHED:{ label: "Eşleşmedi", icon: AlertCircle, color: "text-purple-700 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-950/30 border-purple-500/40", description: "Dopigo'da bu barkodlu ürün yok" },
 }
 
-export function StockAlertsFlow({ rows, totals, generatedAt, canEdit }: Props) {
+export function StockAlertsFlow({ rows, totals, generatedAt, canEdit, brands, categories }: Props) {
   const router = useRouter()
   const confirm = useConfirm()
   const [pending, startTransition] = useTransition()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [filterStatus, setFilterStatus] = useState<AlertStatus | "ALL">("ALL")
+  const [filterBrand, setFilterBrand] = useState<string>("ALL")
+  const [filterCategory, setFilterCategory] = useState<string>("ALL")
   const [search, setSearch] = useState("")
 
   const filtered = useMemo(() => {
     let list = rows
     if (filterStatus !== "ALL") list = list.filter((r) => r.status === filterStatus)
+    if (filterBrand !== "ALL") {
+      const bid = Number(filterBrand)
+      list = list.filter((r) => r.brandId === bid)
+    }
+    if (filterCategory !== "ALL") {
+      const cid = Number(filterCategory)
+      list = list.filter((r) => r.categoryId === cid)
+    }
     if (search.trim()) {
       const q = search.trim().toLocaleLowerCase("tr")
       list = list.filter(
@@ -92,7 +117,7 @@ export function StockAlertsFlow({ rows, totals, generatedAt, canEdit }: Props) {
       )
     }
     return list
-  }, [rows, filterStatus, search])
+  }, [rows, filterStatus, filterBrand, filterCategory, search])
 
   // Sadece UNMATCHED dışındakileri push edilebilir
   const pushableIds = useMemo(
@@ -215,7 +240,7 @@ export function StockAlertsFlow({ rows, totals, generatedAt, canEdit }: Props) {
             />
           </div>
           <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as AlertStatus | "ALL")}>
-            <SelectTrigger className="w-[160px] h-9">
+            <SelectTrigger className="w-[150px] h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -225,6 +250,34 @@ export function StockAlertsFlow({ rows, totals, generatedAt, canEdit }: Props) {
               <SelectItem value="MISSED">Arttırılmalı ({totals.MISSED})</SelectItem>
               <SelectItem value="MINOR">Küçük Sapma ({totals.MINOR})</SelectItem>
               <SelectItem value="UNMATCHED">Eşleşmedi ({totals.UNMATCHED})</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filterBrand} onValueChange={setFilterBrand}>
+            <SelectTrigger className="w-[140px] h-9">
+              <SelectValue placeholder="Marka" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Tüm markalar</SelectItem>
+              {brands.map((b) => (
+                <SelectItem key={b.id} value={String(b.id)}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterCategory} onValueChange={setFilterCategory}>
+            <SelectTrigger className="w-[150px] h-9">
+              <SelectValue placeholder="Kategori" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Tüm kategoriler</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {c.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 

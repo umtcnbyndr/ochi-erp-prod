@@ -17,6 +17,8 @@ interface DashboardShellProps {
   hasOverdueTakas?: boolean
   invoiceAlertCount?: number
   hasOverdueInvoices?: boolean
+  stockAlertCount?: number
+  hasCriticalStock?: boolean
   permissions?: UserPermissionMap | null
 }
 
@@ -28,6 +30,8 @@ export function DashboardShell({
   hasOverdueTakas = false,
   invoiceAlertCount = 0,
   hasOverdueInvoices = false,
+  stockAlertCount = 0,
+  hasCriticalStock = false,
   permissions,
 }: DashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false)
@@ -69,6 +73,8 @@ export function DashboardShell({
             hasOverdueTakas={hasOverdueTakas}
             invoiceAlertCount={invoiceAlertCount}
             hasOverdueInvoices={hasOverdueInvoices}
+            stockAlertCount={stockAlertCount}
+            hasCriticalStock={hasCriticalStock}
             permissions={permissions}
           />
         </div>

@@ -1,19 +1,19 @@
 /**
- * Dopigo Stok Uyarıları — bizim efektif stok ile Dopigo depot stoğunu kıyaslar.
+ * Dopigo Stok Uyarıları — bizim efektif stok ile Dopigo SATILABİLİR stoğunu kıyaslar.
  *
- * (Adlandırma not: lib/services/stock-alerts.ts farklı bir konuya hizmet ediyor
- *  — satış hızına göre tükeniş uyarısı. Bu dosya Dopigo senkron uyarısı.)
+ * Karar verme satılabilir stoğa (available_stock) göre, çünkü pazaryerlerine giden
+ * değer odur (Dopigo: available_stock = stock − bekleyen siparişler).
  *
  * Durum mantığı:
- *   sistem = calculateEffectiveStock(p)  (mainStock + cadde'den açılabilir miktar)
- *   dopigo  = Dopigo API `stock` (depot, biz push edersek set ediyoruz)
+ *   sistem    = calculateEffectiveStock(p)  (mainStock + cadde'den açılabilir miktar)
+ *   available = Dopigo API `available_stock` (pazaryerlerinde gözüken)
  *
- *   CRITICAL   sistem = 0 && dopigo > 0      → derhal kapatılmalı
- *   RISKY      sistem < dopigo (≥ 2 fark)    → overselling riski
- *   MISSED     sistem > dopigo (≥ 2 fark)    → kaçırılan satış
- *   MINOR      sistem ≠ dopigo (1 fark)
- *   OK         sistem = dopigo               → tutarlı
- *   UNMATCHED  ürün Dopigo'da bulunamadı     → mapping eksiği
+ *   CRITICAL   main=0 && street=0 && available>0  → derhal kapatılmalı (hiçbir yerden gelmez)
+ *   RISKY      sistem < available (≥ 2 fark)       → overselling riski (sarı)
+ *   MISSED     sistem > available (≥ 2 fark)       → kaçırılan satış
+ *   MINOR      sistem ≠ available (1 fark)
+ *   OK         sistem = available
+ *   UNMATCHED  ürün Dopigo'da bulunamadı (mapping eksiği)
  */
 import { prisma } from "@/lib/db"
 import { calculateEffectiveStock } from "./dopigo-sync"
@@ -31,14 +31,18 @@ export interface DopigoStockAlertRow {
   productId: number
   barcode: string
   name: string
+  brandId: number | null
   brandName: string
+  categoryId: number | null
+  categoryName: string | null
   mainStock: number
   streetStock: number
   systemStock: number
   systemSource: "MAIN" | "PHARMACY_FALLBACK" | "ZERO" | "SET_VIRTUAL"
   dopigoStock: number | null
   dopigoAvailable: number | null
-  diff: number // sistem - dopigo
+  /** Karar diff: sistem - dopigoAvailable (satılabilir baz alınır) */
+  diff: number
   status: DopigoAlertStatus
   /** Push edilirse hangi değer gidecek */
   pushValue: number
@@ -52,8 +56,29 @@ export interface DopigoStockAlertReport {
 
 const MINOR_THRESHOLD = 1
 
+// ─── In-memory cache (sidebar badge için) ───────────────────────
+// /stok-uyarilari sayfası ziyareti güncellesin; layout sadece okusun.
+
+interface AlertSummary {
+  totalAlerts: number      // CRITICAL + RISKY + MISSED + MINOR + UNMATCHED
+  criticalCount: number    // sadece CRITICAL
+  riskyCount: number       // CRITICAL + RISKY (sidebar badge'i için)
+  generatedAt: Date
+}
+
+let summaryCache: AlertSummary | null = null
+
+export function getCachedDopigoAlertSummary(): AlertSummary | null {
+  return summaryCache
+}
+
+export function setCachedDopigoAlertSummary(s: AlertSummary | null) {
+  summaryCache = s
+}
+
 export async function buildDopigoStockAlertReport(options?: {
   brandIds?: number[]
+  categoryIds?: number[]
   /** OK durumdakileri raporlama (default true — kalabalık olmasın) */
   excludeOk?: boolean
 }): Promise<DopigoStockAlertReport> {
@@ -70,6 +95,9 @@ export async function buildDopigoStockAlertReport(options?: {
       ...(options?.brandIds && options.brandIds.length > 0
         ? { brandId: { in: options.brandIds } }
         : {}),
+      ...(options?.categoryIds && options.categoryIds.length > 0
+        ? { categoryId: { in: options.categoryIds } }
+        : {}),
     },
     select: {
       id: true,
@@ -81,6 +109,7 @@ export async function buildDopigoStockAlertReport(options?: {
       brand: {
         select: { id: true, name: true, pharmacyStockRule: true, pharmacyOpenAmount: true },
       },
+      category: { select: { id: true, name: true } },
       setComponents: {
         select: { quantity: true, component: { select: { mainStock: true } } },
       },
@@ -121,12 +150,21 @@ export async function buildDopigoStockAlertReport(options?: {
     if (!dop) {
       status = "UNMATCHED"
     } else {
-      diff = effective.stock - dop.stock
-      if (effective.stock === 0 && dop.stock > 0) status = "CRITICAL"
-      else if (Math.abs(diff) <= MINOR_THRESHOLD && diff !== 0) status = "MINOR"
-      else if (diff === 0) status = "OK"
-      else if (diff < 0) status = "RISKY"
-      else status = "MISSED"
+      // Karar satılabilir stoğa (pazaryerlerine giden) göre
+      diff = effective.stock - dop.availableStock
+      // CRITICAL = hem ana hem cadde 0 ama Dopigo'da satışta var (hiçbir yerden gelmez)
+      if (p.mainStock === 0 && p.streetStock === 0 && dop.availableStock > 0) {
+        status = "CRITICAL"
+      } else if (Math.abs(diff) <= MINOR_THRESHOLD && diff !== 0) {
+        status = "MINOR"
+      } else if (diff === 0) {
+        status = "OK"
+      } else if (diff < 0) {
+        // sistem (efektif) < satılabilir → cadde varsa açılabilir ama şu an sapma var (sarı)
+        status = "RISKY"
+      } else {
+        status = "MISSED"
+      }
     }
 
     totals[status]++
@@ -137,7 +175,10 @@ export async function buildDopigoStockAlertReport(options?: {
       productId: p.id,
       barcode: p.primaryBarcode,
       name: p.name,
+      brandId: p.brand?.id ?? null,
       brandName: p.brand?.name ?? "—",
+      categoryId: p.category?.id ?? null,
+      categoryName: p.category?.name ?? null,
       mainStock: p.mainStock,
       streetStock: p.streetStock,
       systemStock: effective.stock,
@@ -163,6 +204,17 @@ export async function buildDopigoStockAlertReport(options?: {
     if (o !== 0) return o
     return Math.abs(b.diff) - Math.abs(a.diff)
   })
+
+  // Sidebar cache'ini güncelle (sayım baz, options.brandIds varsa cache koyma)
+  if (!options?.brandIds && !options?.categoryIds) {
+    setCachedDopigoAlertSummary({
+      totalAlerts:
+        totals.CRITICAL + totals.RISKY + totals.MISSED + totals.MINOR + totals.UNMATCHED,
+      criticalCount: totals.CRITICAL,
+      riskyCount: totals.CRITICAL + totals.RISKY,
+      generatedAt: new Date(),
+    })
+  }
 
   return { generatedAt: new Date(), totals, rows }
 }
