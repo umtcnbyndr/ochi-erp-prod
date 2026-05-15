@@ -62,7 +62,11 @@ export async function buildDopigoStockAlertReport(options?: {
   const products = await prisma.product.findMany({
     where: {
       status: "ACTIVE",
-      productType: "SINGLE",
+      // Tüm tipler dahil:
+      //   SINGLE — normal akış (mainStock veya cadde fallback)
+      //   GIFT   — Dopigo'da ayrı satılır (CLAUDE.md)
+      //   SET    — bileşen-bazlı virtual stock (SET_VIRTUAL source).
+      //            Dopigo'da yoksa UNMATCHED düşer, varsa kıyas.
       ...(options?.brandIds && options.brandIds.length > 0
         ? { brandId: { in: options.brandIds } }
         : {}),
