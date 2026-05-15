@@ -24,6 +24,7 @@ import {
   Ticket,
   Percent,
   Receipt,
+  Archive,
 } from "lucide-react"
 
 export interface NavItem {
@@ -100,6 +101,7 @@ export const navGroups: NavGroup[] = [
     title: "Sistem",
     items: [
       { label: "Raporlar", href: "/raporlar", icon: BarChart3, moduleKey: "raporlar" },
+      { label: "Yedekleme", href: "/ayarlar/yedekleme", icon: Archive, moduleKey: "ayarlar" },
       { label: "Ayarlar", href: "/ayarlar", icon: Settings, moduleKey: "ayarlar" },
     ],
   },
