@@ -152,8 +152,10 @@ export async function buildDopigoStockAlertReport(options?: {
     } else {
       // Karar satılabilir stoğa (pazaryerlerine giden) göre
       diff = effective.stock - dop.availableStock
-      // CRITICAL = hem ana hem cadde 0 ama Dopigo'da satışta var (hiçbir yerden gelmez)
-      if (p.mainStock === 0 && p.streetStock === 0 && dop.availableStock > 0) {
+      // CRITICAL = efektif stoğumuz 0 ama Dopigo'da satışta var.
+      // Efektif stok: SINGLE için (mainStock || cadde fallback), SET için bileşenden virtual,
+      // GIFT için mainStock. Yani "hiçbir kaynak üretemiyor" durumu.
+      if (effective.stock === 0 && dop.availableStock > 0) {
         status = "CRITICAL"
       } else if (Math.abs(diff) <= MINOR_THRESHOLD && diff !== 0) {
         status = "MINOR"
