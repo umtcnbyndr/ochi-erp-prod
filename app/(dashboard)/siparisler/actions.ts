@@ -168,7 +168,9 @@ export async function getOrderExportDataAction(
     name: string
     brand: string
     currentStock: number
+    mainStockSnapshot: number | null
     streetStock: number
+    totalSoldInPeriod: number | null
     dailySalesAvg: number
     daysUntilStockout: number | null
     psf: number | null
@@ -201,7 +203,9 @@ export async function getOrderExportDataAction(
           name: i.product.name,
           brand: i.product.brand.name,
           currentStock: i.currentStock,
-          streetStock: i.product.streetStock,
+          mainStockSnapshot: i.mainStockSnapshot,
+          streetStock: i.streetStockSnapshot ?? i.product.streetStock,
+          totalSoldInPeriod: i.totalSoldInPeriod,
           dailySalesAvg: Number(i.dailySalesAvg),
           daysUntilStockout: i.daysUntilStockout,
           psf: i.product.psf ? Number(i.product.psf) : null,

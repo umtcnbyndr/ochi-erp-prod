@@ -14,8 +14,10 @@ export interface OrderExportData {
     barcode: string
     name: string
     brand: string
-    currentStock: number
-    streetStock: number
+    currentStock: number          // legacy toplam
+    mainStockSnapshot: number | null  // sipariş anındaki ana stok
+    streetStock: number              // sipariş anındaki cadde (streetStockSnapshot ?? streetStock)
+    totalSoldInPeriod: number | null // analiz periyodunda toplam satış
     dailySalesAvg: number
     daysUntilStockout: number | null
     psf: number | null
@@ -40,12 +42,15 @@ export function buildOrderWorkbook(data: OrderExportData): XLSX.WorkBook {
   // ── Sheet 1: Siparis (kalemler) ────────────────────────────
   type Row = Record<string, string | number>
 
+  const periodLabel = `Son ${data.analysisDays}g Satış`
+
   const rows: Row[] = data.items.map((i) => ({
     Barkod: i.barcode,
     "Ürün Adı": i.name,
     Marka: i.brand,
-    Stok: i.currentStock,
+    "Ana Stok": i.mainStockSnapshot ?? (i.currentStock - i.streetStock),
     "Ecz. Stok": i.streetStock,
+    [periodLabel]: i.totalSoldInPeriod ?? "-",
     "Günlük Satış": round2(i.dailySalesAvg),
     "Bitme (Gün)": i.daysUntilStockout ?? "-",
     PSF: i.psf ?? "-",
@@ -62,8 +67,9 @@ export function buildOrderWorkbook(data: OrderExportData): XLSX.WorkBook {
     Barkod: "",
     "Ürün Adı": "TOPLAM",
     Marka: "",
-    Stok: "",
+    "Ana Stok": "",
     "Ecz. Stok": "",
+    [periodLabel]: "",
     "Günlük Satış": "",
     "Bitme (Gün)": "",
     PSF: "",
@@ -81,8 +87,9 @@ export function buildOrderWorkbook(data: OrderExportData): XLSX.WorkBook {
     { wch: 15 }, // Barkod
     { wch: 40 }, // Urun Adi
     { wch: 15 }, // Marka
-    { wch: 8 },  // Stok
+    { wch: 10 }, // Ana Stok
     { wch: 10 }, // Ecz. Stok
+    { wch: 14 }, // Son Xg Satış
     { wch: 12 }, // Gunluk Satis
     { wch: 12 }, // Bitme
     { wch: 10 }, // PSF

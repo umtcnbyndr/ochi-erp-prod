@@ -1155,7 +1155,10 @@ model PurchaseOrderItem {
   netPurchasePrice Decimal @db.Decimal(14, 4)  // hesaplanmış net alış (KDV dahil, tüm iskontolar)
 
   /// Snapshot satış verileri
-  currentStock    Int      // sipariş anındaki ana+cadde stok toplam
+  currentStock    Int      // (LEGACY) sipariş anındaki ana+cadde stok toplam — geriye uyumluluk için tutuluyor
+  mainStockSnapshot   Int?  // sipariş anındaki ana depo stoğu (yeni siparişlerde dolu, eski siparişlerde null)
+  streetStockSnapshot Int?  // sipariş anındaki cadde stoğu
+  totalSoldInPeriod   Int?  // analiz periyodunda toplam satılan adet (yeni alan, eski siparişlerde null)
   dailySalesAvg   Decimal  @default(0) @db.Decimal(10, 4)  // günlük ort. satış
   daysUntilStockout Int?   // tahmini bitme süresi (gün)
 

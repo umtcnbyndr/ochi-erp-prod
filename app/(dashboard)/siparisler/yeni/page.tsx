@@ -10,11 +10,17 @@ interface Props {
 }
 
 export default async function YeniSiparisPage({ searchParams }: Props) {
-  await requirePermission("siparisler", "edit")
+  const user = await requirePermission("siparisler", "edit")
   const params = await searchParams
 
-  // Tüm markaları getir + her birinin liste fiyat sayısını
+  // SALES kullanıcılar için marka kısıtı (allowedBrandIds set ise sadece o markalar)
+  const allowedBrandIds = user.allowedBrandIds ?? []
+  const brandWhereFilter =
+    allowedBrandIds.length > 0 ? { id: { in: allowedBrandIds } } : undefined
+
+  // Markaları getir + her birinin liste fiyat sayısını
   const brands = await prisma.brand.findMany({
+    where: brandWhereFilter,
     select: {
       id: true,
       name: true,

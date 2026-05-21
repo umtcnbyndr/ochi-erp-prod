@@ -19,7 +19,10 @@ export interface CreateOrderInput {
     listPrice: number
     isVatIncluded: boolean
     netPurchasePrice: number
-    currentStock: number
+    currentStock: number          // legacy: mainStock + streetStock toplam
+    mainStockSnapshot?: number    // sipariş anındaki ana stok
+    streetStockSnapshot?: number  // sipariş anındaki cadde stok
+    totalSoldInPeriod?: number    // analiz periyodunda toplam satılan adet
     dailySalesAvg: number
     daysUntilStockout: number | null
     suggestedQty: number
@@ -70,6 +73,9 @@ export async function createPurchaseOrder(input: CreateOrderInput) {
           isVatIncluded: i.isVatIncluded,
           netPurchasePrice: i.netPurchasePrice,
           currentStock: i.currentStock,
+          mainStockSnapshot: i.mainStockSnapshot ?? null,
+          streetStockSnapshot: i.streetStockSnapshot ?? null,
+          totalSoldInPeriod: i.totalSoldInPeriod ?? null,
           dailySalesAvg: i.dailySalesAvg,
           daysUntilStockout: i.daysUntilStockout,
           suggestedQty: i.suggestedQty,
@@ -148,6 +154,9 @@ export async function getPurchaseOrder(id: number) {
           isVatIncluded: true,
           netPurchasePrice: true,
           currentStock: true,
+          mainStockSnapshot: true,
+          streetStockSnapshot: true,
+          totalSoldInPeriod: true,
           dailySalesAvg: true,
           daysUntilStockout: true,
           suggestedQty: true,
@@ -318,6 +327,9 @@ export async function getOrderExportData(orderId: number) {
           listPrice: true,
           netPurchasePrice: true,
           currentStock: true,
+          mainStockSnapshot: true,
+          streetStockSnapshot: true,
+          totalSoldInPeriod: true,
           dailySalesAvg: true,
           daysUntilStockout: true,
           suggestedQty: true,
@@ -357,6 +369,9 @@ export function buildItemsFromAnalysis(
       isVatIncluded: item.isVatIncluded,
       netPurchasePrice: item.netPurchasePrice!,
       currentStock: item.totalStock,
+      mainStockSnapshot: item.mainStock,
+      streetStockSnapshot: item.streetStock,
+      totalSoldInPeriod: item.totalSold,
       dailySalesAvg: item.dailySalesAvg,
       daysUntilStockout: item.daysUntilStockout,
       suggestedQty: item.suggestedQty,

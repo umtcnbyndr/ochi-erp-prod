@@ -7,6 +7,8 @@ import { recalculateSetsContainingComponents } from "./set-product"
 export interface ProductListFilters {
   search?: string
   brandId?: number
+  /** SALES kullanıcılar için marka kısıtı (allowedBrandIds). brandId yoksa bu uygulanır. */
+  brandIdsAllowed?: number[]
   categoryId?: number
   subcategoryId?: number
   productType?: "SINGLE" | "SET" | "GIFT"
@@ -47,6 +49,10 @@ function buildWhere(filters: ProductListFilters = {}): Prisma.ProductWhereInput 
   const andClauses: Prisma.ProductWhereInput[] = []
 
   if (filters.brandId) where.brandId = filters.brandId
+  else if (filters.brandIdsAllowed && filters.brandIdsAllowed.length > 0) {
+    // SALES kullanıcı kısıtı — kullanıcı brand seçmemiş, izinli markalarla sınırla
+    where.brandId = { in: filters.brandIdsAllowed }
+  }
   if (filters.categoryId) where.categoryId = filters.categoryId
   if (filters.subcategoryId) where.subcategoryId = filters.subcategoryId
   if (filters.productType) where.productType = filters.productType

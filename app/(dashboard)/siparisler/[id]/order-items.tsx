@@ -20,6 +20,9 @@ interface OrderItemData {
   isVatIncluded: boolean
   netPurchasePrice: number
   currentStock: number
+  mainStockSnapshot: number | null
+  streetStockSnapshot: number | null
+  totalSoldInPeriod: number | null
   dailySalesAvg: number
   daysUntilStockout: number | null
   suggestedQty: number
@@ -41,9 +44,10 @@ interface Props {
   items: OrderItemData[]
   canReceive: boolean
   orderStatus: string
+  analysisDays: number
 }
 
-export function OrderItems({ orderId, items, canReceive, orderStatus }: Props) {
+export function OrderItems({ orderId, items, canReceive, orderStatus, analysisDays }: Props) {
   const showReceiveColumns = orderStatus !== "DRAFT"
 
   return (
@@ -52,6 +56,9 @@ export function OrderItems({ orderId, items, canReceive, orderStatus }: Props) {
         <CardTitle className="text-base flex items-center gap-2">
           <Package className="h-4 w-4" />
           Sipariş Kalemleri ({items.length})
+          <Badge variant="outline" className="text-[10px] font-normal">
+            Son {analysisDays} gün analizi
+          </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
@@ -60,8 +67,11 @@ export function OrderItems({ orderId, items, canReceive, orderStatus }: Props) {
             <TableHeader>
               <TableRow>
                 <TableHead>Ürün</TableHead>
-                <TableHead className="text-center">Stoktaki</TableHead>
-                <TableHead className="text-center">Günlük Satış</TableHead>
+                <TableHead className="text-center">Ana</TableHead>
+                <TableHead className="text-center">Cadde</TableHead>
+                <TableHead className="text-center">Son {analysisDays}g Satış</TableHead>
+                <TableHead className="text-center">Günlük</TableHead>
+                <TableHead className="text-center">Bitme</TableHead>
                 <TableHead className="text-right">Liste</TableHead>
                 <TableHead className="text-right">Net Alış</TableHead>
                 <TableHead className="text-center font-bold">Sipariş</TableHead>
@@ -97,10 +107,19 @@ export function OrderItems({ orderId, items, canReceive, orderStatus }: Props) {
                       </div>
                     </TableCell>
                     <TableCell className="text-center tabular-nums">
-                      {item.currentStock}
+                      {item.mainStockSnapshot ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-center tabular-nums text-muted-foreground">
+                      {item.streetStockSnapshot ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-center tabular-nums font-medium">
+                      {item.totalSoldInPeriod ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-center tabular-nums text-muted-foreground">
+                      {item.dailySalesAvg > 0 ? item.dailySalesAvg.toFixed(2) : "—"}
                     </TableCell>
                     <TableCell className="text-center tabular-nums">
-                      {item.dailySalesAvg > 0 ? item.dailySalesAvg.toFixed(2) : "—"}
+                      {item.daysUntilStockout != null ? `${item.daysUntilStockout}g` : "—"}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {item.listPrice.toFixed(2)}

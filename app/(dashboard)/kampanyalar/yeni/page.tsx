@@ -6,9 +6,14 @@ import { CampaignForm } from "./campaign-form"
 export const dynamic = "force-dynamic"
 
 export default async function YeniKampanyaPage() {
-  await requirePermission("kampanyalar", "edit")
+  const user = await requirePermission("kampanyalar", "edit")
+
+  const allowedBrandIds = user.allowedBrandIds ?? []
+  const brandWhereFilter =
+    allowedBrandIds.length > 0 ? { id: { in: allowedBrandIds } } : undefined
 
   const brands = await prisma.brand.findMany({
+    where: brandWhereFilter,
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   })

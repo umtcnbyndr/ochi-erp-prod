@@ -173,6 +173,7 @@ export default async function OrderDetailPage({
         items={serializedItems}
         canReceive={canReceive}
         orderStatus={order.status}
+        analysisDays={order.analysisDays}
       />
 
       {/* Zaman çizelgesi */}

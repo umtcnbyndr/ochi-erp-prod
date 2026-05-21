@@ -41,6 +41,11 @@ export default async function UrunlerPage({
   const user = await getAuthUser()
   const isAdmin = user?.role === "ADMIN"
 
+  // SALES kullanıcılar için marka kısıtı
+  const allowedBrandIds = user?.allowedBrandIds ?? []
+  const brandWhereFilter =
+    allowedBrandIds.length > 0 ? { id: { in: allowedBrandIds } } : undefined
+
   const page = parseInt0(sp.page as string | undefined, 1)!
   const pageSizeRaw = (sp.ps as string | undefined) ?? "50"
   const pageSize: number | "all" = pageSizeRaw === "all" ? "all" : parseInt0(pageSizeRaw, 50)!
@@ -61,9 +66,19 @@ export default async function UrunlerPage({
           ? "desc"
           : "asc"
 
+  // Kullanıcı brand filter parametresi göndermiş mi? (SALES için kısıt ile çakışma kontrolü)
+  const userBrandParam = parseInt0(sp.brand as string | undefined)
+  const effectiveBrandId =
+    allowedBrandIds.length > 0
+      ? userBrandParam && allowedBrandIds.includes(userBrandParam)
+        ? userBrandParam
+        : undefined // izinsiz markaya filtre denenmişse iptal et
+      : userBrandParam
+
   const filters: ProductListFilters = {
     search: (sp.q as string | undefined)?.trim() || undefined,
-    brandId: parseInt0(sp.brand as string | undefined),
+    brandId: effectiveBrandId,
+    brandIdsAllowed: allowedBrandIds.length > 0 ? allowedBrandIds : undefined,
     categoryId: parseInt0(sp.cat as string | undefined),
     subcategoryId: parseInt0(sp.sub as string | undefined),
     productType: (sp.tip as string | undefined) as "SINGLE" | "SET" | "GIFT" | undefined,
@@ -82,7 +97,11 @@ export default async function UrunlerPage({
 
   const [data, brands, categories, campaignMap] = await Promise.all([
     listProducts({ filters, page, pageSize, sortBy, sortDir }),
-    prisma.brand.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.brand.findMany({
+      where: brandWhereFilter,
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
     prisma.category.findMany({
       orderBy: { name: "asc" },
       select: {

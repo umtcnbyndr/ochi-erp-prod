@@ -11,21 +11,33 @@ import { OrderList } from "./order-list"
 export const dynamic = "force-dynamic"
 
 export default async function SiparislerPage() {
-  await requirePermission("siparisler", "view")
+  const user = await requirePermission("siparisler", "view")
+
+  // SALES kullanıcılar için marka kısıtı
+  const allowedBrandIds = user.allowedBrandIds ?? []
+  const brandWhereFilter =
+    allowedBrandIds.length > 0 ? { id: { in: allowedBrandIds } } : undefined
 
   const [orders, brands, stockAlerts] = await Promise.all([
     listPurchaseOrders(),
     prisma.brand.findMany({
+      where: brandWhereFilter,
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
     getStockAlerts(),
   ])
 
+  // Siparişleri de marka kısıtına göre filtrele (sipariş brandIds[]: any overlap)
+  const filteredOrders =
+    allowedBrandIds.length > 0
+      ? orders.filter((o) => o.brandIds.some((bid) => allowedBrandIds.includes(bid)))
+      : orders
+
   const brandMap = Object.fromEntries(brands.map((b) => [b.id, b.name]))
 
   // Serialize decimals
-  const serialized = orders.map((o) => ({
+  const serialized = filteredOrders.map((o) => ({
     ...o,
     totalListAmount: Number(o.totalListAmount),
     totalNetAmount: Number(o.totalNetAmount),
