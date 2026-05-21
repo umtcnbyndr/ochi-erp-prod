@@ -174,6 +174,27 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
   >("priority")
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc")
 
+  // ─── Hızlı filtre chip'leri ────────────────────────────────────
+  type FilterKey =
+    | "bestSeller"      // lifetimeScore >= 80
+    | "trendy"          // trendScore > 20
+    | "outOfStock"      // mainStock=0 && streetStock=0
+    | "criticalStock"   // daysUntilStockout < 7
+    | "hideLowPriority" // LOW/SKIP gizle
+    | "hasCarts"        // cartAdds > 0
+    | "highViews"       // weeklyViews >= 500
+    | "urgent"          // priority in URGENT/HIGH
+
+  const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(new Set())
+  function toggleFilter(key: FilterKey) {
+    setActiveFilters((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   function toggleSort(col: typeof sortBy) {
     if (sortBy === col) {
       setSortDir((d) => (d === "desc" ? "asc" : "desc"))
@@ -194,6 +215,24 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
           i.primaryBarcode.includes(search.trim()) ||
           i.brandName.toLowerCase().includes(q),
       )
+    }
+    // Hızlı filtre chip'leri (AND mantığıyla birleşir)
+    if (activeFilters.size > 0) {
+      result = result.filter((i) => {
+        if (activeFilters.has("bestSeller") && (i.lifetimeScore ?? 0) < 80) return false
+        if (activeFilters.has("trendy") && (i.trendScore ?? 0) <= 20) return false
+        if (activeFilters.has("outOfStock") && (i.mainStock !== 0 || i.streetStock !== 0)) return false
+        if (
+          activeFilters.has("criticalStock") &&
+          (i.daysUntilStockout == null || i.daysUntilStockout >= 7)
+        )
+          return false
+        if (activeFilters.has("hideLowPriority") && (i.priority === "LOW" || i.priority === "SKIP")) return false
+        if (activeFilters.has("hasCarts") && (i.cartAdds ?? 0) <= 0) return false
+        if (activeFilters.has("highViews") && (i.weeklyViews ?? 0) < 500) return false
+        if (activeFilters.has("urgent") && i.priority !== "URGENT" && i.priority !== "HIGH") return false
+        return true
+      })
     }
     // Sort
     const dir = sortDir === "desc" ? -1 : 1
@@ -224,7 +263,7 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
       if (diff !== 0) return diff
       return a.productName.localeCompare(b.productName, "tr")
     })
-  }, [items, search, sortBy, sortDir])
+  }, [items, search, sortBy, sortDir, activeFilters])
 
   /** Sıralanabilir kolon başlığı */
   function SortableHead({
@@ -585,6 +624,66 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                   size="sm"
                 />
               </div>
+              {/* Hızlı filtre chip'leri */}
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <FilterChip
+                  active={activeFilters.has("urgent")}
+                  onClick={() => toggleFilter("urgent")}
+                  label="⚡ Acil"
+                  title="URGENT veya HIGH öncelik"
+                />
+                <FilterChip
+                  active={activeFilters.has("criticalStock")}
+                  onClick={() => toggleFilter("criticalStock")}
+                  label="🔴 Stok kritik"
+                  title="Bitme < 7 gün"
+                />
+                <FilterChip
+                  active={activeFilters.has("outOfStock")}
+                  onClick={() => toggleFilter("outOfStock")}
+                  label="📦 Stok sıfır"
+                  title="Ana=0 ve Cadde=0"
+                />
+                <FilterChip
+                  active={activeFilters.has("bestSeller")}
+                  onClick={() => toggleFilter("bestSeller")}
+                  label="🔥 Best-seller"
+                  title="Lifetime skor ≥ 80"
+                />
+                <FilterChip
+                  active={activeFilters.has("trendy")}
+                  onClick={() => toggleFilter("trendy")}
+                  label="📈 Trendy"
+                  title="Trend skor > 20"
+                />
+                <FilterChip
+                  active={activeFilters.has("hasCarts")}
+                  onClick={() => toggleFilter("hasCarts")}
+                  label="🛒 Sepete eklenen"
+                  title="Cart adds > 0"
+                />
+                <FilterChip
+                  active={activeFilters.has("highViews")}
+                  onClick={() => toggleFilter("highViews")}
+                  label="👁️ Yüksek görüntü"
+                  title="Haftalık görüntü ≥ 500"
+                />
+                <FilterChip
+                  active={activeFilters.has("hideLowPriority")}
+                  onClick={() => toggleFilter("hideLowPriority")}
+                  label="💔 Düşük öncelikli gizle"
+                  title="LOW/SKIP olanları çıkar"
+                />
+                {activeFilters.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveFilters(new Set())}
+                    className="text-[11px] text-muted-foreground hover:text-foreground ml-1 underline"
+                  >
+                    Temizle
+                  </button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -680,8 +779,6 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                         const isWarning = item.stockStatus === "warning"
                         const noListPrice = item.listPrice === null
                         const itemBacklog = backlog.filter((b) => b.productId === item.productId)
-                        const isLowPriority =
-                          item.priority === "LOW" || item.priority === "SKIP"
                         const priorityInfo = ORDER_PRIORITY_LABELS[item.priority]
 
                         return (
@@ -692,8 +789,6 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                                 ? "bg-red-50/50 dark:bg-red-950/20"
                                 : item.priority === "HIGH"
                                 ? "bg-orange-50/50 dark:bg-orange-950/20"
-                                : isLowPriority
-                                ? "opacity-60"
                                 : ""
                             }
                           >
@@ -986,5 +1081,33 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
         </>
       )}
     </div>
+  )
+}
+
+/** Filtre chip — aktif/pasif state'i, küçük tıklanabilir buton */
+function FilterChip({
+  active,
+  onClick,
+  label,
+  title,
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  title?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+        active
+          ? "border-primary bg-primary/10 text-primary font-semibold"
+          : "border-muted-foreground/20 text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground"
+      }`}
+    >
+      {label}
+    </button>
   )
 }
