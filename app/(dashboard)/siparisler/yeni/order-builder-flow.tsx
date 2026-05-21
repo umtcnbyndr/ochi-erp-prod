@@ -221,7 +221,7 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
       result = result.filter((i) => {
         if (activeFilters.has("bestSeller") && (i.lifetimeScore ?? 0) < 80) return false
         if (activeFilters.has("trendy") && (i.trendScore ?? 0) <= 20) return false
-        if (activeFilters.has("outOfStock") && (i.mainStock !== 0 || i.streetStock !== 0)) return false
+        if (activeFilters.has("outOfStock") && i.mainStock !== 0) return false
         if (
           activeFilters.has("criticalStock") &&
           (i.daysUntilStockout == null || i.daysUntilStockout >= 7)
@@ -642,7 +642,7 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                   active={activeFilters.has("outOfStock")}
                   onClick={() => toggleFilter("outOfStock")}
                   label="📦 Stok sıfır"
-                  title="Ana=0 ve Cadde=0"
+                  title="Ana stok = 0 (eczane stoğuna bakılmaz)"
                 />
                 <FilterChip
                   active={activeFilters.has("bestSeller")}
