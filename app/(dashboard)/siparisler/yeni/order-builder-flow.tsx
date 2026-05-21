@@ -241,7 +241,7 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
         case "priority":
           return i.priorityScore
         case "stock":
-          return i.totalStock
+          return i.mainStock
         case "sales":
           return i.dailySalesAvg
         case "stockout":
@@ -829,19 +829,13 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                             <TableCell className="text-center">
                               <LifetimeBadge score={item.lifetimeScore} size="compact" />
                             </TableCell>
-                            <TableCell className="text-center tabular-nums">
-                              {item.totalStock}
-                              {item.streetStock > 0 && (
-                                <span className="text-[10px] text-muted-foreground block">
-                                  +{item.streetStock} ecz
-                                </span>
-                              )}
+                            <TableCell className="text-center tabular-nums font-medium">
+                              {item.mainStock}
                             </TableCell>
                             <TableCell className="text-center tabular-nums">
                               {item.streetStock > 0 ? (
                                 <span className="text-blue-600 font-medium">
                                   {item.streetStock}
-                                  <span className="text-[10px] block">ecz</span>
                                 </span>
                               ) : (
                                 <span className="text-muted-foreground">—</span>
