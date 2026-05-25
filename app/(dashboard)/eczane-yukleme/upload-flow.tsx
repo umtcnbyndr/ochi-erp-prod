@@ -685,6 +685,11 @@ function UnknownRowsCard({
     "all"
   )
   const [pageSize, setPageSize] = useState(50)
+  // Stok sıralama: null = orijinal sıra, "desc" = büyükten küçüğe, "asc" = küçükten büyüğe
+  const [stockSort, setStockSort] = useState<null | "desc" | "asc">(null)
+  function toggleStockSort() {
+    setStockSort((s) => (s === null ? "desc" : s === "desc" ? "asc" : null))
+  }
 
   // Markaları topla (sayılarıyla)
   const brandCounts = useMemo(() => {
@@ -737,8 +742,15 @@ function UnknownRowsCard({
     return { create, link, skip, undecided }
   }, [rows, decisions])
 
-  const visible = filtered.slice(0, pageSize)
-  const filteredNumbers = filtered.map((r) => r.rowNumber)
+  // Stok sıralaması (filtre sonrası uygulanır)
+  const sorted = useMemo(() => {
+    if (stockSort === null) return filtered
+    const dir = stockSort === "desc" ? -1 : 1
+    return [...filtered].sort((a, b) => (a.streetStock - b.streetStock) * dir)
+  }, [filtered, stockSort])
+
+  const visible = sorted.slice(0, pageSize)
+  const filteredNumbers = sorted.map((r) => r.rowNumber)
 
   const clearFilters = () => {
     setQuery("")
@@ -879,7 +891,19 @@ function UnknownRowsCard({
                 <TableHead>Ürün Adı</TableHead>
                 <TableHead>Marka</TableHead>
                 <TableHead>Kategori</TableHead>
-                <TableHead className="text-right">Stok</TableHead>
+                <TableHead className="text-right">
+                  <button
+                    type="button"
+                    onClick={toggleStockSort}
+                    className={`inline-flex items-center gap-0.5 hover:text-foreground transition-colors ${stockSort !== null ? "text-foreground font-semibold" : ""}`}
+                    title="Stok sıralaması"
+                  >
+                    Stok
+                    {stockSort === "desc" && <span className="text-[10px]">↓</span>}
+                    {stockSort === "asc" && <span className="text-[10px]">↑</span>}
+                    {stockSort === null && <span className="text-[10px] opacity-40">↕</span>}
+                  </button>
+                </TableHead>
                 <TableHead className="text-right">Alış</TableHead>
                 <TableHead>Karar</TableHead>
               </TableRow>
