@@ -787,10 +787,10 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       order_total: number
       items_in_order: number
       // Mutabakat (varsa) — sipariş bazlı gerçek değerler
-      recon_sale: number | null
       recon_net: number | null
       recon_commission: number | null
       recon_shipping: number | null
+      recon_other: number | null
     }>
   >(
     `
@@ -841,10 +841,11 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       (SUM(i.price) OVER (PARTITION BY o.id))::float8  AS order_total,
       (COUNT(*) OVER (PARTITION BY o.id))::int         AS items_in_order,
       -- Mutabakat: serviceValue ilk parça (siparişNo) = recon.serviceOrderId
-      recon."saleAmount"::float8  AS recon_sale,
       recon."netReceived"::float8 AS recon_net,
       recon."commission"::float8  AS recon_commission,
-      (recon."shipping" + recon."returnShipping")::float8 AS recon_shipping
+      (recon."shipping" + recon."returnShipping")::float8 AS recon_shipping,
+      -- "Diğer" = gerçek ek gider kalemleri (platform + ceza + diğer), iade/iptal HARİÇ
+      (recon."platformFee" + recon."penalty" + recon."otherDeductions" + recon."internationalFee")::float8 AS recon_other
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
@@ -853,7 +854,8 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
     LEFT JOIN "Subcategory" s ON s.id = p."subcategoryId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
     LEFT JOIN LATERAL (
-      SELECT "saleAmount", "netReceived", "commission", "shipping", "returnShipping"
+      SELECT "netReceived", "commission", "shipping", "returnShipping",
+             "platformFee", "penalty", "otherDeductions", "internationalFee"
       FROM "TrendyolOrderReconciliation" tr
       WHERE o."serviceValue" IS NOT NULL
         AND tr."serviceOrderId" = SPLIT_PART(o."serviceValue", '-', 1)
@@ -888,15 +890,14 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       shipping = 0
       withholding = 0
       other = 0
-    } else if (r.recon_sale != null && r.recon_net != null) {
+    } else if (r.recon_net != null) {
       // MUTABAKAT VAR — gerçek değerler. Sipariş bazlı tutarları item'a orantısal pay et.
+      // (Tam iade siparişler buildWhere'de zaten dışlandı; buraya gelenler net > 0)
       isReconciled = true
       commission = Number(r.recon_commission ?? 0) * lineShare
       shipping = Number(r.recon_shipping ?? 0) * lineShare
-      // Diğer = toplam kesinti - komisyon - kargo (platform fee + ceza + iptal/iade)
-      const totalDeduction = Number(r.recon_sale) - Number(r.recon_net)
-      const otherTotal = Math.max(0, totalDeduction - Number(r.recon_commission ?? 0) - Number(r.recon_shipping ?? 0))
-      other = otherTotal * lineShare
+      // Diğer = gerçek ek gider kalemleri (platform fee + ceza + diğer), iade/iptal HARİÇ
+      other = Number(r.recon_other ?? 0) * lineShare
       withholding = 0 // Trendyol Net Tutar zaten her şeyi içeriyor
     } else {
       // TAHMİN — tarife komisyon + marketplace kargo/stopaj
@@ -1123,6 +1124,19 @@ function buildWhere(filter: SalesFilter): QueryParts {
   if (filter.excludeArchived !== false) {
     conditions.push(`o.archived = false`)
   }
+  // Mutabakatta TAM İADE (netReceived <= 0) olan siparişleri tüm raporlardan çıkar.
+  // Dopigo'da SUCCESS görünse bile Trendyol Excel'i 'net 0' diyorsa → satış olmadı,
+  // ciro/kâr/gidere katma. (excludeReturned false ise — örn iade chip'i — uygulanmaz.)
+  if (filter.excludeReturned !== false && !filter.derivedStatus) {
+    conditions.push(`
+      NOT EXISTS (
+        SELECT 1 FROM "TrendyolOrderReconciliation" tr
+        WHERE o."serviceValue" IS NOT NULL
+          AND tr."serviceOrderId" = SPLIT_PART(o."serviceValue", '-', 1)
+          AND tr."netReceived" <= 0
+      )
+    `)
+  }
   if (filter.brandId != null) {
     conditions.push(`p."brandId" = $${idx++}`)
     params.push(filter.brandId)
@@ -1274,27 +1288,31 @@ async function loadTrendyolReconciliationIfApplicable(
   const tr = new Date(filter.fromDate.getTime() + 3 * 60 * 60 * 1000)
   const month = `${tr.getUTCFullYear()}-${String(tr.getUTCMonth() + 1).padStart(2, "0")}`
 
+  // İade edilmemiş siparişler (netReceived > 0) — tam iade hesaba katılmaz
   const agg = await prisma.trendyolOrderReconciliation.aggregate({
-    where: { month },
+    where: { month, netReceived: { gt: 0 } },
     _sum: {
-      saleAmount: true,
-      netReceived: true,
       commission: true,
       shipping: true,
       returnShipping: true,
+      // "Diğer" = gerçek ek gider kalemleri (iade/iptal DEĞİL)
+      platformFee: true,
+      penalty: true,
+      otherDeductions: true,
+      internationalFee: true,
     },
     _count: { _all: true },
   })
 
   if (agg._count._all === 0) return null
 
-  const saleAmount = Number(agg._sum.saleAmount ?? 0)
-  const netReceived = Number(agg._sum.netReceived ?? 0)
   const commission = Number(agg._sum.commission ?? 0)
   const shipping = Number(agg._sum.shipping ?? 0) + Number(agg._sum.returnShipping ?? 0)
-  // Toplam kesinti = ciro - net. Komisyon+kargo dışındaki her şey "other".
-  const totalDeductions = saleAmount - netReceived
-  const other = Math.max(0, totalDeductions - commission - shipping)
+  const other =
+    Number(agg._sum.platformFee ?? 0) +
+    Number(agg._sum.penalty ?? 0) +
+    Number(agg._sum.otherDeductions ?? 0) +
+    Number(agg._sum.internationalFee ?? 0)
 
   return { commission, shipping, other }
 }
