@@ -327,7 +327,13 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
         searchQuery={searchQuery}
         sortBy={sortBy}
         sortDir={sortDir}
-        currentMonth={`${fromDate.getUTCFullYear()}-${String(fromDate.getUTCMonth() + 1).padStart(2, "0")}-01`}
+        currentMonth={(() => {
+          // fromDate UTC olarak TR midnight'i temsil ediyor (TR midnight = UTC -3h).
+          // Direkt getUTCMonth() önceki güne kayıp ay yanlış çıkıyor (Mayıs 1 TR → Nis 30 UTC).
+          // TR offset'i ekleyip doğru ayı al.
+          const tr = new Date(fromDate.getTime() + 3 * 60 * 60 * 1000)
+          return `${tr.getUTCFullYear()}-${String(tr.getUTCMonth() + 1).padStart(2, "0")}-01`
+        })()}
         configExists={!!config}
         configActive={config?.isActive ?? false}
         lastTestOk={config?.lastTestOk ?? null}
