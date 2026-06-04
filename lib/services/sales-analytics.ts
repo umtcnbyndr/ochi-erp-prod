@@ -552,7 +552,11 @@ export async function getTopProducts(
       LIMIT 1
     ) mpp ON true
     ${whereSql}
-    GROUP BY p.id, p.name, b.name
+    GROUP BY
+      p.id, p.name, b.name,
+      -- Eşleşmemiş ürünleri SKU/barkod bazında ayır (yoksa hepsi tek satıra birleşir)
+      CASE WHEN p.id IS NULL THEN COALESCE(i."foreignSku", '') ELSE '' END,
+      CASE WHEN p.id IS NULL THEN COALESCE(i."barcode", '') ELSE '' END
     ORDER BY revenue DESC
     LIMIT ${limitParam}
     `,
