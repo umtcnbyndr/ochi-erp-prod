@@ -15,7 +15,7 @@ type Result<T> = { success: true; data: T } | { success: false; error: string }
 
 export async function previewTrendyolReconciliationAction(
   formData: FormData,
-): Promise<Result<ReconciliationPreview & { _rows: TrendyolRow[]; month: string }>> {
+): Promise<Result<ReconciliationPreview & { _rows: TrendyolRow[]; month: string; detectedMonths: { month: string; count: number }[] }>> {
   try {
     await requireAdmin()
     const file = formData.get("file") as File | null
@@ -27,15 +27,26 @@ export async function previewTrendyolReconciliationAction(
       return { success: false, error: "Excel'de geçerli satır yok" }
     }
 
-    // Ay tespiti: ilk satırın tarihinden
-    const first = rows.find((r) => r.orderDate)
-    if (!first || !first.orderDate) {
+    // Ay tespiti: dosyadaki tarihlerin ay dağılımı (en yoğun ay default)
+    const monthCounts = new Map<string, number>()
+    for (const r of rows) {
+      if (!r.orderDate) continue
+      const m = `${r.orderDate.getFullYear()}-${String(r.orderDate.getMonth() + 1).padStart(2, "0")}`
+      monthCounts.set(m, (monthCounts.get(m) ?? 0) + 1)
+    }
+    if (monthCounts.size === 0) {
       return { success: false, error: "Sipariş tarihi okunamadı (DD.MM.YYYY formatı bekleniyor)" }
     }
-    const month = `${first.orderDate.getFullYear()}-${String(first.orderDate.getMonth() + 1).padStart(2, "0")}`
+    const detectedMonths = Array.from(monthCounts.entries())
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => b.count - a.count)
+
+    // Dosya adından da ay çıkar (SiparisKayitlari_2026-05-01_2026-05-31)
+    const fileNameMonth = file.name.match(/(\d{4})-(\d{2})-\d{2}/)
+    const month = fileNameMonth ? `${fileNameMonth[1]}-${fileNameMonth[2]}` : detectedMonths[0].month
 
     const preview = await buildReconciliationPreview(rows)
-    return { success: true, data: { ...preview, _rows: rows, month } }
+    return { success: true, data: { ...preview, _rows: rows, month, detectedMonths } }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Hata" }
   }

@@ -190,12 +190,18 @@ export interface ReconciliationPreview {
 export async function buildReconciliationPreview(
   rows: TrendyolRow[],
 ): Promise<ReconciliationPreview> {
-  // 1. serviceOrderId → DopigoOrder map + items
-  const orderIds = rows.map((r) => r.serviceOrderId)
+  // 1. Eşleştirme: Excel "Sipariş No" (11 hane) ↔ DopigoOrder.serviceValue ilk parça.
+  //    serviceValue formatı: "11280396967-3885513551" (siparişNo-paketNo)
+  //    Bir sipariş birden fazla pakete bölünebilir → 1 Excel satırı : N DopigoOrder.
+  //    Bu yüzden ilk parçaya göre grupluyoruz, hepsinin item'larını topluyoruz.
+  const orderNos = new Set(rows.map((r) => r.serviceOrderId))
+
+  // serviceValue dolu tüm siparişleri çek (Trendyol kanalı)
   const dbOrders = await prisma.dopigoOrder.findMany({
-    where: { serviceOrderId: { in: orderIds } },
+    where: { serviceValue: { not: null } },
     select: {
       id: true,
+      serviceValue: true,
       serviceOrderId: true,
       total: true,
       items: {
@@ -210,7 +216,18 @@ export async function buildReconciliationPreview(
       },
     },
   })
-  const dbMap = new Map(dbOrders.map((o) => [o.serviceOrderId, o]))
+
+  // serviceValue ilk parçası (siparişNo) → DopigoOrder[] (çoklu paket için array)
+  type DbOrder = (typeof dbOrders)[number]
+  const dbMap = new Map<string, DbOrder[]>()
+  for (const o of dbOrders) {
+    if (!o.serviceValue) continue
+    const orderNo = o.serviceValue.split("-")[0].trim()
+    if (!orderNos.has(orderNo)) continue // sadece Excel'de olan siparişler
+    const arr = dbMap.get(orderNo) ?? []
+    arr.push(o)
+    dbMap.set(orderNo, arr)
+  }
 
   // 2. Manuel alış map'i
   const manual = await buildManualPriceMap()
@@ -224,39 +241,42 @@ export async function buildReconciliationPreview(
   let rowsWithMissing = 0
 
   for (const r of rows) {
-    const dbOrder = dbMap.get(r.serviceOrderId)
+    const dbPackets = dbMap.get(r.serviceOrderId) // çoklu paket olabilir
     let cogs = 0
     let cogsKnown = true
     const unknownItems: string[] = []
 
-    if (dbOrder) {
+    if (dbPackets && dbPackets.length > 0) {
       matched++
-      for (const item of dbOrder.items) {
-        if (item.itemStatus === "cancelled" || item.itemStatus === "returned") continue
-        const sku = item.foreignSku?.trim() || null
-        const bc = item.barcode?.trim() || null
-        const productPrice = item.product?.mainPurchasePrice ? Number(item.product.mainPurchasePrice) : null
-        const manualPrice =
-          (sku && manual.bySku.get(sku)) ||
-          (bc && manual.byBarcode.get(bc)) ||
-          null
-        const unit = productPrice ?? manualPrice ?? null
-        if (unit == null) {
-          cogsKnown = false
-          const key = sku || bc || item.productName || "—"
-          unknownItems.push(key)
-          if (!missingByKey.has(key)) {
-            missingByKey.set(key, {
-              sku,
-              barcode: bc,
-              name: item.productName ?? "—",
-              qty: item.amount,
-            })
+      // Tüm paketlerin item'larını topla
+      for (const pkt of dbPackets) {
+        for (const item of pkt.items) {
+          if (item.itemStatus === "cancelled" || item.itemStatus === "returned") continue
+          const sku = item.foreignSku?.trim() || null
+          const bc = item.barcode?.trim() || null
+          const productPrice = item.product?.mainPurchasePrice ? Number(item.product.mainPurchasePrice) : null
+          const manualPrice =
+            (sku && manual.bySku.get(sku)) ||
+            (bc && manual.byBarcode.get(bc)) ||
+            null
+          const unit = productPrice ?? manualPrice ?? null
+          if (unit == null) {
+            cogsKnown = false
+            const key = sku || bc || item.productName || "—"
+            unknownItems.push(key)
+            if (!missingByKey.has(key)) {
+              missingByKey.set(key, {
+                sku,
+                barcode: bc,
+                name: item.productName ?? "—",
+                qty: item.amount,
+              })
+            } else {
+              missingByKey.get(key)!.qty += item.amount
+            }
           } else {
-            missingByKey.get(key)!.qty += item.amount
+            cogs += unit * item.amount
           }
-        } else {
-          cogs += unit * item.amount
         }
       }
     } else {
@@ -265,8 +285,10 @@ export async function buildReconciliationPreview(
     }
 
     const netProfit = cogsKnown ? r.netReceived - cogs : null
-    const dbSaleAmount = dbOrder ? Number(dbOrder.total) : null
+    // Çoklu pakette toplam DB ciro
+    const dbSaleAmount = dbPackets ? dbPackets.reduce((s, p) => s + Number(p.total), 0) : null
     const amountDelta = dbSaleAmount != null ? Math.abs(r.saleAmount - dbSaleAmount) : null
+    const firstPacketId = dbPackets && dbPackets.length > 0 ? dbPackets[0].id : null
 
     previewRows.push({
       serviceOrderId: r.serviceOrderId,
@@ -276,7 +298,7 @@ export async function buildReconciliationPreview(
       netReceived: r.netReceived,
       platformFee: r.platformFee,
       penalty: r.penalty,
-      matchedDopigoOrderId: dbOrder?.id ?? null,
+      matchedDopigoOrderId: firstPacketId,
       dbSaleAmount,
       amountDelta,
       cogsKnown,
@@ -288,7 +310,7 @@ export async function buildReconciliationPreview(
     if (cogsKnown) {
       totalCogs += cogs
       if (netProfit != null) totalNetProfit += netProfit
-    } else if (dbOrder) {
+    } else if (dbPackets && dbPackets.length > 0) {
       rowsWithMissing++
     }
   }
@@ -319,12 +341,20 @@ export async function saveReconciliation(input: {
   month: string // "2026-05"
   userId?: string
 }): Promise<{ created: number; updated: number }> {
-  const orderIds = input.rows.map((r) => r.serviceOrderId)
+  // Eşleştirme: serviceValue ilk parça (siparişNo) → ilk paket id'si
+  const orderNos = new Set(input.rows.map((r) => r.serviceOrderId))
   const dbOrders = await prisma.dopigoOrder.findMany({
-    where: { serviceOrderId: { in: orderIds } },
-    select: { id: true, serviceOrderId: true },
+    where: { serviceValue: { not: null } },
+    select: { id: true, serviceValue: true },
   })
-  const dbMap = new Map(dbOrders.map((o) => [o.serviceOrderId, o.id]))
+  const dbMap = new Map<string, number>()
+  for (const o of dbOrders) {
+    if (!o.serviceValue) continue
+    const orderNo = o.serviceValue.split("-")[0].trim()
+    if (!orderNos.has(orderNo)) continue
+    // İlk paketi referans olarak tut (zaten @unique dopigoOrderId tek değer alır)
+    if (!dbMap.has(orderNo)) dbMap.set(orderNo, o.id)
+  }
 
   let created = 0
   let updated = 0

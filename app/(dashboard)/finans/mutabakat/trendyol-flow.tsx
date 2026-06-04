@@ -35,7 +35,8 @@ export function TrendyolReconciliationFlow() {
   const router = useRouter()
   const confirm = useConfirm()
   const [pending, startTransition] = useTransition()
-  const [preview, setPreview] = useState<(ReconciliationPreview & { _rows: TrendyolRow[]; month: string }) | null>(null)
+  const [preview, setPreview] = useState<(ReconciliationPreview & { _rows: TrendyolRow[]; month: string; detectedMonths: { month: string; count: number }[] }) | null>(null)
+  const [selectedMonth, setSelectedMonth] = useState<string>("")
   const [filter, setFilter] = useState<"all" | "missing" | "unmatched">("all")
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -50,6 +51,7 @@ export function TrendyolReconciliationFlow() {
         return
       }
       setPreview(r.data)
+      setSelectedMonth(r.data.month)
       toast.success(
         `${r.data.matched} eşleşti · ${r.data.unmatched} eşleşmedi · ${r.data.rowsWithMissingPrice} eksik alış`,
       )
@@ -60,14 +62,14 @@ export function TrendyolReconciliationFlow() {
     if (!preview) return
     const ok = await confirm({
       title: `${preview._rows.length} sipariş kaydedilecek`,
-      description: `${preview.month} ayı için Trendyol mutabakatı kaydedilecek. Mevcut kayıt varsa üzerine yazılır. Devam?`,
+      description: `${selectedMonth || preview.month} ayı için Trendyol mutabakatı kaydedilecek. Mevcut kayıt varsa üzerine yazılır. Devam?`,
       confirmText: "Kaydet",
     })
     if (!ok) return
     startTransition(async () => {
       const r = await saveTrendyolReconciliationAction({
         rows: preview._rows,
-        month: preview.month,
+        month: selectedMonth || preview.month,
       })
       if (!r.success) {
         toast.error(r.error)
@@ -112,6 +114,36 @@ export function TrendyolReconciliationFlow() {
 
       {preview && (
         <>
+          {/* Ay seçici */}
+          <Card>
+            <CardContent className="p-3 flex flex-wrap items-center gap-3">
+              <span className="text-sm font-medium">Mutabakat ayı:</span>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+              >
+                {/* Dosyada tespit edilen aylar + dosya adından gelen ay */}
+                {Array.from(
+                  new Set([preview.month, ...preview.detectedMonths.map((m) => m.month)]),
+                ).map((m) => {
+                  const detected = preview.detectedMonths.find((d) => d.month === m)
+                  return (
+                    <option key={m} value={m}>
+                      {m}
+                      {detected ? ` (${detected.count} sipariş)` : " (dosya adından)"}
+                    </option>
+                  )
+                })}
+              </select>
+              {preview.detectedMonths.length > 1 && (
+                <Badge variant="outline" className="text-amber-600 text-[10px]">
+                  Dosyada {preview.detectedMonths.length} farklı ay var — doğru ayı seç
+                </Badge>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Üst özet kartlar */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <Stat label="Toplam Sipariş" value={preview.totalRows} />
