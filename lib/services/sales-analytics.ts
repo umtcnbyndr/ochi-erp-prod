@@ -52,10 +52,13 @@ export interface TopLineKPIs {
   estimatedCommission: number
   estimatedShipping: number
   estimatedWithholding: number
+  estimatedOther: number     // platform fee + ceza + diğer (mutabakattan, yoksa 0)
   estimatedNetProfit: number
   estimatedMarginPct: number // %
   /** Ay sonu modunda gerçek giderler kullanıldıysa true */
   isActualMode: boolean
+  /** Trendyol mutabakatı kullanıldıysa true — 'Gerçek' etiketi */
+  isReconciled: boolean
 }
 
 export interface BrandBreakdownRow {
@@ -162,10 +165,16 @@ export async function getTopLineKPIs(filter: SalesFilter): Promise<TopLineKPIs> 
   const items = Number(r.total_items ?? 0)
   const matched = Number(r.matched_count ?? 0)
 
-  // Marketplace bazlı tahmini gider hesabı
+  // Marketplace bazlı gider hesabı (mutabakat > aylık gerçek > tahmin)
   const channelExpenses = await calculateChannelExpenses(filter)
 
-  const profit = revenue - cost - channelExpenses.commission - channelExpenses.shipping - channelExpenses.withholding
+  const profit =
+    revenue -
+    cost -
+    channelExpenses.commission -
+    channelExpenses.shipping -
+    channelExpenses.withholding -
+    channelExpenses.other
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0
 
   return {
@@ -179,9 +188,11 @@ export async function getTopLineKPIs(filter: SalesFilter): Promise<TopLineKPIs> 
     estimatedCommission: channelExpenses.commission,
     estimatedShipping: channelExpenses.shipping,
     estimatedWithholding: channelExpenses.withholding,
+    estimatedOther: channelExpenses.other,
     estimatedNetProfit: profit,
     estimatedMarginPct: margin,
     isActualMode: channelExpenses.isActual,
+    isReconciled: channelExpenses.isReconciled,
   }
 }
 
@@ -1116,7 +1127,11 @@ interface ChannelExpenseSnapshot {
   commission: number
   shipping: number
   withholding: number
+  /** Platform hizmet bedeli + ceza + diğer kesintiler (mutabakattan, yoksa 0) */
+  other: number
   isActual: boolean
+  /** Trendyol mutabakatı kullanıldıysa true — UI 'Gerçek' etiketi için */
+  isReconciled: boolean
 }
 
 async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExpenseSnapshot> {
@@ -1155,17 +1170,32 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
   )
 
   const monthlyExpenses = await loadMonthlyExpensesIfApplicable(filter)
+  // Trendyol mutabakatı (en yüksek öncelik — gerçek panel verisi)
+  const trendyolRecon = await loadTrendyolReconciliationIfApplicable(filter)
 
   let totalCommission = 0
   let totalShipping = 0
   let totalWithholding = 0
+  let totalOther = 0
   let actualUsed = false
   let estimatedUsed = false
+  let reconciledUsed = false
 
   for (const r of rows) {
     const revenue = Number(r.revenue ?? 0)
     const orders = Number(r.orders ?? 0)
     const isStore = r.sales_channel === "store"
+    const isTrendyol = r.sales_channel === "trendyol"
+
+    // Öncelik 1: Trendyol mutabakatı (gerçek panel verisi)
+    if (isTrendyol && trendyolRecon) {
+      totalCommission += trendyolRecon.commission
+      totalShipping += trendyolRecon.shipping
+      totalOther += trendyolRecon.other
+      // Trendyol Excel'de stopaj ayrı yok — Net Tutar zaten her şeyi içeriyor
+      reconciledUsed = true
+      continue
+    }
 
     const actual = r.marketplace_id != null ? monthlyExpenses.get(r.marketplace_id) : undefined
     if (actual) {
@@ -1187,8 +1217,49 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
     commission: totalCommission,
     shipping: totalShipping,
     withholding: totalWithholding,
-    isActual: actualUsed && !estimatedUsed,
+    other: totalOther,
+    isActual: (actualUsed || reconciledUsed) && !estimatedUsed,
+    isReconciled: reconciledUsed,
   }
+}
+
+/**
+ * Filter tek bir tam ay'ı kapsıyorsa, TrendyolOrderReconciliation'dan gerçek
+ * gider toplamlarını yükler. Toplam kesinti = Σ(saleAmount - netReceived).
+ * Komisyon ve kargo ayrı, kalan her şey "other" (platform fee + ceza + iptal/iade).
+ */
+async function loadTrendyolReconciliationIfApplicable(
+  filter: DateRangeFilter,
+): Promise<{ commission: number; shipping: number; other: number } | null> {
+  if (!isFullMonth(filter.fromDate, filter.toDate)) return null
+
+  // Ay anahtarı "YYYY-MM" — TR offset ekleyerek doğru ayı bul
+  const tr = new Date(filter.fromDate.getTime() + 3 * 60 * 60 * 1000)
+  const month = `${tr.getUTCFullYear()}-${String(tr.getUTCMonth() + 1).padStart(2, "0")}`
+
+  const agg = await prisma.trendyolOrderReconciliation.aggregate({
+    where: { month },
+    _sum: {
+      saleAmount: true,
+      netReceived: true,
+      commission: true,
+      shipping: true,
+      returnShipping: true,
+    },
+    _count: { _all: true },
+  })
+
+  if (agg._count._all === 0) return null
+
+  const saleAmount = Number(agg._sum.saleAmount ?? 0)
+  const netReceived = Number(agg._sum.netReceived ?? 0)
+  const commission = Number(agg._sum.commission ?? 0)
+  const shipping = Number(agg._sum.shipping ?? 0) + Number(agg._sum.returnShipping ?? 0)
+  // Toplam kesinti = ciro - net. Komisyon+kargo dışındaki her şey "other".
+  const totalDeductions = saleAmount - netReceived
+  const other = Math.max(0, totalDeductions - commission - shipping)
+
+  return { commission, shipping, other }
 }
 
 /**
@@ -1204,7 +1275,9 @@ async function loadMonthlyExpensesIfApplicable(
 
   if (!isFullMonth(filter.fromDate, filter.toDate)) return empty
 
-  const monthStart = new Date(Date.UTC(filter.fromDate.getUTCFullYear(), filter.fromDate.getUTCMonth(), 1))
+  // TR offset ile doğru ayı bul (fromDate UTC olarak önceki günün 21:00'ı)
+  const tr = new Date(filter.fromDate.getTime() + 3 * 3600 * 1000)
+  const monthStart = new Date(Date.UTC(tr.getUTCFullYear(), tr.getUTCMonth(), 1))
 
   const expenses = await prisma.marketplaceMonthlyExpense.findMany({
     where: { month: monthStart },
@@ -1228,10 +1301,14 @@ async function loadMonthlyExpensesIfApplicable(
 }
 
 function isFullMonth(from: Date, to: Date): boolean {
-  if (from.getUTCFullYear() !== to.getUTCFullYear()) return false
-  if (from.getUTCMonth() !== to.getUTCMonth()) return false
-  if (from.getUTCDate() !== 1) return false
-  // Ayın son günü
-  const lastDay = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth() + 1, 0)).getUTCDate()
-  return to.getUTCDate() === lastDay
+  // fromDate/toDate TR midnight'i temsil ediyor (UTC olarak saklanmış, TR = UTC+3).
+  // Dopigo "Bu ay" filtresi: fromDate = ayın 1'i TR = önceki ayın son günü 21:00 UTC.
+  // O yüzden TR offset ekleyip kontrol et (yoksa UTC date hep önceki güne kayar).
+  const trFrom = new Date(from.getTime() + 3 * 3600 * 1000)
+  const trTo = new Date(to.getTime() + 3 * 3600 * 1000)
+  if (trFrom.getUTCFullYear() !== trTo.getUTCFullYear()) return false
+  if (trFrom.getUTCMonth() !== trTo.getUTCMonth()) return false
+  if (trFrom.getUTCDate() !== 1) return false
+  const lastDay = new Date(Date.UTC(trTo.getUTCFullYear(), trTo.getUTCMonth() + 1, 0)).getUTCDate()
+  return trTo.getUTCDate() === lastDay
 }

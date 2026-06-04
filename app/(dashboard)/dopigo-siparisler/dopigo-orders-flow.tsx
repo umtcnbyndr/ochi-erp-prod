@@ -33,7 +33,8 @@ interface KPIs {
   totalRevenue: number; totalOrders: number; totalItems: number; totalUnits: number
   matchedItemCount: number; matchRate: number; estimatedCost: number
   estimatedCommission: number; estimatedShipping: number; estimatedWithholding: number
-  estimatedNetProfit: number; estimatedMarginPct: number; isActualMode: boolean
+  estimatedOther: number; estimatedNetProfit: number; estimatedMarginPct: number
+  isActualMode: boolean; isReconciled: boolean
 }
 interface StatusCounts { SUCCESS: number; CANCELLED: number; RETURNED: number; WAITING: number; OTHER: number; TOTAL: number }
 interface BrandRow { brandId: number | null; brandName: string; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; productCount: number }
@@ -333,7 +334,7 @@ function KPIRow({ kpis, statusCounts }: { kpis: KPIs; statusCounts: StatusCounts
     { label: "Adet", value: kpis.totalUnits.toLocaleString("tr-TR"), icon: Package },
     { label: "Eşleşme", value: pct(kpis.matchRate * 100), icon: Link2Icon,
       accent: kpis.matchRate >= 0.85 ? "text-emerald-600" : "text-amber-600" },
-    { label: kpis.isActualMode ? "Net Kâr (Gerçek)" : "Net Kâr (Tahmin)", value: tl(kpis.estimatedNetProfit), icon: Award,
+    { label: kpis.isReconciled ? "Net Kâr (Mutabakatlı)" : kpis.isActualMode ? "Net Kâr (Gerçek)" : "Net Kâr (Tahmin)", value: tl(kpis.estimatedNetProfit), icon: Award,
       accent: kpis.estimatedNetProfit >= 0 ? "text-emerald-600" : "text-rose-600" },
     { label: "Marj", value: pct(kpis.estimatedMarginPct), icon: TrendingUp,
       accent: kpis.estimatedMarginPct >= 15 ? "text-emerald-600" : "text-amber-600" },
@@ -1058,14 +1059,29 @@ function OverviewTab({ kpis, brandRows, channelRows }: { kpis: KPIs; brandRows: 
       </Card>
 
       <Card className="lg:col-span-2">
-        <CardHeader><CardTitle className="text-base">Tahmini Kâr Detayı</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            {kpis.isReconciled ? "Net Kâr Detayı" : "Tahmini Kâr Detayı"}
+            {kpis.isReconciled && (
+              <Badge variant="default" className="text-[10px] bg-emerald-600">Mutabakatlı · Gerçek</Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div><div className="text-muted-foreground">Ciro</div><div className="font-semibold">{tl(kpis.totalRevenue)}</div></div>
             <div><div className="text-muted-foreground">- Alış maliyeti</div><div className="font-semibold">- {tl(kpis.estimatedCost)}</div></div>
             <div><div className="text-muted-foreground">- Komisyon</div><div className="font-semibold">- {tl(kpis.estimatedCommission)}</div></div>
             <div><div className="text-muted-foreground">- Kargo</div><div className="font-semibold">- {tl(kpis.estimatedShipping)}</div></div>
-            <div><div className="text-muted-foreground">- Stopaj</div><div className="font-semibold">- {tl(kpis.estimatedWithholding)}</div></div>
+            {kpis.estimatedWithholding > 0 && (
+              <div><div className="text-muted-foreground">- Stopaj</div><div className="font-semibold">- {tl(kpis.estimatedWithholding)}</div></div>
+            )}
+            {kpis.estimatedOther > 0 && (
+              <div>
+                <div className="text-muted-foreground">- Diğer (platform/ceza)</div>
+                <div className="font-semibold">- {tl(kpis.estimatedOther)}</div>
+              </div>
+            )}
             <div className="col-span-2 md:col-span-3">
               <div className="text-muted-foreground">= Net Kâr</div>
               <div className={`font-bold text-lg ${kpis.estimatedNetProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
@@ -1073,12 +1089,18 @@ function OverviewTab({ kpis, brandRows, channelRows }: { kpis: KPIs; brandRows: 
               </div>
             </div>
           </div>
-          {!kpis.isActualMode && (
+          {kpis.isReconciled ? (
             <p className="text-xs text-muted-foreground mt-3">
-              ⚠️ Tahmini değerler — Marketplace ayarlarındaki komisyon/kargo/stopaj %&apos;leri kullanıldı.
-              Gerçek değerler için <span className="font-semibold">Ay Sonu</span> tab&apos;ından girişler yap.
+              ✅ Gerçek değerler — bu ayın Trendyol mutabakatı yapıldı. Komisyon/kargo/platform
+              hizmet bedeli/ceza, Trendyol panelinden gelen kesin tutarlardır.
             </p>
-          )}
+          ) : !kpis.isActualMode ? (
+            <p className="text-xs text-muted-foreground mt-3">
+              ⚠️ Tahmini değerler — komisyon tarifeleri/Marketplace ayarları kullanıldı.
+              Gerçek değerler için <span className="font-semibold">Finans → Mutabakat</span>{" "}
+              sayfasından Trendyol Excel&apos;ini yükle.
+            </p>
+          ) : null}
         </CardContent>
       </Card>
     </div>
