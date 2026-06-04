@@ -299,7 +299,9 @@ function buildPnlCTE(whereSql: string): string {
       CASE WHEN is_store THEN 0
            WHEN recon_net IS NOT NULL THEN COALESCE(recon_other, 0) * (revenue / NULLIF(order_total, 0))
            ELSE 0 END AS line_other,
-      CASE WHEN is_store OR recon_net IS NOT NULL THEN 0
+      -- Stopaj: Trendyol kesmez (Net Tutar'da yok) ama senin vergi maliyetin.
+      -- Mutabakatlı olsun olmasın ciro × oran (mağaza hariç).
+      CASE WHEN is_store THEN 0
            ELSE revenue * mp_withholding / 100 END AS line_withholding
     FROM base
   )
@@ -993,7 +995,8 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       shipping = Number(r.recon_shipping ?? 0) * lineShare
       // Diğer = gerçek ek gider kalemleri (platform fee + ceza + diğer), iade/iptal HARİÇ
       other = Number(r.recon_other ?? 0) * lineShare
-      withholding = 0 // Trendyol Net Tutar zaten her şeyi içeriyor
+      // Stopaj: Trendyol kesmez ama senin vergi maliyetin → ciro × oran (mutabakatta da)
+      withholding = (lineTotal * Number(r.withholding_rate ?? 0)) / 100
     } else {
       // TAHMİN — tarife komisyon + marketplace kargo/stopaj
       commission = (lineTotal * Number(r.commission_rate ?? 0)) / 100
@@ -1338,7 +1341,8 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
       totalCommission += trendyolRecon.commission
       totalShipping += trendyolRecon.shipping
       totalOther += trendyolRecon.other
-      // Trendyol Excel'de stopaj ayrı yok — Net Tutar zaten her şeyi içeriyor
+      // Stopaj: Trendyol kesmez (Net Tutar'da yok) ama senin vergi maliyetin → ciro × oran
+      totalWithholding += (revenue * Number(r.withholding ?? 0)) / 100
       reconciledUsed = true
       continue
     }
