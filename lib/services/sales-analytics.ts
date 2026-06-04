@@ -265,15 +265,22 @@ export async function getCategoryBreakdown(filter: SalesFilter): Promise<Categor
       COALESCE(SUM(i.amount), 0)::int                                      AS unit_count,
       COALESCE(SUM(i.price), 0)::float8                                    AS revenue,
       COALESCE(SUM(
-        CASE WHEN p."mainPurchasePrice" IS NOT NULL
-             THEN p."mainPurchasePrice" * i.amount
-             ELSE 0
+        CASE
+          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
+          WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
+          ELSE 0
         END
       ), 0)::float8                                                        AS cost
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Category" c ON c.id = p."categoryId"
+    LEFT JOIN "ManualPurchasePrice" mpp
+      ON i."productId" IS NULL
+      AND (
+        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
+        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
+      )
     ${whereSql}
     GROUP BY c.id, c.name
     ORDER BY revenue DESC NULLS LAST
@@ -324,9 +331,10 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
       COALESCE(SUM(i.amount), 0)::int                                      AS unit_count,
       COALESCE(SUM(i.price), 0)::float8                                    AS revenue,
       COALESCE(SUM(
-        CASE WHEN p."mainPurchasePrice" IS NOT NULL
-             THEN p."mainPurchasePrice" * i.amount
-             ELSE 0
+        CASE
+          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
+          WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
+          ELSE 0
         END
       ), 0)::float8                                                        AS cost,
       COALESCE(SUM(i.price * (${EFFECTIVE_COMMISSION_PCT_SQL}) / 100), 0)::float8 AS tariff_commission,
@@ -336,6 +344,12 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
+    LEFT JOIN "ManualPurchasePrice" mpp
+      ON i."productId" IS NULL
+      AND (
+        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
+        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
+      )
     ${COMMISSION_TARIFF_JOIN_SQL}
     ${whereSql}
     GROUP BY o."salesChannel", m.id, m.name, m."shippingCost", m."withholdingTax"
@@ -428,9 +442,10 @@ export async function getSubcategoryBreakdown(
       COALESCE(SUM(i.amount), 0)::int                                      AS unit_count,
       COALESCE(SUM(i.price), 0)::float8                                    AS revenue,
       COALESCE(SUM(
-        CASE WHEN p."mainPurchasePrice" IS NOT NULL
-             THEN p."mainPurchasePrice" * i.amount
-             ELSE 0
+        CASE
+          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
+          WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
+          ELSE 0
         END
       ), 0)::float8                                                        AS cost
     FROM "DopigoOrderItem" i
@@ -438,6 +453,12 @@ export async function getSubcategoryBreakdown(
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Subcategory" s ON s.id = p."subcategoryId"
     LEFT JOIN "Category" c ON c.id = s."categoryId"
+    LEFT JOIN "ManualPurchasePrice" mpp
+      ON i."productId" IS NULL
+      AND (
+        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
+        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
+      )
     ${whereSql}
     GROUP BY s.id, s.name, c.name
     ORDER BY revenue DESC NULLS LAST
@@ -490,15 +511,22 @@ export async function getTopProducts(
       COALESCE(SUM(i.amount), 0)::int                                      AS unit_count,
       COALESCE(SUM(i.price), 0)::float8                                    AS revenue,
       COALESCE(SUM(
-        CASE WHEN p."mainPurchasePrice" IS NOT NULL
-             THEN p."mainPurchasePrice" * i.amount
-             ELSE 0
+        CASE
+          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
+          WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
+          ELSE 0
         END
       ), 0)::float8                                                        AS cost
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Brand" b ON b.id = p."brandId"
+    LEFT JOIN "ManualPurchasePrice" mpp
+      ON i."productId" IS NULL
+      AND (
+        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
+        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
+      )
     ${whereSql}
     GROUP BY p.id, p.name, b.name
     ORDER BY revenue DESC
@@ -931,9 +959,10 @@ export async function getMonthlyAggregates(year: number): Promise<MonthlySalesRo
       COUNT(DISTINCT o.id)::int AS orders,
       COALESCE(SUM(i.amount), 0)::int AS units,
       COALESCE(SUM(
-        CASE WHEN p."mainPurchasePrice" IS NOT NULL
-             THEN p."mainPurchasePrice" * i.amount
-             ELSE 0
+        CASE
+          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
+          WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
+          ELSE 0
         END
       ), 0)::float8 AS cost,
       COALESCE(SUM(i.price * COALESCE(m."commissionRate", 0) / 100), 0)::float8 AS commission,
@@ -943,10 +972,17 @@ export async function getMonthlyAggregates(year: number): Promise<MonthlySalesRo
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
+    LEFT JOIN "ManualPurchasePrice" mpp
+      ON i."productId" IS NULL
+      AND (
+        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
+        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
+      )
     WHERE o."serviceCreatedAt" >= ${fromDate}
       AND o."serviceCreatedAt" <= ${toDate}
       AND o."derivedStatus" != 'CANCELLED'
       AND o."derivedStatus" != 'RETURNED'
+      AND (i."itemStatus" IS NULL OR i."itemStatus" NOT IN ('cancelled', 'returned'))
       AND o.archived = false
     GROUP BY EXTRACT(MONTH FROM o."serviceCreatedAt")
     ORDER BY month
