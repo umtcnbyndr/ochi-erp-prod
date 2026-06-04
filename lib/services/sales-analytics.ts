@@ -67,9 +67,15 @@ export interface BrandBreakdownRow {
   unitCount: number
   revenue: number
   cost: number
-  profit: number
-  marginPct: number
+  profit: number          // brüt kâr = ciro - alış (geriye uyum)
+  marginPct: number       // brüt marj (geriye uyum)
   productCount: number
+  // Net kâr kalemleri (komisyon/kargo/diğer düşülmüş — mutabakat varsa gerçek)
+  commission: number
+  shipping: number
+  other: number
+  netProfit: number       // ciro - alış - komisyon - kargo - diğer
+  netMarginPct: number
 }
 
 export interface CategoryBreakdownRow {
@@ -80,6 +86,11 @@ export interface CategoryBreakdownRow {
   cost: number
   profit: number
   marginPct: number
+  commission: number
+  shipping: number
+  other: number
+  netProfit: number
+  netMarginPct: number
 }
 
 export interface ChannelBreakdownRow {
@@ -106,6 +117,11 @@ export interface TopProductRow {
   cost: number
   profit: number
   marginPct: number
+  commission: number
+  shipping: number
+  other: number
+  netProfit: number
+  netMarginPct: number
 }
 
 // ===== KPI =====
@@ -196,6 +212,100 @@ export async function getTopLineKPIs(filter: SalesFilter): Promise<TopLineKPIs> 
   }
 }
 
+// ===== Ortak PnL CTE (mutabakat-aware item başına komisyon/kargo/diğer) =====
+
+/**
+ * Tüm breakdown sorguları için ortak CTE. Her item için:
+ *   - cost (alış): mainPurchasePrice > ManualPurchasePrice > 0
+ *   - komisyon/kargo/diğer: mutabakat varsa GERÇEK (recon), yoksa TAHMİN (tarife+marketplace)
+ *   - kargo orantısal: sipariş içindeki cironun payına göre (order_total window)
+ *
+ * Çıktı `line_pnl` CTE'si: SELECT ... FROM line_pnl GROUP BY ... ile kullanılır.
+ * Alias gerekleri: EFFECTIVE_COMMISSION_PCT_SQL + COMMISSION_TARIFF_JOIN_SQL (i, o, m, ct).
+ */
+function buildPnlCTE(whereSql: string): string {
+  return `
+  WITH base AS (
+    SELECT
+      i.id AS item_id,
+      o.id AS order_id,
+      i.price::float8 AS revenue,
+      i.amount::int AS units,
+      p.id AS product_id,
+      p.name AS product_name,
+      i."productName" AS item_product_name,
+      p."brandId" AS brand_id,
+      p."categoryId" AS category_id,
+      p."subcategoryId" AS subcategory_id,
+      b.name AS brand_name,
+      c.name AS category_name,
+      s.name AS subcategory_name,
+      o."salesChannel" AS sales_channel,
+      o."marketplaceId" AS marketplace_id,
+      m.name AS marketplace_name,
+      -- Alış maliyeti
+      COALESCE(
+        CASE
+          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
+          WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
+          ELSE 0
+        END, 0)::float8 AS cost,
+      -- Sipariş toplam cirosu (kargo/komisyon orantısal pay için)
+      (SUM(i.price) OVER (PARTITION BY o.id))::float8 AS order_total,
+      -- Mutabakat (varsa)
+      recon."netReceived"::float8 AS recon_net,
+      recon."commission"::float8 AS recon_comm,
+      (recon."shipping" + recon."returnShipping")::float8 AS recon_ship,
+      (recon."platformFee" + recon."penalty" + recon."otherDeductions" + recon."internationalFee")::float8 AS recon_other,
+      -- Tahmin parametreleri
+      (${EFFECTIVE_COMMISSION_PCT_SQL})::float8 AS eff_comm_pct,
+      COALESCE(m."shippingCost", 0)::float8 AS mp_shipping,
+      COALESCE(m."withholdingTax", 0)::float8 AS mp_withholding,
+      (o."salesChannel" IN ('store', 'magaza', 'mağaza')) AS is_store
+    FROM "DopigoOrderItem" i
+    JOIN "DopigoOrder" o ON o.id = i."orderId"
+    LEFT JOIN "Product" p ON p.id = i."productId"
+    LEFT JOIN "Brand" b ON b.id = p."brandId"
+    LEFT JOIN "Category" c ON c.id = p."categoryId"
+    LEFT JOIN "Subcategory" s ON s.id = p."subcategoryId"
+    LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
+    LEFT JOIN LATERAL (
+      SELECT "purchasePrice"
+      FROM "ManualPurchasePrice"
+      WHERE i."productId" IS NULL
+        AND ((i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
+             OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode"))
+      LIMIT 1
+    ) mpp ON true
+    LEFT JOIN LATERAL (
+      SELECT "netReceived", "commission", "shipping", "returnShipping",
+             "platformFee", "penalty", "otherDeductions", "internationalFee"
+      FROM "TrendyolOrderReconciliation" tr
+      WHERE o."serviceValue" IS NOT NULL
+        AND tr."serviceOrderId" = SPLIT_PART(o."serviceValue", '-', 1)
+      LIMIT 1
+    ) recon ON true
+    ${COMMISSION_TARIFF_JOIN_SQL}
+    ${whereSql}
+  ),
+  line_pnl AS (
+    SELECT *,
+      CASE WHEN is_store THEN 0
+           WHEN recon_net IS NOT NULL THEN recon_comm * (revenue / NULLIF(order_total, 0))
+           ELSE revenue * eff_comm_pct / 100 END AS line_commission,
+      CASE WHEN is_store THEN 0
+           WHEN recon_net IS NOT NULL THEN recon_ship * (revenue / NULLIF(order_total, 0))
+           ELSE mp_shipping * (revenue / NULLIF(order_total, 0)) END AS line_shipping,
+      CASE WHEN is_store THEN 0
+           WHEN recon_net IS NOT NULL THEN COALESCE(recon_other, 0) * (revenue / NULLIF(order_total, 0))
+           ELSE 0 END AS line_other,
+      CASE WHEN is_store OR recon_net IS NOT NULL THEN 0
+           ELSE revenue * mp_withholding / 100 END AS line_withholding
+    FROM base
+  )
+  `
+}
+
 // ===== Brand breakdown =====
 
 export async function getBrandBreakdown(filter: SalesFilter): Promise<BrandBreakdownRow[]> {
@@ -207,41 +317,26 @@ export async function getBrandBreakdown(filter: SalesFilter): Promise<BrandBreak
       unit_count: number
       revenue: number
       cost: number
+      commission: number
+      shipping: number
+      other: number
       product_count: number
     }>
   >(
     `
+    ${buildPnlCTE(whereSql)}
     SELECT
-      b.id::int                                                            AS brand_id,
-      COALESCE(b.name, '— Eşleşmemiş —')                                   AS brand_name,
-      COALESCE(SUM(i.amount), 0)::int                                      AS unit_count,
-      COALESCE(SUM(i.price), 0)::float8                                    AS revenue,
-      COALESCE(SUM(
-        CASE
-          WHEN p."mainPurchasePrice" IS NOT NULL
-            THEN p."mainPurchasePrice" * i.amount
-          WHEN mpp."purchasePrice" IS NOT NULL
-            THEN mpp."purchasePrice" * i.amount
-          ELSE 0
-        END
-      ), 0)::float8                                                        AS cost,
-      COUNT(DISTINCT p.id)::int                                            AS product_count
-    FROM "DopigoOrderItem" i
-    JOIN "DopigoOrder" o ON o.id = i."orderId"
-    LEFT JOIN "Product" p ON p.id = i."productId"
-    LEFT JOIN "Brand" b ON b.id = p."brandId"
-    LEFT JOIN LATERAL (
-      SELECT "purchasePrice"
-      FROM "ManualPurchasePrice"
-      WHERE i."productId" IS NULL
-        AND (
-          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
-          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
-        )
-      LIMIT 1
-    ) mpp ON true
-    ${whereSql}
-    GROUP BY b.id, b.name
+      brand_id::int                                       AS brand_id,
+      COALESCE(brand_name, '— Eşleşmemiş —')              AS brand_name,
+      COALESCE(SUM(units), 0)::int                        AS unit_count,
+      COALESCE(SUM(revenue), 0)::float8                   AS revenue,
+      COALESCE(SUM(cost), 0)::float8                      AS cost,
+      COALESCE(SUM(line_commission), 0)::float8           AS commission,
+      COALESCE(SUM(line_shipping), 0)::float8             AS shipping,
+      COALESCE(SUM(line_other + line_withholding), 0)::float8 AS other,
+      COUNT(DISTINCT product_id)::int                     AS product_count
+    FROM line_pnl
+    GROUP BY brand_id, brand_name
     ORDER BY revenue DESC NULLS LAST
     `,
     ...params,
@@ -250,7 +345,11 @@ export async function getBrandBreakdown(filter: SalesFilter): Promise<BrandBreak
   return rows.map((r) => {
     const revenue = Number(r.revenue ?? 0)
     const cost = Number(r.cost ?? 0)
+    const commission = Number(r.commission ?? 0)
+    const shipping = Number(r.shipping ?? 0)
+    const other = Number(r.other ?? 0)
     const profit = revenue - cost
+    const netProfit = revenue - cost - commission - shipping - other
     return {
       brandId: r.brand_id,
       brandName: r.brand_name ?? "—",
@@ -260,6 +359,11 @@ export async function getBrandBreakdown(filter: SalesFilter): Promise<BrandBreak
       profit,
       marginPct: revenue > 0 ? (profit / revenue) * 100 : 0,
       productCount: Number(r.product_count ?? 0),
+      commission,
+      shipping,
+      other,
+      netProfit,
+      netMarginPct: revenue > 0 ? (netProfit / revenue) * 100 : 0,
     }
   })
 }
@@ -275,37 +379,24 @@ export async function getCategoryBreakdown(filter: SalesFilter): Promise<Categor
       unit_count: number
       revenue: number
       cost: number
+      commission: number
+      shipping: number
+      other: number
     }>
   >(
     `
+    ${buildPnlCTE(whereSql)}
     SELECT
-      c.id::int                                                            AS category_id,
-      COALESCE(c.name, '— Eşleşmemiş —')                                   AS category_name,
-      COALESCE(SUM(i.amount), 0)::int                                      AS unit_count,
-      COALESCE(SUM(i.price), 0)::float8                                    AS revenue,
-      COALESCE(SUM(
-        CASE
-          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
-          WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
-          ELSE 0
-        END
-      ), 0)::float8                                                        AS cost
-    FROM "DopigoOrderItem" i
-    JOIN "DopigoOrder" o ON o.id = i."orderId"
-    LEFT JOIN "Product" p ON p.id = i."productId"
-    LEFT JOIN "Category" c ON c.id = p."categoryId"
-    LEFT JOIN LATERAL (
-      SELECT "purchasePrice"
-      FROM "ManualPurchasePrice"
-      WHERE i."productId" IS NULL
-        AND (
-          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
-          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
-        )
-      LIMIT 1
-    ) mpp ON true
-    ${whereSql}
-    GROUP BY c.id, c.name
+      category_id::int                                    AS category_id,
+      COALESCE(category_name, '— Eşleşmemiş —')           AS category_name,
+      COALESCE(SUM(units), 0)::int                        AS unit_count,
+      COALESCE(SUM(revenue), 0)::float8                   AS revenue,
+      COALESCE(SUM(cost), 0)::float8                      AS cost,
+      COALESCE(SUM(line_commission), 0)::float8           AS commission,
+      COALESCE(SUM(line_shipping), 0)::float8             AS shipping,
+      COALESCE(SUM(line_other + line_withholding), 0)::float8 AS other
+    FROM line_pnl
+    GROUP BY category_id, category_name
     ORDER BY revenue DESC NULLS LAST
     `,
     ...params,
@@ -314,7 +405,11 @@ export async function getCategoryBreakdown(filter: SalesFilter): Promise<Categor
   return rows.map((r) => {
     const revenue = Number(r.revenue ?? 0)
     const cost = Number(r.cost ?? 0)
+    const commission = Number(r.commission ?? 0)
+    const shipping = Number(r.shipping ?? 0)
+    const other = Number(r.other ?? 0)
     const profit = revenue - cost
+    const netProfit = revenue - cost - commission - shipping - other
     return {
       categoryId: r.category_id,
       categoryName: r.category_name ?? "—",
@@ -323,6 +418,11 @@ export async function getCategoryBreakdown(filter: SalesFilter): Promise<Categor
       cost,
       profit,
       marginPct: revenue > 0 ? (profit / revenue) * 100 : 0,
+      commission,
+      shipping,
+      other,
+      netProfit,
+      netMarginPct: revenue > 0 ? (netProfit / revenue) * 100 : 0,
     }
   })
 }
@@ -445,6 +545,11 @@ export interface SubcategoryBreakdownRow {
   cost: number
   profit: number
   marginPct: number
+  commission: number
+  shipping: number
+  other: number
+  netProfit: number
+  netMarginPct: number
 }
 
 export async function getSubcategoryBreakdown(
@@ -459,39 +564,25 @@ export async function getSubcategoryBreakdown(
       unit_count: number
       revenue: number
       cost: number
+      commission: number
+      shipping: number
+      other: number
     }>
   >(
     `
+    ${buildPnlCTE(whereSql)}
     SELECT
-      s.id::int                                                            AS subcategory_id,
-      COALESCE(s.name, '— Eşleşmemiş —')                                   AS subcategory_name,
-      c.name                                                               AS category_name,
-      COALESCE(SUM(i.amount), 0)::int                                      AS unit_count,
-      COALESCE(SUM(i.price), 0)::float8                                    AS revenue,
-      COALESCE(SUM(
-        CASE
-          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
-          WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
-          ELSE 0
-        END
-      ), 0)::float8                                                        AS cost
-    FROM "DopigoOrderItem" i
-    JOIN "DopigoOrder" o ON o.id = i."orderId"
-    LEFT JOIN "Product" p ON p.id = i."productId"
-    LEFT JOIN "Subcategory" s ON s.id = p."subcategoryId"
-    LEFT JOIN "Category" c ON c.id = s."categoryId"
-    LEFT JOIN LATERAL (
-      SELECT "purchasePrice"
-      FROM "ManualPurchasePrice"
-      WHERE i."productId" IS NULL
-        AND (
-          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
-          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
-        )
-      LIMIT 1
-    ) mpp ON true
-    ${whereSql}
-    GROUP BY s.id, s.name, c.name
+      subcategory_id::int                                 AS subcategory_id,
+      COALESCE(subcategory_name, '— Eşleşmemiş —')        AS subcategory_name,
+      category_name                                       AS category_name,
+      COALESCE(SUM(units), 0)::int                        AS unit_count,
+      COALESCE(SUM(revenue), 0)::float8                   AS revenue,
+      COALESCE(SUM(cost), 0)::float8                      AS cost,
+      COALESCE(SUM(line_commission), 0)::float8           AS commission,
+      COALESCE(SUM(line_shipping), 0)::float8             AS shipping,
+      COALESCE(SUM(line_other + line_withholding), 0)::float8 AS other
+    FROM line_pnl
+    GROUP BY subcategory_id, subcategory_name, category_name
     ORDER BY revenue DESC NULLS LAST
     `,
     ...params,
@@ -500,7 +591,11 @@ export async function getSubcategoryBreakdown(
   return rows.map((r) => {
     const revenue = Number(r.revenue ?? 0)
     const cost = Number(r.cost ?? 0)
+    const commission = Number(r.commission ?? 0)
+    const shipping = Number(r.shipping ?? 0)
+    const other = Number(r.other ?? 0)
     const profit = revenue - cost
+    const netProfit = revenue - cost - commission - shipping - other
     return {
       subcategoryId: r.subcategory_id,
       subcategoryName: r.subcategory_name ?? "—",
@@ -510,6 +605,11 @@ export async function getSubcategoryBreakdown(
       cost,
       profit,
       marginPct: revenue > 0 ? (profit / revenue) * 100 : 0,
+      commission,
+      shipping,
+      other,
+      netProfit,
+      netMarginPct: revenue > 0 ? (netProfit / revenue) * 100 : 0,
     }
   })
 }
@@ -532,42 +632,28 @@ export async function getTopProducts(
       unit_count: number
       revenue: number
       cost: number
+      commission: number
+      shipping: number
+      other: number
     }>
   >(
     `
+    ${buildPnlCTE(whereSql)}
     SELECT
-      p.id::int                                                            AS product_id,
-      COALESCE(p.name, MIN(i."productName"))                               AS product_name,
-      b.name                                                               AS brand_name,
-      COALESCE(SUM(i.amount), 0)::int                                      AS unit_count,
-      COALESCE(SUM(i.price), 0)::float8                                    AS revenue,
-      COALESCE(SUM(
-        CASE
-          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
-          WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
-          ELSE 0
-        END
-      ), 0)::float8                                                        AS cost
-    FROM "DopigoOrderItem" i
-    JOIN "DopigoOrder" o ON o.id = i."orderId"
-    LEFT JOIN "Product" p ON p.id = i."productId"
-    LEFT JOIN "Brand" b ON b.id = p."brandId"
-    LEFT JOIN LATERAL (
-      SELECT "purchasePrice"
-      FROM "ManualPurchasePrice"
-      WHERE i."productId" IS NULL
-        AND (
-          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
-          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
-        )
-      LIMIT 1
-    ) mpp ON true
-    ${whereSql}
+      product_id::int                                     AS product_id,
+      COALESCE(product_name, MIN(item_product_name))      AS product_name,
+      brand_name                                          AS brand_name,
+      COALESCE(SUM(units), 0)::int                        AS unit_count,
+      COALESCE(SUM(revenue), 0)::float8                   AS revenue,
+      COALESCE(SUM(cost), 0)::float8                      AS cost,
+      COALESCE(SUM(line_commission), 0)::float8           AS commission,
+      COALESCE(SUM(line_shipping), 0)::float8             AS shipping,
+      COALESCE(SUM(line_other + line_withholding), 0)::float8 AS other
+    FROM line_pnl
     GROUP BY
-      p.id, p.name, b.name,
+      product_id, product_name, brand_name,
       -- Eşleşmemiş ürünleri SKU/barkod bazında ayır (yoksa hepsi tek satıra birleşir)
-      CASE WHEN p.id IS NULL THEN COALESCE(i."foreignSku", '') ELSE '' END,
-      CASE WHEN p.id IS NULL THEN COALESCE(i."barcode", '') ELSE '' END
+      CASE WHEN product_id IS NULL THEN COALESCE(item_product_name, '') ELSE '' END
     ORDER BY revenue DESC
     LIMIT ${limitParam}
     `,
@@ -577,7 +663,11 @@ export async function getTopProducts(
   return rows.map((r) => {
     const revenue = Number(r.revenue ?? 0)
     const cost = Number(r.cost ?? 0)
+    const commission = Number(r.commission ?? 0)
+    const shipping = Number(r.shipping ?? 0)
+    const other = Number(r.other ?? 0)
     const profit = revenue - cost
+    const netProfit = revenue - cost - commission - shipping - other
     return {
       productId: r.product_id,
       productName: r.product_name ?? "—",
@@ -587,6 +677,11 @@ export async function getTopProducts(
       cost,
       profit,
       marginPct: revenue > 0 ? (profit / revenue) * 100 : 0,
+      commission,
+      shipping,
+      other,
+      netProfit,
+      netMarginPct: revenue > 0 ? (netProfit / revenue) * 100 : 0,
     }
   })
 }

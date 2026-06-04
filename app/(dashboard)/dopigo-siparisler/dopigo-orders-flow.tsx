@@ -37,11 +37,11 @@ interface KPIs {
   isActualMode: boolean; isReconciled: boolean
 }
 interface StatusCounts { SUCCESS: number; CANCELLED: number; RETURNED: number; WAITING: number; OTHER: number; TOTAL: number }
-interface BrandRow { brandId: number | null; brandName: string; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; productCount: number }
-interface CategoryRow { categoryId: number | null; categoryName: string; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number }
-interface SubcategoryRow { subcategoryId: number | null; subcategoryName: string; categoryName: string | null; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number }
+interface BrandRow { brandId: number | null; brandName: string; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; productCount: number; commission: number; shipping: number; other: number; netProfit: number; netMarginPct: number }
+interface CategoryRow { categoryId: number | null; categoryName: string; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; commission: number; shipping: number; other: number; netProfit: number; netMarginPct: number }
+interface SubcategoryRow { subcategoryId: number | null; subcategoryName: string; categoryName: string | null; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; commission: number; shipping: number; other: number; netProfit: number; netMarginPct: number }
 interface ChannelRow { salesChannel: string; marketplaceId: number | null; marketplaceName: string | null; orderCount: number; unitCount: number; revenue: number; estCommission: number; estShipping: number; estWithholding: number; estProfit: number; marginPct: number; isActual: boolean }
-interface TopProductRow { productId: number | null; productName: string; brandName: string | null; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number }
+interface TopProductRow { productId: number | null; productName: string; brandName: string | null; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; commission: number; shipping: number; other: number; netProfit: number; netMarginPct: number }
 interface UnmatchedItem { itemId: number; orderId: number; salesChannel: string; productName: string; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; price: number; serviceCreatedAt: string }
 interface SyncRun { id: number; startedAt: string; finishedAt: string | null; totalFetched: number; totalCreated: number; totalUpdated: number; totalMatched: number; status: string; errorMessage: string | null; rangeFrom: string | null; rangeTo: string | null }
 interface MonthlyExpense { id: number; marketplaceId: number; commissionPaid: number | null; shippingPaid: number | null; withholdingPaid: number | null; returnCosts: number | null; adSpend: number | null; otherExpenses: number | null; notes: string | null }
@@ -1139,24 +1139,28 @@ function BrandTab({ rows, totalRevenue }: { rows: BrandRow[]; totalRevenue: numb
       <Table>
         <TableHeader><TableRow>
           <TableHead>Marka</TableHead><TableHead className="text-right">Adet</TableHead>
-          <TableHead className="text-right">Ürün</TableHead><TableHead className="text-right">Ciro</TableHead>
-          <TableHead className="text-right">% Pay</TableHead><TableHead className="text-right">Maliyet</TableHead>
-          <TableHead className="text-right">Brüt Kâr</TableHead><TableHead className="text-right">Marj</TableHead>
+          <TableHead className="text-right">Ciro</TableHead>
+          <TableHead className="text-right">Alış</TableHead>
+          <TableHead className="text-right">Komisyon</TableHead>
+          <TableHead className="text-right">Kargo</TableHead>
+          <TableHead className="text-right">Diğer</TableHead>
+          <TableHead className="text-right">Net Kâr</TableHead><TableHead className="text-right">Net Marj</TableHead>
         </TableRow></TableHeader>
         <TableBody>
           {rows.map((r, i) => (
             <TableRow key={i}>
               <TableCell className="font-medium">{r.brandName}</TableCell>
               <TableCell className="text-right tabular-nums">{r.unitCount}</TableCell>
-              <TableCell className="text-right tabular-nums">{r.productCount}</TableCell>
               <TableCell className="text-right tabular-nums">{tl(r.revenue)}</TableCell>
-              <TableCell className="text-right tabular-nums text-muted-foreground">{totalRevenue > 0 ? pct((r.revenue / totalRevenue) * 100) : "—"}</TableCell>
-              <TableCell className="text-right tabular-nums">{tl(r.cost)}</TableCell>
-              <TableCell className={`text-right tabular-nums ${r.profit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{tl(r.profit)}</TableCell>
-              <TableCell className={`text-right tabular-nums ${r.marginPct >= 15 ? "text-emerald-600" : "text-amber-600"}`}>{pct(r.marginPct)}</TableCell>
+              <TableCell className="text-right tabular-nums text-rose-600">{r.cost > 0 ? `- ${tl(r.cost)}` : "—"}</TableCell>
+              <TableCell className="text-right tabular-nums text-rose-600">{r.commission > 0 ? `- ${tl(r.commission)}` : "—"}</TableCell>
+              <TableCell className="text-right tabular-nums text-rose-600">{r.shipping > 0 ? `- ${tl(r.shipping)}` : "—"}</TableCell>
+              <TableCell className="text-right tabular-nums text-rose-600">{r.other > 0 ? `- ${tl(r.other)}` : "—"}</TableCell>
+              <TableCell className={`text-right tabular-nums font-semibold ${r.netProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{tl(r.netProfit)}</TableCell>
+              <TableCell className={`text-right tabular-nums ${r.netMarginPct >= 15 ? "text-emerald-600" : "text-amber-600"}`}>{pct(r.netMarginPct)}</TableCell>
             </TableRow>
           ))}
-          {rows.length === 0 && (<TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Veri yok</TableCell></TableRow>)}
+          {rows.length === 0 && (<TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Veri yok</TableCell></TableRow>)}
         </TableBody>
       </Table>
     </CardContent></Card>
@@ -1172,8 +1176,12 @@ function CategoryTab({ rows, subRows, totalRevenue }: { rows: CategoryRow[]; sub
           <Table>
             <TableHeader><TableRow>
               <TableHead>Kategori</TableHead><TableHead className="text-right">Adet</TableHead>
-              <TableHead className="text-right">Ciro</TableHead><TableHead className="text-right">% Pay</TableHead>
-              <TableHead className="text-right">Brüt Kâr</TableHead><TableHead className="text-right">Marj</TableHead>
+              <TableHead className="text-right">Ciro</TableHead>
+              <TableHead className="text-right">Alış</TableHead>
+              <TableHead className="text-right">Komisyon</TableHead>
+              <TableHead className="text-right">Kargo</TableHead>
+              <TableHead className="text-right">Diğer</TableHead>
+              <TableHead className="text-right">Net Kâr</TableHead><TableHead className="text-right">Net Marj</TableHead>
             </TableRow></TableHeader>
             <TableBody>
               {rows.map((r, i) => (
@@ -1181,12 +1189,15 @@ function CategoryTab({ rows, subRows, totalRevenue }: { rows: CategoryRow[]; sub
                   <TableCell className="font-medium">{r.categoryName}</TableCell>
                   <TableCell className="text-right tabular-nums">{r.unitCount}</TableCell>
                   <TableCell className="text-right tabular-nums">{tl(r.revenue)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">{totalRevenue > 0 ? pct((r.revenue / totalRevenue) * 100) : "—"}</TableCell>
-                  <TableCell className={`text-right tabular-nums ${r.profit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{tl(r.profit)}</TableCell>
-                  <TableCell className={`text-right tabular-nums ${r.marginPct >= 15 ? "text-emerald-600" : "text-amber-600"}`}>{pct(r.marginPct)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-rose-600">{r.cost > 0 ? `- ${tl(r.cost)}` : "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums text-rose-600">{r.commission > 0 ? `- ${tl(r.commission)}` : "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums text-rose-600">{r.shipping > 0 ? `- ${tl(r.shipping)}` : "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums text-rose-600">{r.other > 0 ? `- ${tl(r.other)}` : "—"}</TableCell>
+                  <TableCell className={`text-right tabular-nums font-semibold ${r.netProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{tl(r.netProfit)}</TableCell>
+                  <TableCell className={`text-right tabular-nums ${r.netMarginPct >= 15 ? "text-emerald-600" : "text-amber-600"}`}>{pct(r.netMarginPct)}</TableCell>
                 </TableRow>
               ))}
-              {rows.length === 0 && (<TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Veri yok</TableCell></TableRow>)}
+              {rows.length === 0 && (<TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Veri yok</TableCell></TableRow>)}
             </TableBody>
           </Table>
         </CardContent>
@@ -1198,8 +1209,13 @@ function CategoryTab({ rows, subRows, totalRevenue }: { rows: CategoryRow[]; sub
           <Table>
             <TableHeader><TableRow>
               <TableHead>Alt Kategori</TableHead><TableHead>Kategori</TableHead><TableHead className="text-right">Adet</TableHead>
-              <TableHead className="text-right">Ciro</TableHead><TableHead className="text-right">Brüt Kâr</TableHead>
-              <TableHead className="text-right">Marj</TableHead>
+              <TableHead className="text-right">Ciro</TableHead>
+              <TableHead className="text-right">Alış</TableHead>
+              <TableHead className="text-right">Komisyon</TableHead>
+              <TableHead className="text-right">Kargo</TableHead>
+              <TableHead className="text-right">Diğer</TableHead>
+              <TableHead className="text-right">Net Kâr</TableHead>
+              <TableHead className="text-right">Net Marj</TableHead>
             </TableRow></TableHeader>
             <TableBody>
               {subRows.map((r, i) => (
@@ -1208,11 +1224,15 @@ function CategoryTab({ rows, subRows, totalRevenue }: { rows: CategoryRow[]; sub
                   <TableCell className="text-muted-foreground text-xs">{r.categoryName ?? "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{r.unitCount}</TableCell>
                   <TableCell className="text-right tabular-nums">{tl(r.revenue)}</TableCell>
-                  <TableCell className={`text-right tabular-nums ${r.profit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{tl(r.profit)}</TableCell>
-                  <TableCell className={`text-right tabular-nums ${r.marginPct >= 15 ? "text-emerald-600" : "text-amber-600"}`}>{pct(r.marginPct)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-rose-600">{r.cost > 0 ? `- ${tl(r.cost)}` : "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums text-rose-600">{r.commission > 0 ? `- ${tl(r.commission)}` : "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums text-rose-600">{r.shipping > 0 ? `- ${tl(r.shipping)}` : "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums text-rose-600">{r.other > 0 ? `- ${tl(r.other)}` : "—"}</TableCell>
+                  <TableCell className={`text-right tabular-nums font-semibold ${r.netProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{tl(r.netProfit)}</TableCell>
+                  <TableCell className={`text-right tabular-nums ${r.netMarginPct >= 15 ? "text-emerald-600" : "text-amber-600"}`}>{pct(r.netMarginPct)}</TableCell>
                 </TableRow>
               ))}
-              {subRows.length === 0 && (<TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Veri yok</TableCell></TableRow>)}
+              {subRows.length === 0 && (<TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">Veri yok</TableCell></TableRow>)}
             </TableBody>
           </Table>
         </CardContent>
@@ -1261,7 +1281,11 @@ function TopProductsTab({ rows }: { rows: TopProductRow[] }) {
         <TableHeader><TableRow>
           <TableHead>#</TableHead><TableHead>Ürün</TableHead><TableHead>Marka</TableHead>
           <TableHead className="text-right">Adet</TableHead><TableHead className="text-right">Ciro</TableHead>
-          <TableHead className="text-right">Brüt Kâr</TableHead><TableHead className="text-right">Marj</TableHead>
+          <TableHead className="text-right">Alış</TableHead>
+          <TableHead className="text-right">Komisyon</TableHead>
+          <TableHead className="text-right">Kargo</TableHead>
+          <TableHead className="text-right">Diğer</TableHead>
+          <TableHead className="text-right">Net Kâr</TableHead><TableHead className="text-right">Net Marj</TableHead>
         </TableRow></TableHeader>
         <TableBody>
           {rows.map((r, i) => (
@@ -1275,11 +1299,15 @@ function TopProductsTab({ rows }: { rows: TopProductRow[] }) {
               <TableCell>{r.brandName ?? "—"}</TableCell>
               <TableCell className="text-right tabular-nums">{r.unitCount}</TableCell>
               <TableCell className="text-right tabular-nums">{tl(r.revenue)}</TableCell>
-              <TableCell className={`text-right tabular-nums ${r.profit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{tl(r.profit)}</TableCell>
-              <TableCell className={`text-right tabular-nums ${r.marginPct >= 15 ? "text-emerald-600" : "text-amber-600"}`}>{pct(r.marginPct)}</TableCell>
+              <TableCell className="text-right tabular-nums text-rose-600">{r.cost > 0 ? `- ${tl(r.cost)}` : "—"}</TableCell>
+              <TableCell className="text-right tabular-nums text-rose-600">{r.commission > 0 ? `- ${tl(r.commission)}` : "—"}</TableCell>
+              <TableCell className="text-right tabular-nums text-rose-600">{r.shipping > 0 ? `- ${tl(r.shipping)}` : "—"}</TableCell>
+              <TableCell className="text-right tabular-nums text-rose-600">{r.other > 0 ? `- ${tl(r.other)}` : "—"}</TableCell>
+              <TableCell className={`text-right tabular-nums font-semibold ${r.netProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{tl(r.netProfit)}</TableCell>
+              <TableCell className={`text-right tabular-nums ${r.netMarginPct >= 15 ? "text-emerald-600" : "text-amber-600"}`}>{pct(r.netMarginPct)}</TableCell>
             </TableRow>
           ))}
-          {rows.length === 0 && (<TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Veri yok</TableCell></TableRow>)}
+          {rows.length === 0 && (<TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">Veri yok</TableCell></TableRow>)}
         </TableBody>
       </Table>
     </CardContent></Card>
