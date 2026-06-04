@@ -129,15 +129,24 @@ export async function getTopLineKPIs(filter: SalesFilter): Promise<TopLineKPIs> 
       COALESCE(SUM(i.amount), 0)::int                                      AS total_units,
       COUNT(i.id) FILTER (WHERE i."productId" IS NOT NULL)::int           AS matched_count,
       COALESCE(SUM(
-        CASE WHEN i."productId" IS NOT NULL AND p."mainPurchasePrice" IS NOT NULL
-             THEN p."mainPurchasePrice" * i.amount
-             ELSE 0
+        CASE
+          WHEN i."productId" IS NOT NULL AND p."mainPurchasePrice" IS NOT NULL
+            THEN p."mainPurchasePrice" * i.amount
+          WHEN mpp."purchasePrice" IS NOT NULL
+            THEN mpp."purchasePrice" * i.amount
+          ELSE 0
         END
       ), 0)::float8                                                        AS estimated_cost
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Brand" b ON b.id = p."brandId"
+    LEFT JOIN "ManualPurchasePrice" mpp
+      ON i."productId" IS NULL
+      AND (
+        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
+        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
+      )
     ${whereSql}
     `,
     ...params,
@@ -193,9 +202,12 @@ export async function getBrandBreakdown(filter: SalesFilter): Promise<BrandBreak
       COALESCE(SUM(i.amount), 0)::int                                      AS unit_count,
       COALESCE(SUM(i.price), 0)::float8                                    AS revenue,
       COALESCE(SUM(
-        CASE WHEN p."mainPurchasePrice" IS NOT NULL
-             THEN p."mainPurchasePrice" * i.amount
-             ELSE 0
+        CASE
+          WHEN p."mainPurchasePrice" IS NOT NULL
+            THEN p."mainPurchasePrice" * i.amount
+          WHEN mpp."purchasePrice" IS NOT NULL
+            THEN mpp."purchasePrice" * i.amount
+          ELSE 0
         END
       ), 0)::float8                                                        AS cost,
       COUNT(DISTINCT p.id)::int                                            AS product_count
@@ -203,6 +215,12 @@ export async function getBrandBreakdown(filter: SalesFilter): Promise<BrandBreak
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Brand" b ON b.id = p."brandId"
+    LEFT JOIN "ManualPurchasePrice" mpp
+      ON i."productId" IS NULL
+      AND (
+        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
+        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
+      )
     ${whereSql}
     GROUP BY b.id, b.name
     ORDER BY revenue DESC NULLS LAST

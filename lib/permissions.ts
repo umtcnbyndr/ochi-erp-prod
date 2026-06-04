@@ -43,6 +43,7 @@ export const ALL_MODULES: ModuleDefinition[] = [
   { key: "cariler",          label: "Cariler",            routes: ["/cariler"] },
   { key: "finans-faturalar", label: "Alış Faturaları",    routes: ["/finans/faturalar"] },
   { key: "finans-gelir-gider", label: "Gelir / Gider",    routes: ["/finans/gelir-gider"] },
+  { key: "finans-eksik-alis",  label: "Eksik Alış",         routes: ["/finans/eksik-alis"] },
   { key: "raporlar",         label: "Raporlar",           routes: ["/raporlar"] },
   { key: "ayarlar",          label: "Ayarlar",            routes: ["/ayarlar"] },
 ]

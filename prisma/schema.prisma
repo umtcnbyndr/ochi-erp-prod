@@ -1077,6 +1077,27 @@ enum MergeStatus {
   REVERTED  // geri alındı
 }
 
+/// Eşleşmemiş Dopigo satışları için manuel alış fiyatı kayıtları.
+/// Aynı SKU/barkod birden fazla kez satılırsa tek alış girilir, hepsine uygulanır.
+/// Ay bazlı değil — bir kez girilir, ileride de geçerli (lookup).
+model ManualPurchasePrice {
+  id            Int      @id @default(autoincrement())
+  /** Eşleştirme anahtarı — SKU veya barkod (öncelik SKU) */
+  sku           String?
+  barcode       String?
+  /** Görsel için ürün adı (snapshot) */
+  name          String
+  purchasePrice Decimal  @db.Decimal(14, 4)  // KDV dahil alış
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?  // userId
+
+  @@unique([sku, barcode])
+  @@index([sku])
+  @@index([barcode])
+}
+
 // ---------- Sipariş Sistemi ----------
 
 /// Marka liste fiyatları — Excel'den yüklenir, sipariş hesabında başlangıç noktası
