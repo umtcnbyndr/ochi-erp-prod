@@ -141,12 +141,16 @@ export async function getTopLineKPIs(filter: SalesFilter): Promise<TopLineKPIs> 
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Brand" b ON b.id = p."brandId"
-    LEFT JOIN "ManualPurchasePrice" mpp
-      ON i."productId" IS NULL
-      AND (
-        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
-        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
-      )
+    LEFT JOIN LATERAL (
+      SELECT "purchasePrice"
+      FROM "ManualPurchasePrice"
+      WHERE i."productId" IS NULL
+        AND (
+          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
+          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
+        )
+      LIMIT 1
+    ) mpp ON true
     ${whereSql}
     `,
     ...params,
@@ -215,12 +219,16 @@ export async function getBrandBreakdown(filter: SalesFilter): Promise<BrandBreak
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Brand" b ON b.id = p."brandId"
-    LEFT JOIN "ManualPurchasePrice" mpp
-      ON i."productId" IS NULL
-      AND (
-        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
-        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
-      )
+    LEFT JOIN LATERAL (
+      SELECT "purchasePrice"
+      FROM "ManualPurchasePrice"
+      WHERE i."productId" IS NULL
+        AND (
+          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
+          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
+        )
+      LIMIT 1
+    ) mpp ON true
     ${whereSql}
     GROUP BY b.id, b.name
     ORDER BY revenue DESC NULLS LAST
@@ -275,12 +283,16 @@ export async function getCategoryBreakdown(filter: SalesFilter): Promise<Categor
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Category" c ON c.id = p."categoryId"
-    LEFT JOIN "ManualPurchasePrice" mpp
-      ON i."productId" IS NULL
-      AND (
-        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
-        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
-      )
+    LEFT JOIN LATERAL (
+      SELECT "purchasePrice"
+      FROM "ManualPurchasePrice"
+      WHERE i."productId" IS NULL
+        AND (
+          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
+          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
+        )
+      LIMIT 1
+    ) mpp ON true
     ${whereSql}
     GROUP BY c.id, c.name
     ORDER BY revenue DESC NULLS LAST
@@ -344,12 +356,16 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
-    LEFT JOIN "ManualPurchasePrice" mpp
-      ON i."productId" IS NULL
-      AND (
-        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
-        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
-      )
+    LEFT JOIN LATERAL (
+      SELECT "purchasePrice"
+      FROM "ManualPurchasePrice"
+      WHERE i."productId" IS NULL
+        AND (
+          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
+          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
+        )
+      LIMIT 1
+    ) mpp ON true
     ${COMMISSION_TARIFF_JOIN_SQL}
     ${whereSql}
     GROUP BY o."salesChannel", m.id, m.name, m."shippingCost", m."withholdingTax"
@@ -453,12 +469,16 @@ export async function getSubcategoryBreakdown(
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Subcategory" s ON s.id = p."subcategoryId"
     LEFT JOIN "Category" c ON c.id = s."categoryId"
-    LEFT JOIN "ManualPurchasePrice" mpp
-      ON i."productId" IS NULL
-      AND (
-        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
-        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
-      )
+    LEFT JOIN LATERAL (
+      SELECT "purchasePrice"
+      FROM "ManualPurchasePrice"
+      WHERE i."productId" IS NULL
+        AND (
+          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
+          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
+        )
+      LIMIT 1
+    ) mpp ON true
     ${whereSql}
     GROUP BY s.id, s.name, c.name
     ORDER BY revenue DESC NULLS LAST
@@ -521,12 +541,16 @@ export async function getTopProducts(
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Brand" b ON b.id = p."brandId"
-    LEFT JOIN "ManualPurchasePrice" mpp
-      ON i."productId" IS NULL
-      AND (
-        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
-        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
-      )
+    LEFT JOIN LATERAL (
+      SELECT "purchasePrice"
+      FROM "ManualPurchasePrice"
+      WHERE i."productId" IS NULL
+        AND (
+          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
+          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
+        )
+      LIMIT 1
+    ) mpp ON true
     ${whereSql}
     GROUP BY p.id, p.name, b.name
     ORDER BY revenue DESC
@@ -972,12 +996,16 @@ export async function getMonthlyAggregates(year: number): Promise<MonthlySalesRo
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
-    LEFT JOIN "ManualPurchasePrice" mpp
-      ON i."productId" IS NULL
-      AND (
-        (i."foreignSku" IS NOT NULL AND mpp."sku" = i."foreignSku")
-        OR (i."barcode" IS NOT NULL AND mpp."barcode" = i."barcode")
-      )
+    LEFT JOIN LATERAL (
+      SELECT "purchasePrice"
+      FROM "ManualPurchasePrice"
+      WHERE i."productId" IS NULL
+        AND (
+          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
+          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
+        )
+      LIMIT 1
+    ) mpp ON true
     WHERE o."serviceCreatedAt" >= ${fromDate}
       AND o."serviceCreatedAt" <= ${toDate}
       AND o."derivedStatus" != 'CANCELLED'
