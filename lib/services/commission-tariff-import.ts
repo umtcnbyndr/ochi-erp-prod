@@ -98,11 +98,20 @@ export async function importCommissionTariff(
   const rows = XLSX.utils.sheet_to_json<TariffExcelRow>(sheet, { defval: null })
   if (rows.length === 0) throw new Error("Excel boş")
 
-  // KARAR: Yeni yükleme = tek doğru kaynak. Aynı marketplace için TÜM eski
-  // upload'lar silinir, eski seçimler hatırlanmaz. Hayalet ürünleri ve overlap
-  // bug'larını ortadan kaldırır.
+  // KARAR (2b — tarife geçmişi koruma): Sadece DÖNEMİ ÇAKIŞAN eski upload'lar silinir,
+  // çakışmayanlar KORUNUR. Böylece:
+  //   - Aynı haftayı tekrar yüklersen → çakışır → eski silinir (replace/düzeltme)
+  //   - Yeni hafta/ay yüklersen → çakışmaz → eski korunur (geçmiş siparişler kendi
+  //     dönemindeki tarifeyi bulur, marketplace default'a düşmez)
+  //   - Herhangi bir anda en fazla 1 geçerli tarife → "şu an" fiyat hesapları bozulmaz
+  //
+  // Çakışma (overlap): eski.effectiveFrom <= yeni.effectiveTo AND eski.effectiveTo >= yeni.effectiveFrom
   const oldUploads = await prisma.commissionTariffUpload.findMany({
-    where: { marketplace: input.marketplace },
+    where: {
+      marketplace: input.marketplace,
+      effectiveFrom: { lte: input.effectiveTo },
+      effectiveTo: { gte: input.effectiveFrom },
+    },
     select: { id: true },
   })
   const oldUploadIds = oldUploads.map((u) => u.id)
