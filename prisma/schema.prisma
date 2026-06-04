@@ -788,12 +788,14 @@ model DopigoOrder {
   rawJson   Json     // ham API cevabı (debugging için)
 
   items DopigoOrderItem[]
+  trendyolReconciliation TrendyolOrderReconciliation?
 
   @@index([serviceCreatedAt])
   @@index([salesChannel, serviceCreatedAt])
   @@index([status])
   @@index([derivedStatus])
   @@index([marketplaceId])
+  @@index([serviceOrderId])
 }
 
 /// Sipariş kalemi (ürün satırı). Bizim Product ile eşleştirme burada.
@@ -1075,6 +1077,61 @@ model ProductMergeHistory {
 enum MergeStatus {
   ACTIVE    // birleştirme aktif
   REVERTED  // geri alındı
+}
+
+/// Trendyol Sipariş Kayıtları Excel'inden indirilen ay sonu mutabakat verisi.
+/// Pazaryeri panelinden gelen GERÇEK kesinti/komisyon/kargo değerleri.
+/// Her satır 1 Trendyol siparişi (eşleşme anahtarı: serviceOrderId).
+///
+/// Rapor entegrasyonu: Bir ay için mutabakat verisi varsa, sales-analytics
+/// tahmini değerler yerine bu gerçek değerleri kullanır.
+model TrendyolOrderReconciliation {
+  id Int @id @default(autoincrement())
+
+  /// Trendyol sipariş no — bizim DopigoOrder.serviceOrderId ile eşleşir.
+  serviceOrderId String  @unique
+
+  /// Eşleşen DopigoOrder (varsa). Null → Excel'de var bizde yok.
+  dopigoOrderId Int? @unique
+  dopigoOrder   DopigoOrder? @relation(fields: [dopigoOrderId], references: [id], onDelete: SetNull)
+
+  /// Sipariş tarihi (Excel "Sipariş Tarihi" — DD.MM.YYYY HH:MM parse edilmiş)
+  orderDate DateTime
+
+  /// Hangi mutabakat ayı? "2026-05" formatı — rapor filtre için
+  month String
+
+  /// Sipariş Statüsü (Teslim Edildi / İptal / İade...)
+  orderStatus String?
+
+  /// Adet
+  itemCount Int @default(0)
+
+  /// Excel'deki tüm tutar kalemleri (Decimal, hepsi pozitif tutarlar olarak saklanır)
+  saleAmount         Decimal  @db.Decimal(12, 2) // Sipariş Tutarı
+  commission         Decimal  @default(0) @db.Decimal(12, 2) // Komisyon (Excel'de negatif gelir, mutlak değer kaydedilir)
+  discount           Decimal  @default(0) @db.Decimal(12, 2) // İndirim
+  shipping           Decimal  @default(0) @db.Decimal(12, 2) // Gönderi Kargo Bedeli
+  returnShipping     Decimal  @default(0) @db.Decimal(12, 2) // İade Kargo Bedeli
+  penalty            Decimal  @default(0) @db.Decimal(12, 2) // Ceza Bedeli
+  cancelled          Decimal  @default(0) @db.Decimal(12, 2) // İptal
+  refunded           Decimal  @default(0) @db.Decimal(12, 2) // İade
+  otherDeductions    Decimal  @default(0) @db.Decimal(12, 2) // Diğer
+  internationalFee   Decimal  @default(0) @db.Decimal(12, 2) // Uluslararası Hizmet Bedeli
+  internationalRefund Decimal @default(0) @db.Decimal(12, 2) // Yurtdışı Operasyon İade Bedeli
+  platformFee        Decimal  @default(0) @db.Decimal(12, 2) // Platform Hizmet Bedeli
+
+  /// Trendyol'un eline geçen net tutar (Excel "Net Tutar"). Mutabakat'ın altın değeri.
+  netReceived Decimal @db.Decimal(12, 2)
+
+  /// Audit
+  importedAt DateTime @default(now())
+  importedBy String?
+  rawJson    Json     // Excel satırı (raw)
+
+  @@index([month])
+  @@index([dopigoOrderId])
+  @@index([orderDate])
 }
 
 /// Eşleşmemiş Dopigo satışları için manuel alış fiyatı kayıtları.

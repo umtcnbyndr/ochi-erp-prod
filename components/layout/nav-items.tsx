@@ -90,6 +90,7 @@ export const navGroups: NavGroup[] = [
       { label: "Alış Faturaları", href: "/finans/faturalar", icon: Receipt, moduleKey: "finans-faturalar" },
       { label: "Gelir / Gider", href: "/finans/gelir-gider", icon: BarChart3, moduleKey: "finans-gelir-gider" },
       { label: "Eksik Alış", href: "/finans/eksik-alis", icon: AlertTriangle, moduleKey: "finans-eksik-alis" },
+      { label: "Mutabakat", href: "/finans/mutabakat", icon: Receipt, moduleKey: "finans-mutabakat" },
     ],
   },
   {
