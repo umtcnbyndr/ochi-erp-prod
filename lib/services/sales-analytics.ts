@@ -798,7 +798,9 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       i.id::int                           AS item_id,
       o.id::int                           AS order_id,
       o."dopigoOrderId"::text             AS dopigo_order_id,
-      o."serviceOrderId"                  AS service_order_id,
+      -- "Sipariş No" = Trendyol'daki gerçek numara = serviceValue ilk parça
+      -- (serviceOrderId order code'dur, "-" sonrası parça). Yoksa serviceOrderId fallback.
+      COALESCE(NULLIF(SPLIT_PART(o."serviceValue", '-', 1), ''), o."serviceOrderId") AS service_order_id,
       o."serviceCreatedAt"                AS service_created_at,
       o."derivedStatus"                   AS derived_status,
       o."salesChannel"                    AS sales_channel,
