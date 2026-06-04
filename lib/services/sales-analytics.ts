@@ -995,9 +995,13 @@ function buildWhere(filter: SalesFilter): QueryParts {
   } else {
     if (filter.excludeCancelled !== false) {
       conditions.push(`o."derivedStatus" != 'CANCELLED'`)
+      // Item bazında iptal — order başarılı olsa bile içindeki bazı kalemler iptal olabiliyor
+      conditions.push(`(i."itemStatus" IS NULL OR i."itemStatus" != 'cancelled')`)
     }
     if (filter.excludeReturned !== false) {
       conditions.push(`o."derivedStatus" != 'RETURNED'`)
+      // Item bazında iade
+      conditions.push(`(i."itemStatus" IS NULL OR i."itemStatus" != 'returned')`)
     }
   }
   if (filter.excludeArchived !== false) {

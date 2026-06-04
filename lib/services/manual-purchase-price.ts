@@ -40,10 +40,14 @@ export async function getUnmatchedDopigoItems(options: {
       productId: null,
       order: {
         serviceCreatedAt: { gte: options.fromDate, lte: options.toDate },
-        // İptal/iade dışındakileri al
-        status: { notIn: ["cancelled", "returned"] },
+        // Order seviyesi: iptal/iade hariç
+        derivedStatus: { notIn: ["CANCELLED", "RETURNED"] },
+        archived: false,
       },
-      itemStatus: { not: "cancelled" },
+      // Item seviyesi: iptal/iade hariç
+      AND: [
+        { OR: [{ itemStatus: null }, { itemStatus: { notIn: ["cancelled", "returned"] } }] },
+      ],
     },
     select: {
       foreignSku: true,
