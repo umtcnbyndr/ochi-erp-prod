@@ -681,9 +681,13 @@ export interface OrderTableRow {
   commission: number
   shipping: number
   withholding: number
-  remaining: number // sipariş tutarı - alış - komisyon - kargo - stopaj
+  /** Platform hizmet bedeli + ceza + diğer kesintiler (mutabakattan, yoksa 0) */
+  other: number
+  remaining: number // sipariş tutarı - alış - komisyon - kargo - stopaj - diğer
   marginPct: number
   matchMethod: string | null
+  /** Bu siparişin mutabakatı yapıldı mı? (gerçek değerler) */
+  isReconciled: boolean
   /** Ürünün PSF değeri (Perakende Satış Fiyatı) — eczanede satılan referans fiyat */
   psf: number | null
 }
@@ -782,6 +786,11 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       // Window: aynı sipariş için toplam ciro (kargo paylaştırmasında kullanılır)
       order_total: number
       items_in_order: number
+      // Mutabakat (varsa) — sipariş bazlı gerçek değerler
+      recon_sale: number | null
+      recon_net: number | null
+      recon_commission: number | null
+      recon_shipping: number | null
     }>
   >(
     `
@@ -828,7 +837,12 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       -- Sipariş bazlı window: aynı orderId için tüm itemların toplamı
       -- (cast PARANTEZ İÇİNDE olmalı, "OVER" öncesi syntax error verir)
       (SUM(i.price) OVER (PARTITION BY o.id))::float8  AS order_total,
-      (COUNT(*) OVER (PARTITION BY o.id))::int         AS items_in_order
+      (COUNT(*) OVER (PARTITION BY o.id))::int         AS items_in_order,
+      -- Mutabakat: serviceValue ilk parça (siparişNo) = recon.serviceOrderId
+      recon."saleAmount"::float8  AS recon_sale,
+      recon."netReceived"::float8 AS recon_net,
+      recon."commission"::float8  AS recon_commission,
+      (recon."shipping" + recon."returnShipping")::float8 AS recon_shipping
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
@@ -836,6 +850,13 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
     LEFT JOIN "Category" c ON c.id = p."categoryId"
     LEFT JOIN "Subcategory" s ON s.id = p."subcategoryId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
+    LEFT JOIN LATERAL (
+      SELECT "saleAmount", "netReceived", "commission", "shipping", "returnShipping"
+      FROM "TrendyolOrderReconciliation" tr
+      WHERE o."serviceValue" IS NOT NULL
+        AND tr."serviceOrderId" = SPLIT_PART(o."serviceValue", '-', 1)
+      LIMIT 1
+    ) recon ON true
     ${COMMISSION_TARIFF_JOIN_SQL}
     ${whereSql}
     ORDER BY ${orderBy}
@@ -855,23 +876,35 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
     const totalCost = costPerUnit !== null ? costPerUnit * amount : 0
     const isStore = STORE_CHANNELS.has(r.sales_channel.toLowerCase())
 
-    let commission: number, shipping: number, withholding: number
+    let commission: number, shipping: number, withholding: number, other: number
+    let isReconciled = false
+    const orderTotal = Number(r.order_total ?? lineTotal)
+    const lineShare = orderTotal > 0 ? lineTotal / orderTotal : 1
+
     if (isStore) {
       commission = 0
       shipping = 0
       withholding = 0
+      other = 0
+    } else if (r.recon_sale != null && r.recon_net != null) {
+      // MUTABAKAT VAR — gerçek değerler. Sipariş bazlı tutarları item'a orantısal pay et.
+      isReconciled = true
+      commission = Number(r.recon_commission ?? 0) * lineShare
+      shipping = Number(r.recon_shipping ?? 0) * lineShare
+      // Diğer = toplam kesinti - komisyon - kargo (platform fee + ceza + iptal/iade)
+      const totalDeduction = Number(r.recon_sale) - Number(r.recon_net)
+      const otherTotal = Math.max(0, totalDeduction - Number(r.recon_commission ?? 0) - Number(r.recon_shipping ?? 0))
+      other = otherTotal * lineShare
+      withholding = 0 // Trendyol Net Tutar zaten her şeyi içeriyor
     } else {
+      // TAHMİN — tarife komisyon + marketplace kargo/stopaj
       commission = (lineTotal * Number(r.commission_rate ?? 0)) / 100
-      // Kargo: 1 sipariş = 1 kargo. Çoklu kalemli siparişte cironun payına göre böl.
-      // Tek kalemli: share=1.0 → tam kargo
-      // 3 kalemli (1500/2890, 600/2890, 790/2890): paylar 0.519, 0.207, 0.273 → toplam 1.0
-      const orderTotal = Number(r.order_total ?? lineTotal)
-      const shippingShare = orderTotal > 0 ? lineTotal / orderTotal : 1
-      shipping = Number(r.shipping_cost ?? 0) * shippingShare
+      shipping = Number(r.shipping_cost ?? 0) * lineShare
       withholding = (lineTotal * Number(r.withholding_rate ?? 0)) / 100
+      other = 0
     }
 
-    const remaining = lineTotal - totalCost - commission - shipping - withholding
+    const remaining = lineTotal - totalCost - commission - shipping - withholding - other
     const marginPct = lineTotal > 0 ? (remaining / lineTotal) * 100 : 0
 
     return {
@@ -902,9 +935,11 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       commission,
       shipping,
       withholding,
+      other,
       remaining,
       marginPct,
       matchMethod: r.match_method,
+      isReconciled,
       psf: r.psf !== null && r.psf !== undefined ? Number(r.psf) : null,
     }
   })

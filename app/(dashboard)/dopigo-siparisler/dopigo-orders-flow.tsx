@@ -45,7 +45,7 @@ interface TopProductRow { productId: number | null; productName: string; brandNa
 interface UnmatchedItem { itemId: number; orderId: number; salesChannel: string; productName: string; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; price: number; serviceCreatedAt: string }
 interface SyncRun { id: number; startedAt: string; finishedAt: string | null; totalFetched: number; totalCreated: number; totalUpdated: number; totalMatched: number; status: string; errorMessage: string | null; rangeFrom: string | null; rangeTo: string | null }
 interface MonthlyExpense { id: number; marketplaceId: number; commissionPaid: number | null; shippingPaid: number | null; withholdingPaid: number | null; returnCosts: number | null; adSpend: number | null; otherExpenses: number | null; notes: string | null }
-interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; costSource: "MAIN" | "STREET_FALLBACK" | "NONE"; totalCost: number; commission: number; shipping: number; withholding: number; remaining: number; marginPct: number; matchMethod: string | null; psf: number | null }
+interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; costSource: "MAIN" | "STREET_FALLBACK" | "NONE"; totalCost: number; commission: number; shipping: number; withholding: number; other: number; remaining: number; marginPct: number; matchMethod: string | null; isReconciled: boolean; psf: number | null }
 
 interface Props {
   period: string; rangeLabel: string; from?: string; to?: string
@@ -528,6 +528,7 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                 <TableHead className="text-right w-[100px]">Komis.</TableHead>
                 <TableHead className="text-right w-[80px]">Kargo</TableHead>
                 <TableHead className="text-right w-[80px]">Stopaj</TableHead>
+                <TableHead className="text-right w-[80px]">Diğer</TableHead>
                 <TableHead className="text-right cursor-pointer w-[120px] font-semibold" onClick={() => handleSort("profit")}>
                   Kalan<SortIcon col="profit" />
                 </TableHead>
@@ -614,7 +615,8 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-rose-600">- {tl(r.commission)}</TableCell>
                     <TableCell className="text-right tabular-nums text-rose-600">- {tl(r.shipping)}</TableCell>
-                    <TableCell className="text-right tabular-nums text-rose-600">- {tl(r.withholding)}</TableCell>
+                    <TableCell className="text-right tabular-nums text-rose-600">{r.withholding > 0 ? `- ${tl(r.withholding)}` : "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums text-rose-600">{r.other > 0 ? `- ${tl(r.other)}` : "—"}</TableCell>
                     <TableCell className={`text-right tabular-nums font-bold ${isProfit ? "text-emerald-700" : "text-rose-700"}`}>
                       {tl(r.remaining)}
                     </TableCell>
@@ -628,7 +630,7 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
               })}
               {data.rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={15} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={16} className="text-center text-muted-foreground py-12">
                     Bu filtreye uyan sipariş yok
                   </TableCell>
                 </TableRow>
@@ -829,11 +831,28 @@ function OrderDetailDrawer({ row, siblings, onSwitchItem, onClose }: {
                   <span className={muted}>{pctOf(row.shipping)}</span>
                 </span>
 
-                <span className="text-rose-600">- Stopaj:</span>
-                <span className="text-right tabular-nums text-rose-600">
-                  {tl(row.withholding)}
-                  <span className={muted}>{pctOf(row.withholding)}</span>
-                </span>
+                {row.withholding > 0 && (
+                  <>
+                    <span className="text-rose-600">- Stopaj:</span>
+                    <span className="text-right tabular-nums text-rose-600">
+                      {tl(row.withholding)}
+                      <span className={muted}>{pctOf(row.withholding)}</span>
+                    </span>
+                  </>
+                )}
+
+                {row.other > 0 && (
+                  <>
+                    <span className="text-rose-600">
+                      - Diğer:
+                      <span className="text-[9px] text-muted-foreground/70 ml-1">(platform/ceza)</span>
+                    </span>
+                    <span className="text-right tabular-nums text-rose-600">
+                      {tl(row.other)}
+                      <span className={muted}>{pctOf(row.other)}</span>
+                    </span>
+                  </>
+                )}
 
                 <span className="font-bold border-t pt-2">= Kalan (Net):</span>
                 <span
@@ -859,6 +878,13 @@ function OrderDetailDrawer({ row, siblings, onSwitchItem, onClose }: {
             )
           })()}
         </div>
+
+        {row.isReconciled && (
+          <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50 p-2 text-xs text-emerald-700 dark:text-emerald-400">
+            ✅ <strong>Mutabakatlı</strong> — komisyon/kargo/diğer giderler Trendyol panelinden gelen
+            gerçek değerlerdir. (Çoklu kalemli siparişte cironun payına göre dağıtılmıştır.)
+          </div>
+        )}
 
         {row.matchMethod && (
           <div className="border-t pt-3 text-xs text-muted-foreground">
