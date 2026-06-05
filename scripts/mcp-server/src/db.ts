@@ -53,6 +53,33 @@ export async function readOnlyQuery<T extends pg.QueryResultRow = pg.QueryResult
   }
 }
 
+/**
+ * Write-capable query — INSERT/UPDATE/DELETE/DDL dahil.
+ * Transaction içinde çalışır: hata olursa otomatik ROLLBACK.
+ * Çoklu statement (";" ile ayrılmış) tek transaction'da atomik çalışır.
+ *
+ * ⚠️ FULL ACCESS — production verisini değiştirir. Dikkatli kullan.
+ */
+export async function writeQuery<T extends pg.QueryResultRow = pg.QueryResultRow>(
+  sql: string,
+  params: unknown[] = [],
+): Promise<pg.QueryResult<T>> {
+  const client = await pool.connect()
+  try {
+    await client.query("BEGIN")
+    const result = await client.query<T>(sql, params)
+    await client.query("COMMIT")
+    return result
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK")
+    } catch {}
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
 export async function closePool(): Promise<void> {
   await pool.end()
 }

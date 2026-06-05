@@ -2,8 +2,10 @@
 /**
  * Ochi ERP MCP Server
  *
- * Read-only access to Ochi ERP database.
- * All queries run inside READ ONLY transactions — mutations are impossible.
+ * FULL ACCESS to Ochi ERP database (read + write via execute_sql).
+ * 14 read-only helper tools + execute_sql (serbest SQL, write dahil).
+ * Read tool'lar READ ONLY transaction'da; execute_sql SELECT'i read-only,
+ * yazmayı normal transaction'da (hata → ROLLBACK) çalıştırır.
  *
  * Configuration:
  *   DATABASE_URL — postgres://user:pass@host:5432/dbname?sslmode=require
@@ -65,6 +67,7 @@ import {
   getRecentMovements,
   getRecentMovementsSchema,
 } from "./tools/stats.js"
+import { executeSql, executeSqlSchema } from "./tools/execute.js"
 
 interface ToolDef {
   name: string
@@ -164,6 +167,13 @@ const tools: ToolDef[] = [
       "Son stok hareketleri (StockMovement). type: IN/OUT/EXCHANGE_OUT/EXCHANGE_IN/ADJUSTMENT/SET_CONSUMPTION.",
     schema: getRecentMovementsSchema,
     handler: (args) => getRecentMovements(getRecentMovementsSchema.parse(args)),
+  },
+  {
+    name: "execute_sql",
+    description:
+      "FULL ACCESS serbest SQL. SELECT/INSERT/UPDATE/DELETE/DDL çalıştırır. SELECT read-only transaction'da, yazma normal transaction'da (hata→ROLLBACK). Parametrik: sql='... WHERE id=$1', params=[5]. Tablo isimleri PascalCase + tırnak: \"Product\", \"DopigoOrder\". ⚠️ Production — WHERE'siz UPDATE/DELETE tüm satırları etkiler.",
+    schema: executeSqlSchema,
+    handler: (args) => executeSql(executeSqlSchema.parse(args)),
   },
 ]
 

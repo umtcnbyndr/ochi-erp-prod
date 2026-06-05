@@ -6,6 +6,15 @@
         "shadcn@latest",
         "mcp"
       ]
+    },
+    "ochi-erp": {
+      "command": "node",
+      "args": [
+        "/Users/umutcanbayindir/Projects/ochi-erp/scripts/mcp-server/dist/index.js"
+      ],
+      "env": {
+        "DATABASE_URL": "${OCHI_PROD_DATABASE_URL}"
+      }
     }
   }
 }
