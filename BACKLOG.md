@@ -2,6 +2,32 @@
 
 > Detaylar burada. Modüle başlamadan önce burayı oku.
 
+---
+
+## 📌 GÜNCEL DURUM (2026-06-05) — Production'da, ~10 marka aktif
+
+### ✅ Tamamlanan Büyük Modüller
+- **Finans:** Alış Faturaları, Gelir/Gider, Eksik Alış, Mutabakat (Trendyol)
+- **Mutabakat:** Trendyol Sipariş Kayıtları Excel → per-order gerçek komisyon/kargo/platform/ceza → net kâr. İade dışlama, stopaj (ciro×%1), tarife geçmişi koruma. Tüm breakdown mutabakat-aware (buildPnlCTE).
+- **Eksik Alış:** ManualPurchasePrice (SKU/barkod, eşleşmemiş satış COGS)
+- **Stok Uyarıları:** sistem vs Dopigo stok kıyası + Dopigo API stok push
+- **Komisyon Tarifeleri Faz 2:** kademeli komisyon tüm hesaplara bağlı
+- **Kampanya:** parçalı tahsilat (CampaignPayment)
+- **Yetki:** SALES rolü + UserAllowedBrand
+- **Sistem Yedekleme:** 17 modül Excel + ZIP · **Toplu İsim Düzeltme**
+- **Eczane:** ham cadde_Veri direkt yükleme + Tria-only eşleştirme
+
+### ❌ Gerçek Kalanlar (öncelik sırası)
+1. **Diğer pazaryeri mutabakatları** — Hepsiburada/N11/Amazon/Pazarama (tab'lar "Yakında")
+2. **SALES finans kısıtı** — raporlar/fiyat-kontrol/komisyon-tarifeleri marka filtresi yok (güvenlik)
+3. **Otomatik aylık yedekleme** — cron + Drive
+4. **Email/bildirim** — düşük stok, SKT, BuyBox kaybı
+5. **Kupon "Yaptım" arşivi** — in-memory → DB
+6. **Sabah paneli widget'ları** · **Cmd+K arama**
+7. **Faz 3:** Lot/seri, Forecast, ABC analiz, Monitoring
+
+---
+
 ## Yapılma Sırası
 
 ```

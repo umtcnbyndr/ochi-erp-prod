@@ -8,19 +8,33 @@
 - **Trendyol Sipariş çekme YOK.** Dopigo API'den çekiyoruz.
 - **Trendyol direkt fiyat push YOK.** Dopigo Excel akışıyla.
 - **Dopigo API: OKUMA + SADECE STOK YAZIMI.** Dopigo'ya `PUT /api/v1/products/bulk_update_by_foreign_sku/` ile **sadece `stock` alanı** gönderilebilir (Stok Uyarıları sayfasından). Fiyat (`price`, `listing_price`), `archived` ve diğer alanlar Dopigo Excel akışıyla yönetilir — pazaryeri-bazlı hesaplama orada yapılır. Sipariş/ürün/müşteri için hâlâ sadece GET.
-- **Aktif marka:** Sadece Skinceuticals. Diğerleri sırayla eklenecek.
+- **Aktif markalar:** Skinceuticals, Caudalie, Mustela, La Roche Posay, CeraVe, NeoStrata, Vichy, Cosmed, Dermalogica, Filorga (~10 marka). Sırayla eklenmeye devam ediyor.
+
+## Mutabakat & Net Kâr (Kesin Kararlar)
+
+- **Mutabakat = gerçek panel verisi.** Trendyol "Sipariş Kayıtları" Excel'i `/finans/mutabakat`'tan yüklenir. Bir ay için mutabakat varsa → komisyon/kargo/platform/ceza **gerçek değerlerle** hesaplanır (tahmin yerine). Eşleştirme: Excel "Sipariş No" = `DopigoOrder.serviceValue` ilk parça (`11280396967-3885513551` → `11280396967`). Çoklu paket: 1 Excel satırı : N DopigoOrder.
+- **Öncelik:** Trendyol mutabakat > aylık gerçek gider (MarketplaceMonthlyExpense) > tahmin (tarife+marketplace).
+- **İade (netReceived ≤ 0) siparişler tüm hesaplardan ÇIKAR** — Dopigo'da SUCCESS görünse bile Trendyol "net 0" diyorsa satış olmamış sayılır (buildWhere'de NOT EXISTS).
+- **Stopaj:** Trendyol kesmez (Net Tutar'da yok) ama senin **vergi maliyetin** → mutabakatlı olsun olmasın `ciro × withholdingTax/100` düşülür (mağaza hariç).
+- **"Diğer" gider** = platform fee + ceza + diğer kesintiler (mutabakattan gerçek kalemler), iade/iptal tutarı DEĞİL.
+- **Komisyon tarifesi geçmişi KORUNUR.** Yeni tarife yüklenince eskiyi SİLME — sadece dönemi çakışan upload silinir. Geçmiş siparişler kendi haftasının tarifesini bulur (yoksa marketplace default'a düşüp kâr yanlış çıkardı). Tarife haftalık (Salı-Salı).
+- **Eksik Alış:** Eşleşmemiş Dopigo satışları için `ManualPurchasePrice` (SKU/barkod bazlı, bir kez gir → ileride geçerli). COGS: product.mainPurchasePrice > ManualPurchasePrice > 0.
+- **Net Kâr formülü:** `ciro - alış - komisyon - kargo - stopaj - diğer`. Tüm breakdown'lar (KPI, marka, kategori, alt kategori, top ürün, sipariş tablosu/detay) `buildPnlCTE` ortak mantığından besleniyor.
 
 ## Ürün Tipleri
 
 - **SINGLE**: Normal tekil ürün, aktif satılıyor
-- **SET**: Sanal — bileşen toplamı görünümü, satılmaz, listelenmez
+- **SET**: Sanal — bileşen toplamı görünümü, satılmaz, listelenmez (Dopigo'ya virtual×0.5 push)
 - **GIFT**: Hediye 15ml mini — alış 1 TL, `giftMinSalePrice` ile satılır
 
 ## Eczane Stok Mantığı
 
 - `mainStock=0 + streetStock>pharmacyStockRule` → eczaneden açılır
+- Açılan miktar: `streetStock - pharmacyStockRule`, `pharmacyOpenAmount` cap'i varsa min(fazla, cap)
+- **SET ürünler:** Dopigo'ya virtual stoğun **%50'si** push edilir (`SET_PUSH_RATIO=0.5`) — bileşenler aynı anda SINGLE satılınca çakışma olmasın
 - streetStock'a sadece **eczane Excel yüklemesi** dokunur, ürün çıkışı dokunmaz
-- Sabah her gün eczane Excel yüklenir
+- Sabah her gün eczane Excel yüklenir (ham `cadde_Veri_*.xls` direkt yüklenebilir — 2-row header + "Grubu"/"Ürün G.Adi"/"S.Alis Fiyat"/"Bakiye" otomatik tanınır)
+- **Eşleştirme SADECE Tria/eczane kodu ile** (`pharmacyProductCode`/`streetPharmacyCode`). Barkod fallback YOK — barkod kofre/set varyantlarında tekrar edebilir. Karşılığı olmayan ürünü eşleştirmek için Product.pharmacyProductCode doldur.
 
 ## Hediye Ürün Detayı
 
@@ -82,11 +96,26 @@ components/layout/          → sidebar, navigation
 ```
 
 **Kritik servisler:**
-- `lib/services/dopigo-sync.ts` — Excel export/import (3-tier fiyat)
+- `lib/services/dopigo-sync.ts` — Excel export/import (3-tier fiyat, stok+satılabilir senkron)
+- `lib/services/dopigo-api/stock-update.ts` — Dopigo'ya stok push (bulk_update_by_foreign_sku)
+- `lib/services/dopigo-stock-alerts.ts` — sistem vs Dopigo stok kıyası (Stok Uyarıları)
+- `lib/services/sales-analytics.ts` — sipariş/marka/kategori net kâr (buildPnlCTE, mutabakat-aware)
+- `lib/services/trendyol-reconciliation.ts` — Trendyol mutabakat Excel import + eşleştirme
+- `lib/services/manual-purchase-price.ts` — Eksik Alış (eşleşmemiş satış COGS)
 - `lib/services/price-recommendation.ts` — BuyBox öneri orkestrasyon
+- `lib/pricing/effective-commission.ts` — kademeli komisyon (tarife > marketplace default)
 - `lib/pricing/recommendation.ts` — saf öneri motoru
 - `lib/services/reports.ts` — tüm rapor servisleri
 - `lib/services/trendyol/` — TY API (client + buybox + products)
+
+**Aktif modüller (sidebar grupları):**
+- Ürünler: Ürünler, Ürün Giriş/Çıkış, Takas, Stok Hareketleri, Set Ürünler, Siparişler, Kampanyalar
+- Eczane: Veri Yükleme · Pazaryeri: Barkod Eşleştirme, Dopigo Yükle/Aktar, Fiyat Önerileri/Kontrol, Trendyol Favorilenme, Komisyon Tarifeleri, Kupon Önerileri, Dopigo Siparişler, **Stok Uyarıları**
+- **Finans:** Alış Faturaları, Gelir/Gider, **Eksik Alış**, **Mutabakat**
+- Tanımlar: Markalar, Kategoriler, Pazar Yerleri, Cariler
+- Sistem: Raporlar, Yedekleme, Toplu İsim Düzelt, Ayarlar
+
+**Yetki:** `UserRole` (ADMIN/MANAGER/STAFF/**SALES**). SALES + `UserAllowedBrand` → marka kısıtı (siparişler/ürünler/kampanyalar uygulanmış; raporlar/fiyat-kontrol henüz eksik — yapılacak).
 
 ## User Bağlamı
 
