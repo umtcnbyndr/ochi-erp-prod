@@ -400,8 +400,13 @@ export async function getProductById(id: number) {
 export async function createProduct(data: ProductFormValues) {
   const { additionalBarcodes = [], ...productData } = data
 
+  // Ek barkodlardan ana barkodu çıkar + dedup (aynı barkod iki kez → unique hata önle)
+  const uniqueAdditional = [
+    ...new Set(additionalBarcodes.filter((b) => b && b !== productData.primaryBarcode)),
+  ]
+
   // Ana barkod + ek barkodlar birleşik unique olmalı
-  const allBarcodes = [productData.primaryBarcode, ...additionalBarcodes]
+  const allBarcodes = [productData.primaryBarcode, ...uniqueAdditional]
   const existing = await prisma.productBarcode.findMany({
     where: { barcode: { in: allBarcodes } },
     select: { barcode: true },
@@ -418,7 +423,7 @@ export async function createProduct(data: ProductFormValues) {
       barcodes: {
         create: [
           { barcode: productData.primaryBarcode, isPrimary: true },
-          ...additionalBarcodes.map((b) => ({ barcode: b, isPrimary: false })),
+          ...uniqueAdditional.map((b) => ({ barcode: b, isPrimary: false })),
         ],
       },
     },
@@ -452,8 +457,15 @@ export async function updateProduct(id: number, data: ProductFormValues) {
   })
   if (!current) throw new Error("Ürün bulunamadı")
 
+  // Ek barkodlardan ana barkodu çıkar + dedup (aynı barkod iki kez gönderilirse
+  // createMany unique constraint patlıyordu — örn ana barkod 333... ile listing
+  // tedarikçi barkodu aynıysa). Farklı barkodlar (8... kampanya, 333... bizim) korunur.
+  const uniqueAdditional = [
+    ...new Set(additionalBarcodes.filter((b) => b && b !== productData.primaryBarcode)),
+  ]
+
   // Barkod çakışması kontrolü (başka üründe varsa)
-  const allBarcodes = [productData.primaryBarcode, ...additionalBarcodes]
+  const allBarcodes = [productData.primaryBarcode, ...uniqueAdditional]
   const existing = await prisma.productBarcode.findMany({
     where: { barcode: { in: allBarcodes }, productId: { not: id } },
     select: { barcode: true },
@@ -477,8 +489,9 @@ export async function updateProduct(id: number, data: ProductFormValues) {
     await tx.productBarcode.createMany({
       data: [
         { productId: id, barcode: productData.primaryBarcode, isPrimary: true },
-        ...additionalBarcodes.map((b) => ({ productId: id, barcode: b, isPrimary: false })),
+        ...uniqueAdditional.map((b) => ({ productId: id, barcode: b, isPrimary: false })),
       ],
+      skipDuplicates: true,
     })
 
     // Fiyat geçmişi
