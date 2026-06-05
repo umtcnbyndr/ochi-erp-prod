@@ -1,18 +1,59 @@
 /**
  * PostgreSQL connection pool for the MCP server.
  *
- * DATABASE_URL env var beklenir. SSL otomatik (production icin).
- * Read-only kullanicilar icin "search_path" set etmeye gerek yok,
- * ama transaction'lari read-only yapan helper saglar.
+ * Bağlantı önceliği:
+ *   1. scripts/mcp-server/.env dosyasındaki OCHI_PROD_DATABASE_URL (gitignore'lu)
+ *   2. process.env.OCHI_PROD_DATABASE_URL
+ *   3. process.env.DATABASE_URL (fallback — genelde local)
+ *
+ * Kendi .env dosyasını okuduğu için shell/GUI env inheritance'a bağımlı DEĞİL.
+ * SSL otomatik (sslmode=require varsa). Read/write transaction helper'ları aşağıda.
  */
+import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 import pg from "pg"
 
 const { Pool } = pg
 
-const databaseUrl = process.env.DATABASE_URL
+// MCP server'ın kendi .env dosyasını yükle (varsa) — değerler process.env'i override eder.
+const moduleDir = path.dirname(fileURLToPath(import.meta.url))
+const envPath = path.resolve(moduleDir, "../.env")
+try {
+  const content = fs.readFileSync(envPath, "utf8")
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trim()
+    if (!line || line.startsWith("#")) continue
+    const eq = line.indexOf("=")
+    if (eq === -1) continue
+    const key = line.slice(0, eq).trim()
+    let val = line.slice(eq + 1).trim()
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1)
+    }
+    process.env[key] = val // .env dosyası öncelikli
+  }
+} catch {
+  // .env yoksa sessiz geç — inherited env'e düşülür
+}
+
+const databaseUrl = process.env.OCHI_PROD_DATABASE_URL || process.env.DATABASE_URL
 if (!databaseUrl) {
-  console.error("[ochi-mcp] FATAL: DATABASE_URL environment variable is required")
+  console.error(
+    "[ochi-mcp] FATAL: OCHI_PROD_DATABASE_URL (veya DATABASE_URL) gerekli. scripts/mcp-server/.env oluştur.",
+  )
   process.exit(1)
+}
+
+// Hangi host'a bağlandığımızı stderr'e yaz (şifre yok) — prod/local teyidi için.
+try {
+  const u = new URL(databaseUrl)
+  console.error(`[ochi-mcp] DB → ${u.host} / ${u.pathname.slice(1)}`)
+} catch {
+  // parse edilemezse sessiz geç
 }
 
 const useSsl = /sslmode=require/i.test(databaseUrl) || databaseUrl.includes("sslmode=require")
