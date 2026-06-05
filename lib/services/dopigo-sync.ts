@@ -1244,13 +1244,21 @@ export async function buildExportExcel(
     }
 
     // 1) Alış fiyatı (G) — kampanya aktifse sanal alış yazılır (Dopigo iskontolu alışı görür)
+    // 2 ondalığa yuvarla — 4 ondalıklı fiyat (1516.0622) Dopigo'da format hatası verebiliyor.
     if (options.fields.purchasePrice && purchase != null) {
-      row[headerIndex["alış fiyatı"]] = purchase
+      row[headerIndex["alış fiyatı"]] = Math.round(purchase * 100) / 100
     }
 
-    // 2) Stok (K)
+    // 2) Stok (K) + Satılabilir Stok (L)
     if (options.fields.stock) {
       row[headerIndex["stok"]] = stockInfo.stock
+      // KRİTİK: "satılabilir stok"u da senkronize et. Aksi halde "stok" güncellenip
+      // "satılabilir stok" Dopigo template'inden olduğu gibi kalıyor → stok 0 / satılabilir 1
+      // gibi MANTIKSIZ tutarsızlık → Dopigo yüklemeyi reddediyor ("tamamlanamadı").
+      // Dopigo yükleme sonrası bekleyen siparişlerle satılabilir stoğu kendi yeniden hesaplar.
+      if (headerIndex["satılabilir stok"] !== undefined) {
+        row[headerIndex["satılabilir stok"]] = stockInfo.stock
+      }
     }
 
     // 3) Aktif/Pasif (M)
