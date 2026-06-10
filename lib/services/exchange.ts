@@ -250,10 +250,12 @@ export async function createGivenExchanges(
 
       const finalNote = line.note ?? input.generalNote ?? null
 
+      // Stok 0 altına inmez (uyar-ama-izin-ver); yetersizlik movement note'una işlenir
+      const insufficientStock = product.mainStock < line.quantity
       await tx.product.update({
         where: { id: product.id },
         data: {
-          mainStock: product.mainStock - line.quantity,
+          mainStock: Math.max(0, product.mainStock - line.quantity),
           exchangeStock: product.exchangeStock + line.quantity,
         },
       })
@@ -265,7 +267,9 @@ export async function createGivenExchanges(
           quantity: line.quantity,
           unitPrice: line.unitPrice ?? null,
           counterpartyId: input.counterpartyId,
-          note: finalNote ?? "Takas (B/C): verildi",
+          note:
+            (finalNote ?? "Takas (B/C): verildi") +
+            (insufficientStock ? ` (stok yetersizdi: ${product.mainStock}, 0'a sabitlendi)` : ""),
         },
       })
 
@@ -653,11 +657,11 @@ export async function cancelExchange(exchangeId: number, reason?: string): Promi
       affectedProductIds.add(ex.productId)
     }
 
-    // RECEIVED iptali: stoğa giren kısmı geri çek
+    // RECEIVED iptali: stoğa giren kısmı geri çek (0 altına inmez — araya satış girmiş olabilir)
     if (ex.direction === "RECEIVED" && ex.quantityToStock > 0) {
       await tx.product.update({
         where: { id: ex.productId },
-        data: { mainStock: ex.product.mainStock - ex.quantityToStock },
+        data: { mainStock: Math.max(0, ex.product.mainStock - ex.quantityToStock) },
       })
       await tx.stockMovement.create({
         data: {

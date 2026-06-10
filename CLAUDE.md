@@ -31,6 +31,9 @@
 
 - `mainStock=0 + streetStock>pharmacyStockRule` → eczaneden açılır
 - Açılan miktar: `streetStock - pharmacyStockRule`, `pharmacyOpenAmount` cap'i varsa min(fazla, cap)
+- **`pharmacyOpenAmount` null VEYA 0 = sınırsız** (tüm fazla açılır) — user onaylı 2026-06-10
+- **Çıkış/takas stok 0 altına düşüremez** — uyar ama izin ver, stok 0'da kaplanır (Math.max 0); movement tam miktarı kaydeder
+- **Eczane Fırsatları** sekmesi (/stok-uyarilari): satışı olan ama cap/kural yüzünden az açılan ürünler (CAP_LIMITED/RULE_BLOCKED)
 - **SET ürünler:** Dopigo'ya virtual stoğun **%50'si** push edilir (`SET_PUSH_RATIO=0.5`) — bileşenler aynı anda SINGLE satılınca çakışma olmasın
 - streetStock'a sadece **eczane Excel yüklemesi** dokunur, ürün çıkışı dokunmaz
 - Sabah her gün eczane Excel yüklenir (ham `cadde_Veri_*.xls` direkt yüklenebilir — 2-row header + "Grubu"/"Ürün G.Adi"/"S.Alis Fiyat"/"Bakiye" otomatik tanınır)

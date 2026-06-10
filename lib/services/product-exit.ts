@@ -3,7 +3,8 @@
  *
  * Mantık:
  *  - Stok > miktar: normal çıkış
- *  - Stok < miktar: uyar ama izin ver (negatif stok mümkün, sayım düzeltme için)
+ *  - Stok < miktar: uyar ama izin ver — stok 0'da KAPLANIR, negatife inmez
+ *    (2026-06-10 user kararı; movement tam miktarı kaydeder, iş gerçeği korunur)
  *  - Her çıkış StockMovement (OUT) kaydı yaratır
  *  - OUT sonrası ürün aktif kampanyadaysa CampaignSale snapshot'ı oluşur (best-effort)
  */
@@ -64,7 +65,7 @@ export async function createExitSession(input: ExitSessionInput): Promise<ExitRe
 
       await tx.product.update({
         where: { id: product.id },
-        data: { mainStock: product.mainStock - line.quantity },
+        data: { mainStock: Math.max(0, product.mainStock - line.quantity) },
       })
 
       const mv = await tx.stockMovement.create({
