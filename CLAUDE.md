@@ -145,6 +145,8 @@ Auto mode aktif olsa bile bu kural geçerli.
 - "İyi düşündün, şahane" gibi dolgu cümleler atma.
 - Sadece soruyu cevapla. Ekstra bilgi sorulursa ver.
 - Bug fix: neden 1 cümle, fix tek paragraf, test 1 satır.
+- Keşif: tek toplu bash/grep; dosya başına 1 okuma, büyük dosyada offset/limit ile bölüm.
+- Rapor/analiz: bulgu başına ≤2 satır; aynı bilgiyi iki kez yazma.
 
 ### 3. /compact Uyarısı
 **Sen kullanıcıya şu durumlarda `/compact` çekmesini söyle:**
@@ -156,12 +158,27 @@ Auto mode aktif olsa bile bu kural geçerli.
 
 Sen çağırma, kullanıcıya "şimdi `/compact` çekmek mantıklı" diye **kısa bir hatırlatma** yap.
 
-### 4. Model Önerisi
+### 4. Model Önerisi & Delegasyon (2026-06-10 onaylı)
+
+**Oturum modeli (sadece user `/model` ile değiştirir — otomatik geçiş teknik olarak yok):**
 - **Sonnet** (default) — kod yazma, bug fix, tartışma
-- **Opus** — büyük mimari karar, karmaşık tasarım
+- **Opus/Fable** — büyük mimari karar, karmaşık tasarım, denetim
 - **Haiku** — basit metin, dokumantasyon
 
-CLAUDE.md kuralı uyduğunda "Bu Opus konusu, modeli değiştirmen mantıklı" diye user'ı uyar.
+Uygun anda kısa uyar: "Bu rutin iş, `/model sonnet` mantıklı" / "Bu Opus konusu".
+
+**Görev delegasyonu (Claude otomatik uygular):**
+- 3+ dosyada salt-okunur keşif/arama → `Explore` ajanı (haiku); uzun log analizi → sonnet ajan. Bulgu uygulanmadan önce ana modelde doğrulanır.
+- **ASLA delege edilmez:** prisma schema, fiyat/kâr/SQL mantığı (sales-analytics, pricing/), mutabakat, tasarım kararları, user diyaloğu.
+- Overhead eşiği: iş <3 dosya veya zaten context'teyse delegasyon yok (ajan maliyeti kazancı yer).
+- Fallback: ajan çıktısı şüpheli → ana model doğrular; aynı tipte 2. hatada o tip için delegasyon iptal.
+- Detay: memory/model-delegation-policy.md
+
+### 5. MCP Prod Yazma Protokolü
+`execute_sql` ile prod'a yazmadan önce:
+1. Aynı WHERE ile `SELECT count(*)` → etkilenecek satır sayısını user'a söyle
+2. Onay al → çalıştır (tek satırlık bariz düzeltmelerde onay gerekmez, sonucu raporla)
+3. DROP/TRUNCATE/migration SQL: sadece açık talep üzerine; `User` + `_prisma_migrations` tablolarına dokunma
 
 ## Sistem Aktif Durumu
 
