@@ -8,7 +8,7 @@
 - **Trendyol Sipariş çekme YOK.** Dopigo API'den çekiyoruz.
 - **Trendyol direkt fiyat push YOK.** Dopigo Excel akışıyla.
 - **Dopigo API: OKUMA + SADECE STOK YAZIMI.** Dopigo'ya `PUT /api/v1/products/bulk_update_by_foreign_sku/` ile **sadece `stock` alanı** gönderilebilir (Stok Uyarıları sayfasından). Fiyat (`price`, `listing_price`), `archived` ve diğer alanlar Dopigo Excel akışıyla yönetilir — pazaryeri-bazlı hesaplama orada yapılır. Sipariş/ürün/müşteri için hâlâ sadece GET.
-- **Aktif markalar:** Skinceuticals, Caudalie, Mustela, La Roche Posay, CeraVe, NeoStrata, Vichy, Cosmed, Dermalogica, Filorga (~10 marka). Sırayla eklenmeye devam ediyor.
+- **Aktif markalar (prod, 2026-06-10):** La Roche Posay (102), Caudalie (95), Mustela (75), Vichy (73), Dermalogica (67), CeraVe (47), Skinceuticals (47), Nuxe (38), Filorga (38), Darphin (31), NeoStrata (22), Cosmed (1) — 14 marka, 637 ürün. Sırayla eklenmeye devam ediyor.
 
 ## Mutabakat & Net Kâr (Kesin Kararlar)
 
