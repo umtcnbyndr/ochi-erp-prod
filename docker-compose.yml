@@ -8,7 +8,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ochi_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-ochi_erp_v2}
     ports:
-      - "5432:5432"
+      # Sadece localhost'a publish — DB internete/LAN'a açılmasın.
+      # (app container'ı internal network'ten "postgres:5432" ile bağlanır, etkilenmez)
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ochi_dev_password
       POSTGRES_DB: ochi_erp
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
 

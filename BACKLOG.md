@@ -4,7 +4,7 @@
 
 ---
 
-## 📌 GÜNCEL DURUM (2026-06-05) — Production'da, ~10 marka aktif
+## 📌 GÜNCEL DURUM (2026-06-10) — Production'da, ~10 marka aktif
 
 ### ✅ Tamamlanan Büyük Modüller
 - **Finans:** Alış Faturaları, Gelir/Gider, Eksik Alış, Mutabakat (Trendyol)
@@ -25,6 +25,17 @@
 5. **Kupon "Yaptım" arşivi** — in-memory → DB
 6. **Sabah paneli widget'ları** · **Cmd+K arama**
 7. **Faz 3:** Lot/seri, Forecast, ABC analiz, Monitoring
+
+### 🔐 Güvenlik Denetimi Kalanları (2026-06-10 denetimi)
+> Yapılanlar: ice-aktar yetki guard'ı ✅ · xlsx 0.20.3 CVE fix ✅ · compose localhost bind ✅
+- [ ] **O1: Secret şifreleme anahtarını ayır** (S 1h) — `AUTH_SECRET` hem JWT hem Trendyol apiSecret anahtarı; rotasyon saklanan secret'ları sessizce bozar → ayrı `SECRET_ENCRYPTION_KEY` + decrypt hatasında log
+- [ ] **O2: Güvenlik header'ları** (S 1h) — next.config headers(): HSTS, X-Frame-Options, nosniff, Referrer-Policy, CSP (report-only başla)
+- [ ] **O3: Login rate-limit güçlendir** (S 1h) — IP+username anahtarı (şu an sadece username → kasıtlı hesap kilitleme mümkün)
+- [ ] **O4: CI** (S 1-2h) — GitHub Actions: typecheck + lint + vitest
+- [ ] **O5: Kritik yol testleri** (M 4h) — buildWhere, mutabakat eşleştirme, permissions
+- [ ] **P1: Rapor performansı** (M) — MonthlySalesSnapshot doldur, KPI'lar özetten okusun
+- [ ] **P2: DopigoOrderItem barcode/foreignSku index kontrolü** (S)
+- [ ] **K1 takip: 5433 portu** — prod DB dış erişimi firewall ile kısıtlı mı / iş bitince kapat
 
 ---
 
@@ -112,14 +123,14 @@ Faz 2:          Dopigo API + AI bot (opsiyonel)
   - Sticky header
   - "ERP'de yok" ürünler de görünür (filtre + uyarı)
   - Barkod her satırda bariz (font-mono, select-all)
-- [ ] **🚨 FAZ 2 — 6 ENTEGRASYON NOKTASI (yarın yapılacak ~3-4 saat):**
-  - [ ] `lib/services/dopigo-sync.ts` — Excel export fiyat hesabı kademeli komisyon kullansın
-  - [ ] `lib/pricing/sale-price.ts` — satış fiyatı motoru kademeli
-  - [ ] `lib/pricing/recommendation.ts` — BuyBox bazlı öneri kademeli
-  - [ ] `lib/services/sales-analytics.ts` — sipariş raporu net kâr kademeli (geçmişe dönük doğru)
-  - [ ] `lib/services/coupon-suggestions.ts` — kupon kâr hesabı kademeli
-  - [ ] `lib/pricing/coupon-recommendation.ts` — kupon güvenlik tabanı kademeli
-  - **Yöntem:** Her servis önce `getEffectiveCommission(productId, marketplaceName, price)` çağrısı yapar → tariff varsa kademeli, yoksa fallback `Marketplace.commissionRate`
+- [x] **✅ FAZ 2 — 6 ENTEGRASYON NOKTASI (tamamlandı 2026-05-11):**
+  - [x] `lib/services/dopigo-sync.ts` — `computeFormulaPriceWithTariff`
+  - [x] `lib/pricing/sale-price.ts` — pure kaldı, wrapper üstünden kademeli
+  - [x] `lib/pricing/recommendation.ts` — `recommendPriceWithTariff`
+  - [x] `lib/services/sales-analytics.ts` — `EFFECTIVE_COMMISSION_PCT_SQL`
+  - [x] `lib/services/coupon-suggestions.ts` — `channelFor()` kademeli
+  - [x] `lib/pricing/coupon-recommendation.ts` — caller'lar kademeli komisyon geçiriyor
+  - Detay: CLAUDE.md "Faz 2 Entegrasyonu Tamamlandı"
 
 #### Diğer
 - [x] `/ayarlar` — Dopigo API token formu (Trendyol formu yanına)
@@ -128,18 +139,8 @@ Faz 2:          Dopigo API + AI bot (opsiyonel)
 - [x] Build OOM kill fix (NODE_OPTIONS + eslint.ignoreDuringBuilds)
 - [x] Trendyol Favorilenme: yıl seçildiğinde tek dropdown (yıl)
 
-### 🚨 BUGÜN KALAN — KRİTİK KÂR HESABI BORCU
-
-**Komisyon Tarifeleri Faz 1 tamam ama "izole ada" durumda.** Sistemin 6 farklı yerinde hala
-sabit `Marketplace.commissionRate=%19` kullanılıyor. Bu **yanlış** çünkü Skinceuticals'ın
-gerçek komisyonu kademeye göre %3.6-%19 arası değişiyor.
-
-**Faz 2 yapılmadan:**
-- Dopigo aktarımdan giden fiyatlar yanlış kâr hesabıyla
-- Kupon önerileri yanlış güvenli oran hesaplıyor (gerçekte daha agresif kupon verilebilir)
-- Sipariş raporlarında net kâr olduğundan farklı
-
-**Faz 2 detayları:** `CLAUDE.md` "KRİTİK YARIM KALAN" bölümü.
+### ✅ Faz 2 Komisyon Entegrasyonu — TAMAMLANDI (2026-05-11)
+Kademeli tarife tüm hesaplara bağlı (6 servis). Detay: CLAUDE.md.
 
 ### ✅ Önceki Tamamlananlar
 - [x] **Birleştirme + geri alma** (madde 1) — `ProductMergeHistory` + `revertMerge` + UI
@@ -173,7 +174,7 @@ gerçek komisyonu kademeye göre %3.6-%19 arası değişiyor.
 ### ❌ Yapılacaklar (Sıralı)
 
 #### 🔴 Kritik (önce bunlar)
-- [ ] **FAZ 2: Komisyon entegrasyonu** (M 3-4h) — 6 servis `getEffectiveCommission()` kullansın
+- [x] **FAZ 2: Komisyon entegrasyonu** ✅ 2026-05-11
 - [ ] **Kupon "Yaptım" arşiv DB'de** (S 1h) — şu an in-memory, sayfa yenilenince kaybolur
 - [ ] **Skor fix Trendyol Favorilenme** (S 2h) — sales+orders çift sayma kaldır + min view threshold
 
@@ -184,8 +185,8 @@ gerçek komisyonu kademeye göre %3.6-%19 arası değişiyor.
 - [ ] **Hepsiburada/N11 komisyon tarife** (M 4h) — TY parser pattern'inde
 
 #### 🟢 Sonra (eski backlog)
-- [ ] **Finans modülü** (madde 2, L 12h) — fatura + gider + gelir
-- [ ] **Kampanya modülü** (madde 4, L 10h) — Skinceuticals %10 vb.
+- [x] **Finans modülü** ✅ — faturalar + gelir/gider + eksik alış + mutabakat
+- [x] **Kampanya modülü** ✅ — parçalı tahsilat (CampaignPayment) dahil
 - [ ] **Otomatik aylık yedekleme** (madde 7, S 3h) — pg_dump cron
 - [ ] **Stok sayım PWA** (madde 8, L 12h) — kamera + barkod, offline
 - [ ] **Tüm veri export** (madde 9, S 3h) — multi-sheet xlsx
@@ -197,9 +198,9 @@ gerçek komisyonu kademeye göre %3.6-%19 arası değişiyor.
 - [ ] **Marka bazlı heat map** (yeşil=yükseliyor, kırmızı=düşüyor)
 - [ ] **Akakçe scraping** TY stok=0 BuyBox alternatifi
 - [ ] **Cron bazlı otomatik refresh** (BuyBox + tarife)
-- [ ] **VPS Deploy** (M 7h) — Coolify + Postgres + SSL + cron
+- [x] **VPS Deploy** ✅ 2026-05-04 — Coolify + umuterp.testdevumut.cloud (cron hâlâ yok)
 
-**Kalan toplam:** ~57 saat (Faz 1) + 7h VPS = **64 saat**
+**Kalan toplam:** ~30 saat (güvenlik kalanları dahil)
 
 ---
 

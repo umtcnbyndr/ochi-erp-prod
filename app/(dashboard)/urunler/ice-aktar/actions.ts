@@ -11,6 +11,7 @@ import {
   type ImportResult,
 } from "@/lib/services/product-import"
 import { validateUploadedFile } from "@/lib/auth/file-validation"
+import { requirePermission } from "@/lib/permissions"
 
 export type AnalyzeResponse =
   | { success: true; data: { rows: Record<string, unknown>[]; mapping: ColumnMapping; preview: PreviewResult; columns: string[] } }
@@ -18,6 +19,7 @@ export type AnalyzeResponse =
 
 export async function analyzeFileAction(formData: FormData): Promise<AnalyzeResponse> {
   try {
+    await requirePermission("urunler", "edit")
     const file = formData.get("file")
     if (!(file instanceof File)) return { success: false, error: "Dosya bulunamadı" }
     const fv = await validateUploadedFile(file)
@@ -49,6 +51,7 @@ export async function reanalyzeAction(
   mapping: ColumnMapping
 ): Promise<{ success: true; data: PreviewResult } | { success: false; error: string }> {
   try {
+    await requirePermission("urunler", "edit")
     const preview = await analyzeImport(rows, mapping)
     return { success: true, data: preview }
   } catch (err: unknown) {
@@ -61,6 +64,7 @@ export async function executeImportAction(
   mapping: ColumnMapping
 ): Promise<{ success: true; data: ImportResult } | { success: false; error: string }> {
   try {
+    await requirePermission("urunler", "edit")
     const result = await executeImport(rows, mapping)
     revalidatePath("/urunler")
     return { success: true, data: result }
