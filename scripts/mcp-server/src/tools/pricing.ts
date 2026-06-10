@@ -55,17 +55,17 @@ export const getBuyboxHistorySchema = z.object({
 })
 
 export async function getBuyboxHistory(input: z.infer<typeof getBuyboxHistorySchema>) {
+  // Şema: source (örn. TRENDYOL_BUYBOX), buyboxPrice (kazanan fiyat),
+  // buyboxOrder (bizim sıramız, 1=BuyBox bizde), hasMultipleSeller, ourPrice.
   const result = await readOnlyQuery(
     `SELECT cpo."observedAt",
             cpo."ourPrice"::float8 as our_price,
-            cpo."competitorPrice"::float8 as competitor_price,
-            cpo."winnerName" as winner,
-            cpo."ourOrder" as our_order,
-            cpo."totalSellers" as total_sellers
+            cpo."buyboxPrice"::float8 as buybox_price,
+            cpo."buyboxOrder" as our_order,
+            cpo."hasMultipleSeller" as multi_seller
      FROM "CompetitorPriceObservation" cpo
-     LEFT JOIN "Marketplace" m ON m.id = cpo."marketplaceId"
      WHERE cpo."productId" = $1
-       AND m.name = $2
+       AND cpo.source ILIKE '%' || $2 || '%'
        AND cpo."observedAt" >= CURRENT_DATE - ($3::int || ' days')::interval
      ORDER BY cpo."observedAt" DESC
      LIMIT $4`,
@@ -82,12 +82,11 @@ export const getRecentBuyboxSchema = z.object({
 })
 
 export async function getRecentBuybox(input: z.infer<typeof getRecentBuyboxSchema>) {
-  const conditions: string[] = ["m.name = $1"]
   const params: unknown[] = [input.marketplace]
   let idx = 2
-
+  let brandFilter = ""
   if (input.brand) {
-    conditions.push(`b.name ILIKE $${idx++}`)
+    brandFilter = `AND b.name ILIKE $${idx++}`
     params.push(`%${input.brand}%`)
   }
 
@@ -96,26 +95,25 @@ export async function getRecentBuybox(input: z.infer<typeof getRecentBuyboxSchem
       SELECT DISTINCT ON (cpo."productId")
         cpo."productId", cpo."observedAt",
         cpo."ourPrice"::float8 as our_price,
-        cpo."competitorPrice"::float8 as competitor_price,
-        cpo."winnerName" as winner,
-        cpo."ourOrder" as our_order
+        cpo."buyboxPrice"::float8 as buybox_price,
+        cpo."buyboxOrder" as our_order
       FROM "CompetitorPriceObservation" cpo
-      LEFT JOIN "Marketplace" m ON m.id = cpo."marketplaceId"
-      WHERE ${conditions.join(" AND ")}
+      WHERE cpo.source ILIKE '%' || $1 || '%'
       ORDER BY cpo."productId", cpo."observedAt" DESC
     )
     SELECT p.id, p.name, b.name as brand,
-           l.our_price, l.competitor_price, l.winner, l.our_order,
+           l.our_price, l.buybox_price, l.our_order,
            l."observedAt",
            CASE WHEN l.our_order = 1 THEN 'WIN'
-                WHEN l.competitor_price < l.our_price THEN 'LOSE_LOWER'
-                WHEN l.competitor_price > l.our_price THEN 'LOSE_HIGHER'
+                WHEN l.buybox_price < l.our_price THEN 'LOSE_LOWER'
+                WHEN l.buybox_price > l.our_price THEN 'LOSE_HIGHER'
                 ELSE 'OTHER' END as status
     FROM latest l
     JOIN "Product" p ON p.id = l."productId"
     LEFT JOIN "Brand" b ON b.id = p."brandId"
     WHERE p.status = 'ACTIVE' AND p."productType" = 'SINGLE'
-      ${input.losingOnly ? "AND l.our_order != 1" : ""}
+      ${brandFilter}
+      ${input.losingOnly ? `AND (l.our_order IS NULL OR l.our_order != 1)` : ""}
     ORDER BY l."observedAt" DESC
     LIMIT $${idx}
   `

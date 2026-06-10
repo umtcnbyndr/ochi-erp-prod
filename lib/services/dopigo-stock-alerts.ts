@@ -15,6 +15,7 @@
  *   OK         sistem = available
  *   UNMATCHED  ürün Dopigo'da bulunamadı (mapping eksiği)
  */
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { calculateEffectiveStock } from "./dopigo-sync"
 import { buildDopigoStockMap } from "./dopigo-api/products"
@@ -219,4 +220,155 @@ export async function buildDopigoStockAlertReport(options?: {
   }
 
   return { generatedAt: new Date(), totals, rows }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Eczane Fırsat Raporu — satışı olan ama eczane kuralı/cap'i yüzünden
+// pazaryerine az (veya hiç) açılamayan ürünler.
+//
+//   CAP_LIMITED   mainStock=0, streetStock>rule ama pharmacyOpenAmount cap'i
+//                 fazlanın tamamını açtırmıyor → eczanede satılabilir stok yatıyor
+//   RULE_BLOCKED  mainStock=0, streetStock<=rule → kural stoğu tamamen kilitliyor
+//                 (satış talebi varsa kuralı gözden geçirme sinyali)
+//
+// Sadece SINGLE + ACTIVE + son 30 günde satışı olan ürünler listelenir.
+// Salt rapor — stok/kural değiştirmez; aksiyon (cap/kural ayarı) Markalar sayfasında.
+// ═══════════════════════════════════════════════════════════════
+
+export type OpportunityReason = "CAP_LIMITED" | "RULE_BLOCKED"
+
+export interface PharmacyOpportunityRow {
+  productId: number
+  barcode: string
+  name: string
+  brandId: number | null
+  brandName: string
+  mainStock: number
+  streetStock: number
+  /** Marka pharmacyStockRule (eczanede dokunulmayan rezerv) */
+  rule: number
+  /** Marka pharmacyOpenAmount (tek seferde açılabilen cap, null/0 = sınırsız) */
+  cap: number | null
+  /** Şu an pazaryerine açılan miktar (calculateEffectiveStock) */
+  effectiveStock: number
+  /** Kural rezervi üstünde olup cap yüzünden AÇILMAYAN adet */
+  unusedExcess: number
+  /** Son 30 gün satılan adet (iptal/iade hariç) */
+  sold30: number
+  /** Günlük satış hızı (sold30/30) */
+  dailyVelocity: number
+  /** Mevcut açılan stok kaç gün yeter (velocity>0 ise) */
+  daysOfCover: number | null
+  reason: OpportunityReason
+}
+
+export interface PharmacyOpportunityReport {
+  generatedAt: Date
+  /** Cap yüzünden açılmayan toplam adet (tüm satırlar) */
+  totalUnusedUnits: number
+  rows: PharmacyOpportunityRow[]
+}
+
+export async function buildPharmacyOpportunityReport(options?: {
+  brandIds?: number[]
+}): Promise<PharmacyOpportunityReport> {
+  // Aday: aktif SINGLE, ana stok yok, eczanede stok var
+  const products = await prisma.product.findMany({
+    where: {
+      status: "ACTIVE",
+      productType: "SINGLE",
+      mainStock: { lte: 0 },
+      streetStock: { gt: 0 },
+      ...(options?.brandIds && options.brandIds.length > 0
+        ? { brandId: { in: options.brandIds } }
+        : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      primaryBarcode: true,
+      mainStock: true,
+      streetStock: true,
+      brand: {
+        select: { id: true, name: true, pharmacyStockRule: true, pharmacyOpenAmount: true },
+      },
+    },
+  })
+
+  if (products.length === 0) {
+    return { generatedAt: new Date(), totalUnusedUnits: 0, rows: [] }
+  }
+
+  // Son 30 gün satış adetleri (tek sorgu, iptal/iade hariç — sales-analytics ile aynı filtre)
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  const ids = products.map((p) => p.id)
+  const soldRows = await prisma.$queryRaw<Array<{ pid: number; sold: number }>>(
+    Prisma.sql`
+      SELECT i."productId" AS pid, SUM(i.amount)::int AS sold
+      FROM "DopigoOrderItem" i
+      JOIN "DopigoOrder" o ON o.id = i."orderId"
+      WHERE i."productId" IN (${Prisma.join(ids)})
+        AND o."serviceCreatedAt" >= ${since}
+        AND o."derivedStatus" NOT IN ('CANCELLED', 'RETURNED')
+        AND o.archived = false
+        AND (i."itemStatus" IS NULL OR i."itemStatus" NOT IN ('cancelled', 'returned'))
+      GROUP BY i."productId"
+    `,
+  )
+  const soldMap = new Map(soldRows.map((r) => [r.pid, r.sold]))
+
+  const rows: PharmacyOpportunityRow[] = []
+  let totalUnusedUnits = 0
+
+  for (const p of products) {
+    const sold30 = soldMap.get(p.id) ?? 0
+    if (sold30 <= 0) continue // talep yoksa fırsat yok
+
+    const rule = p.brand?.pharmacyStockRule ?? 0
+    const cap = p.brand?.pharmacyOpenAmount ?? null
+    const effective = calculateEffectiveStock({
+      productType: "SINGLE",
+      mainStock: p.mainStock,
+      streetStock: p.streetStock,
+      brand: { pharmacyStockRule: rule, pharmacyOpenAmount: cap },
+    })
+
+    const excess = Math.max(0, p.streetStock - rule) // kural üstü açılabilir fazla
+    const unusedExcess = Math.max(0, excess - effective.stock)
+    const reason: OpportunityReason = excess > 0 ? "CAP_LIMITED" : "RULE_BLOCKED"
+
+    // CAP_LIMITED ama açılmayan yoksa (cap geniş/sınırsız) fırsat değil
+    if (reason === "CAP_LIMITED" && unusedExcess === 0) continue
+
+    const dailyVelocity = sold30 / 30
+    rows.push({
+      productId: p.id,
+      barcode: p.primaryBarcode,
+      name: p.name,
+      brandId: p.brand?.id ?? null,
+      brandName: p.brand?.name ?? "—",
+      mainStock: p.mainStock,
+      streetStock: p.streetStock,
+      rule,
+      cap,
+      effectiveStock: effective.stock,
+      unusedExcess,
+      sold30,
+      dailyVelocity,
+      daysOfCover: dailyVelocity > 0 ? effective.stock / dailyVelocity : null,
+      reason,
+    })
+    totalUnusedUnits += unusedExcess
+  }
+
+  // Önce cap'i dar gelenler (kaçırılan hacim × talep), sonra kural-kilitliler (talebe göre)
+  rows.sort((a, b) => {
+    if (a.reason !== b.reason) return a.reason === "CAP_LIMITED" ? -1 : 1
+    if (a.reason === "CAP_LIMITED") {
+      return b.unusedExcess * b.dailyVelocity - a.unusedExcess * a.dailyVelocity
+    }
+    return b.sold30 - a.sold30
+  })
+
+  return { generatedAt: new Date(), totalUnusedUnits, rows }
 }
