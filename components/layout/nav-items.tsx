@@ -43,6 +43,9 @@ export interface NavGroup {
   items: NavItem[]
 }
 
+// Sıralama mantığı (2026-06-11): önem + günlük kullanım sıklığı.
+// Üstte: panel → günlük satış/fiyat (pazaryeri) → her sabah eczane.
+// Ortada: ürün/stok operasyonu. Altta: aylık finans, raporlar, nadir tanım/sistem.
 export const navGroups: NavGroup[] = [
   {
     title: "Genel",
@@ -51,6 +54,30 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    // Günlük satış/fiyat motoru — en çok burada vakit geçiyor
+    title: "Pazaryeri",
+    items: [
+      { label: "Dopigo Siparişler", href: "/dopigo-siparisler", icon: ShoppingBasket, moduleKey: "dopigo-siparisler" },
+      { label: "Stok Uyarıları", href: "/stok-uyarilari", icon: AlertTriangle, moduleKey: "stok-uyarilari" },
+      { label: "Dopigo Aktarım", href: "/dopigo-aktar", icon: Download, moduleKey: "dopigo-aktar" },
+      { label: "Dopigo Yükleme", href: "/dopigo-yukle", icon: Upload, moduleKey: "dopigo-yukle" },
+      { label: "Fiyat Önerileri", href: "/fiyat-onerileri", icon: Sparkles, moduleKey: "fiyat-onerileri" },
+      { label: "Fiyat Kontrol", href: "/fiyat-kontrol", icon: TrendingUp, moduleKey: "fiyat-kontrol" },
+      { label: "Komisyon Tarifeleri", href: "/komisyon-tarifeleri", icon: Percent, moduleKey: "komisyon-tarifeleri" },
+      { label: "Kupon Önerileri", href: "/kupon-onerileri", icon: Ticket, moduleKey: "kupon-onerileri" },
+      { label: "Trendyol Favorilenme", href: "/trendyol-favoriler", icon: Heart, moduleKey: "trendyol-favoriler" },
+      { label: "Barkod Eşleştirme", href: "/barkod-eslestirme", icon: Link2, moduleKey: "barkod-eslestirme" },
+    ],
+  },
+  {
+    // Her sabah ilk iş
+    title: "Eczane",
+    items: [
+      { label: "Eczane Veri Yükleme", href: "/eczane-yukleme", icon: Upload, moduleKey: "eczane-yukleme" },
+    ],
+  },
+  {
+    // Ürün & stok operasyonu
     title: "Ürünler",
     items: [
       { label: "Ürünler", href: "/urunler", icon: Package, moduleKey: "urunler" },
@@ -64,36 +91,23 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
-    title: "Eczane",
-    items: [
-      { label: "Eczane Veri Yükleme", href: "/eczane-yukleme", icon: Upload, moduleKey: "eczane-yukleme" },
-    ],
-  },
-  {
-    title: "Pazaryeri",
-    items: [
-      { label: "Barkod Eşleştirme", href: "/barkod-eslestirme", icon: Link2, moduleKey: "barkod-eslestirme" },
-      { label: "Dopigo Yükleme", href: "/dopigo-yukle", icon: Upload, moduleKey: "dopigo-yukle" },
-      { label: "Dopigo Aktarım", href: "/dopigo-aktar", icon: Download, moduleKey: "dopigo-aktar" },
-      { label: "Fiyat Önerileri", href: "/fiyat-onerileri", icon: Sparkles, moduleKey: "fiyat-onerileri" },
-      { label: "Fiyat Kontrol", href: "/fiyat-kontrol", icon: TrendingUp, moduleKey: "fiyat-kontrol" },
-      { label: "Trendyol Favorilenme", href: "/trendyol-favoriler", icon: Heart, moduleKey: "trendyol-favoriler" },
-      { label: "Komisyon Tarifeleri", href: "/komisyon-tarifeleri", icon: Percent, moduleKey: "komisyon-tarifeleri" },
-      { label: "Kupon Önerileri", href: "/kupon-onerileri", icon: Ticket, moduleKey: "kupon-onerileri" },
-      { label: "Dopigo Siparişler", href: "/dopigo-siparisler", icon: ShoppingBasket, moduleKey: "dopigo-siparisler" },
-      { label: "Stok Uyarıları", href: "/stok-uyarilari", icon: AlertTriangle, moduleKey: "stok-uyarilari" },
-    ],
-  },
-  {
+    // Aylık — en sık açılan üstte
     title: "Finans",
     items: [
-      { label: "Alış Faturaları", href: "/finans/faturalar", icon: Receipt, moduleKey: "finans-faturalar" },
-      { label: "Gelir / Gider", href: "/finans/gelir-gider", icon: BarChart3, moduleKey: "finans-gelir-gider" },
-      { label: "Eksik Alış", href: "/finans/eksik-alis", icon: AlertTriangle, moduleKey: "finans-eksik-alis" },
       { label: "Mutabakat", href: "/finans/mutabakat", icon: Receipt, moduleKey: "finans-mutabakat" },
+      { label: "Gelir / Gider", href: "/finans/gelir-gider", icon: BarChart3, moduleKey: "finans-gelir-gider" },
+      { label: "Alış Faturaları", href: "/finans/faturalar", icon: Receipt, moduleKey: "finans-faturalar" },
+      { label: "Eksik Alış", href: "/finans/eksik-alis", icon: AlertTriangle, moduleKey: "finans-eksik-alis" },
     ],
   },
   {
+    title: "Raporlar",
+    items: [
+      { label: "Raporlar", href: "/raporlar", icon: BarChart3, moduleKey: "raporlar" },
+    ],
+  },
+  {
+    // Nadiren değişir — kurulum/referans
     title: "Tanımlar",
     items: [
       { label: "Markalar", href: "/markalar", icon: Tags, moduleKey: "markalar" },
@@ -105,10 +119,9 @@ export const navGroups: NavGroup[] = [
   {
     title: "Sistem",
     items: [
-      { label: "Raporlar", href: "/raporlar", icon: BarChart3, moduleKey: "raporlar" },
+      { label: "Ayarlar", href: "/ayarlar", icon: Settings, moduleKey: "ayarlar" },
       { label: "Yedekleme", href: "/ayarlar/yedekleme", icon: Archive, moduleKey: "ayarlar" },
       { label: "Toplu İsim Düzelt", href: "/ayarlar/isim-duzeltme", icon: Edit3, moduleKey: "ayarlar" },
-      { label: "Ayarlar", href: "/ayarlar", icon: Settings, moduleKey: "ayarlar" },
     ],
   },
 ]
