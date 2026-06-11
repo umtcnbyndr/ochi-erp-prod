@@ -252,7 +252,10 @@ export async function getStaleProducts(opts: {
 
   for (const p of products) {
     const totalStock = p.mainStock + p.streetStock
-    if (totalStock === 0) continue // stoğu yoksa "hareketsiz" olması anlamsız
+    // Sadece ANA DEPO odaklı (user 2026-06-11): cadde-only ürünler (mainStock=0)
+    // eczaneden satılıyor olabilir — ana depo hareketsizliği onları kapsamaz.
+    // Hareket zaten StockMovement (ana stok) üzerinden ölçülüyor.
+    if (p.mainStock <= 0) continue
 
     const lastMovement = p.stockMovements[0]?.createdAt ?? null
     const daysSince = lastMovement
@@ -279,10 +282,10 @@ export async function getStaleProducts(opts: {
         : 0
     const stockValue = mainValue + streetValue
 
-    // Risk hesabı
+    // Risk hesabı — ana depo bazlı (cadde stoğu dahil edilmez)
     let risk: StaleRiskLevel = "LOW"
-    if (totalStock > 50 || stockValue > 50000) risk = "HIGH"
-    else if (totalStock > 10 || stockValue > 10000) risk = "MEDIUM"
+    if (p.mainStock > 50 || mainValue > 50000) risk = "HIGH"
+    else if (p.mainStock > 10 || mainValue > 10000) risk = "MEDIUM"
 
     result.push({
       productId: p.id,

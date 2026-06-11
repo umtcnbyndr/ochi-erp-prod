@@ -108,7 +108,8 @@ export function Sidebar({
                         ? String(stockAlertCount)
                         : null
                 const badgeText = dynamicBadge ?? item.badge
-                const takasOverdue = item.href === "/takas" && hasOverdueTakas
+                // Takas rozeti her zaman nötr — kırmızı olmasın (user 2026-06-11)
+                const takasOverdue = false
                 const invoiceOverdue = item.href === "/finans/faturalar" && hasOverdueInvoices
                 const stockCritical = item.href === "/stok-uyarilari" && hasCriticalStock
                 const isOverdue = takasOverdue || invoiceOverdue || stockCritical
