@@ -54,7 +54,21 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
-    // Günlük satış/fiyat motoru — en çok burada vakit geçiyor
+    // Ürün & stok — günlük çekirdek (en üstte, user kararı 2026-06-11)
+    title: "Ürünler",
+    items: [
+      { label: "Ürünler", href: "/urunler", icon: Package, moduleKey: "urunler" },
+      { label: "Ürün Giriş", href: "/urun-giris", icon: PackagePlus, moduleKey: "urun-giris" },
+      { label: "Ürün Çıkış", href: "/urun-cikis", icon: PackageMinus, moduleKey: "urun-cikis" },
+      { label: "Takas", href: "/takas", icon: Repeat2, moduleKey: "takas" },
+      { label: "Stok Hareketleri", href: "/stok-hareketleri", icon: ScrollText, moduleKey: "stok-hareketleri" },
+      { label: "Set Ürünler", href: "/set-urun", icon: Boxes, moduleKey: "set-urun" },
+      { label: "Siparişler", href: "/siparisler", icon: ShoppingCart, moduleKey: "siparisler" },
+      { label: "Kampanyalar", href: "/kampanyalar", icon: Megaphone, moduleKey: "kampanyalar" },
+    ],
+  },
+  {
+    // Günlük satış/fiyat motoru
     title: "Pazaryeri",
     items: [
       { label: "Dopigo Siparişler", href: "/dopigo-siparisler", icon: ShoppingBasket, moduleKey: "dopigo-siparisler" },
@@ -74,20 +88,6 @@ export const navGroups: NavGroup[] = [
     title: "Eczane",
     items: [
       { label: "Eczane Veri Yükleme", href: "/eczane-yukleme", icon: Upload, moduleKey: "eczane-yukleme" },
-    ],
-  },
-  {
-    // Ürün & stok operasyonu
-    title: "Ürünler",
-    items: [
-      { label: "Ürünler", href: "/urunler", icon: Package, moduleKey: "urunler" },
-      { label: "Ürün Giriş", href: "/urun-giris", icon: PackagePlus, moduleKey: "urun-giris" },
-      { label: "Ürün Çıkış", href: "/urun-cikis", icon: PackageMinus, moduleKey: "urun-cikis" },
-      { label: "Takas", href: "/takas", icon: Repeat2, moduleKey: "takas" },
-      { label: "Stok Hareketleri", href: "/stok-hareketleri", icon: ScrollText, moduleKey: "stok-hareketleri" },
-      { label: "Set Ürünler", href: "/set-urun", icon: Boxes, moduleKey: "set-urun" },
-      { label: "Siparişler", href: "/siparisler", icon: ShoppingCart, moduleKey: "siparisler" },
-      { label: "Kampanyalar", href: "/kampanyalar", icon: Megaphone, moduleKey: "kampanyalar" },
     ],
   },
   {
