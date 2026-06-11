@@ -157,14 +157,17 @@ async function upsertOrder(
     : null
   const derivedStatus = computeDerivedStatus(apiOrder.status, invoiceDeleted)
 
-  // ana sipariş alanları
-  const orderData: Prisma.DopigoOrderUncheckedCreateInput = {
+  // ana sipariş alanları.
+  // İLİŞKİ FORMU (scalar FK değil): prod Prisma client'ın unchecked-create input'u
+  // (marketplaceId gibi düz FK alanları) bozuk; 'marketplace' relation'ı çalışıyor
+  // (hata mesajının önerdiği yol). Checked input → her client durumunda güvenli.
+  const orderData = {
     dopigoOrderId: BigInt(apiOrder.id),
     serviceName: apiOrder.service_name,
     salesChannel: apiOrder.sales_channel,
     serviceOrderId: apiOrder.service_order_id ?? null,
     serviceValue: apiOrder.service_value ?? null,
-    marketplaceId,
+    marketplace: marketplaceId != null ? { connect: { id: marketplaceId } } : undefined,
     serviceCreatedAt: new Date(apiOrder.service_created),
     shippedAt: apiOrder.shipped_date ? new Date(apiOrder.shipped_date) : null,
     total: apiOrder.total,
@@ -184,12 +187,15 @@ async function upsertOrder(
     customerEmail: apiOrder.customer?.email ?? null,
     fetchedAt: new Date(),
     rawJson: apiOrder as unknown as Prisma.InputJsonValue,
-  }
+  } satisfies Prisma.DopigoOrderCreateInput
 
   let orderId: number
   let created = false
   if (existing) {
-    await prisma.dopigoOrder.update({ where: { id: existing.id }, data: orderData })
+    await prisma.dopigoOrder.update({
+      where: { id: existing.id },
+      data: orderData as Prisma.DopigoOrderUpdateInput,
+    })
     orderId = existing.id
   } else {
     const newOrder = await prisma.dopigoOrder.create({ data: orderData })
@@ -204,9 +210,10 @@ async function upsertOrder(
     const match = await matchProduct(item)
     if (match.productId !== null) matchedCount++
 
-    const itemData: Prisma.DopigoOrderItemUncheckedCreateInput = {
+    // İlişki formu (order/product relation) — scalar FK yerine, prod client güvencesi
+    const itemData = {
       dopigoItemId: BigInt(item.id),
-      orderId,
+      order: { connect: { id: orderId } },
       serviceItemId: item.service_item_id ?? null,
       serviceProductId: item.service_product_id ?? null,
       sku: item.sku ?? null,
@@ -218,16 +225,16 @@ async function upsertOrder(
       unitPrice: item.unit_price ?? null,
       taxRatio: item.tax_ratio ?? null,
       itemStatus: item.status ?? null,
-      productId: match.productId,
+      product: match.productId != null ? { connect: { id: match.productId } } : undefined,
       matchMethod: match.method,
       matchedAt: match.productId ? new Date() : null,
       productType: match.productType,
-    }
+    } satisfies Prisma.DopigoOrderItemCreateInput
 
     await prisma.dopigoOrderItem.upsert({
       where: { dopigoItemId: BigInt(item.id) },
       create: itemData,
-      update: itemData,
+      update: itemData as Prisma.DopigoOrderItemUpdateInput,
     })
   }
 
@@ -505,7 +512,7 @@ export async function backfillMarketplaceMappings(): Promise<{
     if (mpId) {
       await prisma.dopigoOrder.update({
         where: { id: o.id },
-        data: { marketplaceId: mpId },
+        data: { marketplace: { connect: { id: mpId } } },
       })
       byChannel[ch].fixed++
       fixed++
