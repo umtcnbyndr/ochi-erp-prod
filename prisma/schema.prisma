@@ -1701,3 +1701,29 @@ model MonthlySalesSnapshot {
   @@unique([year, month])
   @@index([year])
 }
+
+/// Satış prim baremleri — aylık NET ciroya (iade/iptal hariç) göre kademeli prim.
+/// prim = aylık net ciro × ulaşılan kademe oranı. Ayarlar → Hedefler & Primler'den düzenlenir.
+model SalesBonusTier {
+  id        Int      @id @default(autoincrement())
+  /// Bu ciroya ulaşınca bu kademe geçerli (TL)
+  minSales  Decimal  @db.Decimal(14, 2)
+  /// Prim oranı — çarpan (0.007 = %0.7). prim = ciro × bonusRate
+  bonusRate Decimal  @db.Decimal(8, 6)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([minSales])
+}
+
+/// Prim sistemi genel ayarı (tek satır, id=1).
+model SalesBonusConfig {
+  id           Int      @id @default(1)
+  /// Primi hak etmek için gereken min net kâr marjı (% — sadece gösterim, primi sıfırlamaz)
+  minProfitPct Decimal  @db.Decimal(5, 2) @default(25)
+  /// Ciro kaynağı: "ALL" (tüm pazaryerleri) | "TRENDYOL"
+  salesBasis   String   @default("ALL")
+  isActive     Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
+}

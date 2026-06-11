@@ -331,6 +331,8 @@ function KPIRow({ kpis, statusCounts }: { kpis: KPIs; statusCounts: StatusCounts
   const cards = [
     { label: "Ciro", value: tl(kpis.totalRevenue), icon: TrendingUp, accent: "text-emerald-600" },
     { label: "Sipariş", value: kpis.totalOrders.toLocaleString("tr-TR"), icon: ShoppingBag },
+    { label: "Ort. Sepet", value: tl(kpis.totalOrders > 0 ? kpis.totalRevenue / kpis.totalOrders : 0), icon: ShoppingBag,
+      accent: "text-blue-600" },
     { label: "Adet", value: kpis.totalUnits.toLocaleString("tr-TR"), icon: Package },
     { label: "Eşleşme", value: pct(kpis.matchRate * 100), icon: Link2Icon,
       accent: kpis.matchRate >= 0.85 ? "text-emerald-600" : "text-amber-600" },
@@ -345,7 +347,7 @@ function KPIRow({ kpis, statusCounts }: { kpis: KPIs; statusCounts: StatusCounts
   ]
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2">
       {cards.map((c, i) => (
         <Card key={i}>
           <CardContent className="p-4 space-y-2">

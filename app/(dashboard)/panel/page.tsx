@@ -12,6 +12,8 @@ import {
 } from "lucide-react"
 import { getAuthUser } from "@/lib/permissions"
 import { getDashboardSnapshot } from "@/lib/services/dashboard-data"
+import { getBonusDashboard } from "@/lib/services/sales-bonus"
+import { PerformanceSection } from "@/components/panel/performance-section"
 import { MetricCard } from "@/components/ui/metric-card"
 import { Section } from "@/components/common/section"
 import { FreshnessRow } from "@/components/panel/freshness-row"
@@ -40,7 +42,10 @@ export default async function PanelPage() {
   const user = await getAuthUser()
   if (!user) redirect("/login")
 
-  const data = await getDashboardSnapshot(user.id)
+  const [data, bonus] = await Promise.all([
+    getDashboardSnapshot(user.id),
+    getBonusDashboard().catch(() => null),
+  ])
   const greeting = getGreeting()
   const today = new Date().toLocaleDateString("tr-TR", {
     day: "numeric",
@@ -98,6 +103,13 @@ export default async function PanelPage() {
           </div>
         </div>
       </div>
+
+      {/* SECTION 0: Hedef & Performans — günlük/aylık satış + prim baremi */}
+      {bonus && (
+        <Section title="Hedef & Performans" hint="Bugün / bu ay satış + aylık prim baremi">
+          <PerformanceSection data={bonus} />
+        </Section>
+      )}
 
       {/* SECTION 1: Sabah Rutini — 4 status MetricCard */}
       <Section title="Sabah Rutini" hint="Bugün yüklenen veriler">

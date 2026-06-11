@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/db"
-import { Users, ChevronRight, AlertTriangle } from "lucide-react"
+import { Users, ChevronRight, AlertTriangle, Target } from "lucide-react"
 import { PageHeader } from "@/components/common/page-header"
 import {
   Card,
@@ -90,6 +90,24 @@ export default async function AyarlarPage() {
               <span className="text-muted-foreground">
                 {userCount} kullanıcı
               </span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/ayarlar/hedefler" className="block">
+          <Card className="h-full transition-colors hover:border-primary/50 hover:bg-muted/30">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="h-4 w-4" />
+                Hedefler & Primler
+              </CardTitle>
+              <CardDescription>
+                Aylık ciro prim baremleri + kâr eşiği (panelde gösterilir)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Kademe baremi</span>
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </CardContent>
           </Card>
