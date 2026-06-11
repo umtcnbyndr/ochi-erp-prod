@@ -8,6 +8,19 @@ set -e
 echo "[ochi-erp] Regenerating Prisma client at runtime (standalone trace güvencesi)..."
 npx prisma generate || echo "[ochi-erp] ⚠️ prisma generate FAILED — client eski kalabilir!"
 
+# TEŞHİS (tek seferlik): çalışan @prisma/client gerçekte ne biliyor?
+echo "[DIAG] === Prisma client ground truth ==="
+node -e "
+try {
+  console.log('[DIAG] resolved @prisma/client:', require.resolve('@prisma/client'));
+  const { Prisma } = require('@prisma/client');
+  console.log('[DIAG] prismaVersion:', JSON.stringify(Prisma.prismaVersion));
+  const m = Prisma.dmmf.datamodel.models.find(x => x.name === 'DopigoOrder');
+  console.log('[DIAG] DopigoOrder marketplaceId VAR MI:', m ? m.fields.some(f => f.name === 'marketplaceId') : 'MODEL YOK');
+  console.log('[DIAG] DopigoOrder alanları:', m ? m.fields.map(f=>f.name).join(',') : '-');
+} catch (e) { console.log('[DIAG] ERROR:', e.message); }
+"
+
 echo "[ochi-erp] Running Prisma migrations..."
 npx prisma migrate deploy || {
   echo "[ochi-erp] Migration failed, attempting db push as fallback..."
