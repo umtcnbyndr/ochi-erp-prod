@@ -1,6 +1,13 @@
 #!/bin/sh
 set -e
 
+# Prisma client'ı runtime'da yeniden üret — Next.js standalone + pnpm trace'i bazen
+# ESKİ client kopyasını paketliyor: TS tipleri güncel (build geçer) ama runtime DMMF
+# eski kalıyor → "Unknown argument marketplaceId" gibi scalar-FK yazma hataları.
+# Çalışan node_modules + prisma/schema burada mevcut; generate runtime client'ı şemaya kilitler.
+echo "[ochi-erp] Regenerating Prisma client at runtime (standalone trace güvencesi)..."
+npx prisma generate || echo "[ochi-erp] ⚠️ prisma generate FAILED — client eski kalabilir!"
+
 echo "[ochi-erp] Running Prisma migrations..."
 npx prisma migrate deploy || {
   echo "[ochi-erp] Migration failed, attempting db push as fallback..."
