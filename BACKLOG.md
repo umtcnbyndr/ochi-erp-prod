@@ -16,6 +16,20 @@
 - **Güvenlik denetimi:** ice-aktar guard, xlsx CVE, compose localhost, otomatik DB yedeği
 - **MCP prod full-access** · **Navbar yeniden sıra** (Ürünler üstte) + ferah boşluklar · Takas rozeti nötr · hareketsiz rapor ana-depo bazlı
 
+### 🎯 Sıradaki Plan — Fikirler (2026-06-11, öncelik sırası)
+1. **[P1] Otomatik rapor/uyarı maili** — düşük stok, BuyBox kaybı, SKT, günlük/haftalık özet. Cron altyapısı hazır → job + mail kanalı (Resend/SMTP) + içerik şablonu.
+2. **[P2] Satın alma planlama modülü** — satış hızı (30/60g) + lead time + sezonsallık → "ne, ne kadar al" önerisi. Panel kritik stoğu sayıyor ama miktar önermiyor; asıl para kaldıracı.
+3. **[hızlı] Excel export şıklaştırma** — renk/vurgu/koşullu format/donmuş başlık (xlsx → exceljs gerekebilir). Dopigo Aktar + raporlar.
+4. **[düşük] Otomatik Drive yedek** — Coolify DB yedeğine ek offsite (rclone/Drive API). Mevcut yedek var, bu redundancy.
+5. **[araştır] Dopigo eşleştirme önerileri** — XML feed (foreign_sku/barcode + çok-kanal kategori mapping) ile eşleşmemiş ürün/kanal tespiti + öneri. Kapsam netleşecek (tartışılıyor).
+6. **[sürekli] E-ticaret danışmanlığı** — bu sohbette; sistem + prod veri görünür, proaktif içgörü. Aksiyon değil.
+
+**📝 User'ın işaretledikleri (kapsam sonra detaylandırılacak — 2026-06-11):**
+- **Komisyon tarifeleri eksikleri** — eksik kalan kısımlar var (hangi pazaryeri/kademe/ürün? sonra netleştir).
+- **Hepsiburada** — entegrasyon + komisyon + mutabakat (şu an sadece Trendyol var).
+- **Mutabakat eksikleri** — Trendyol dışı pazaryerleri + olası açıklar (eşleşmeyen kalemler, çoklu paket vb.) sonra masaya yatırılacak.
+- **Dopigo n11/çok-kanal kod eşleştirme** — user manuel devam edecek; sistemde externalCode boş, feed n11 kodu vermiyor (bkz bugünkü inceleme).
+
 ### ✅ Tamamlanan Büyük Modüller
 - **Finans:** Alış Faturaları, Gelir/Gider, Eksik Alış, Mutabakat (Trendyol)
 - **Mutabakat:** Trendyol Sipariş Kayıtları Excel → per-order gerçek komisyon/kargo/platform/ceza → net kâr. İade dışlama, stopaj (ciro×%1), tarife geçmişi koruma. Tüm breakdown mutabakat-aware (buildPnlCTE).
