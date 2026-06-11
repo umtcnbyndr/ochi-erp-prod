@@ -26,9 +26,9 @@ export function PerformanceSection({ data }: Props) {
     : 0
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Üst: Bugün / Bu Ay KPI'lar */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
         <KpiCard
           label="Bugün"
           icon={ShoppingCart}
@@ -54,7 +54,7 @@ export function PerformanceSection({ data }: Props) {
 
       {/* Aylık Hedef & Prim kartı */}
       <Card className="overflow-hidden">
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Target className="h-4 w-4 text-primary" />
@@ -100,7 +100,7 @@ export function PerformanceSection({ data }: Props) {
           </div>
 
           {/* Prim özeti */}
-          <div className="grid grid-cols-3 gap-2 rounded-lg border bg-muted/30 p-2.5 text-center">
+          <div className="grid grid-cols-3 gap-3 rounded-lg border bg-muted/30 p-3.5 text-center">
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Kademe</p>
               <p className="text-sm font-bold tabular-nums">
@@ -177,13 +177,13 @@ function KpiCard({
 }) {
   return (
     <Card>
-      <CardContent className="p-3.5">
+      <CardContent className="p-5">
         <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
           <Icon className={`h-3.5 w-3.5 ${TONE[tone]}`} />
           {label}
         </div>
-        <p className="mt-1 text-xl font-bold tabular-nums leading-tight">{primary}</p>
-        <p className="text-[11px] text-muted-foreground">{secondary}</p>
+        <p className="mt-2.5 text-2xl font-bold tabular-nums leading-tight">{primary}</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">{secondary}</p>
       </CardContent>
     </Card>
   )

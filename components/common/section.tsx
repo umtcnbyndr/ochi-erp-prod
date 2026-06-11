@@ -26,7 +26,7 @@ interface SectionProps {
  */
 export function Section({ title, hint, action, rightSlot, className, children }: SectionProps) {
   return (
-    <section className={cn("space-y-2", className)}>
+    <section className={cn("space-y-3", className)}>
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {title}
