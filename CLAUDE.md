@@ -224,6 +224,8 @@ Komisyon Tarifeleri artık sistemin geri kalanına bağlı. Tüm hesaplamalar **
 
 **Schema değiştirdiysem otomatik refresh çalıştır, kullanıcı söylemesine gerek yok.**
 
+**node_modules güncellenince** (`pnpm install/update` — Prisma client minor sürüm atlayınca eski şemada kalır → senkronda "Unknown argument `marketplaceId`" gibi hata) **otomatik `pnpm prisma generate` çalıştır.** ⚠️ Postinstall hook EKLEME: Docker `deps` stage'i `pnpm install`'u `prisma/schema.prisma` kopyalanmadan çalıştırır → generate schema bulamaz, prod build kırılır.
+
 ## userEmail
 The user's email address is umtcnbyndr@gmail.com.
 
