@@ -4,7 +4,17 @@
 
 ---
 
-## 📌 GÜNCEL DURUM (2026-06-10) — Production'da, ~10 marka aktif
+## 📌 GÜNCEL DURUM (2026-06-11) — Production'da, 14 marka / 637 ürün
+
+### ✅ Bugün (2026-06-11) yapılanlar
+- **Dopigo senkron saga çözümü:** prod Prisma client scalar FK reddediyordu → ilişki-connect formu (marketplace/order/product: {connect}). Senkron çalışıyor (cron'la SUCCESS doğrulandı). docker-entrypoint runtime prisma generate eklendi.
+- **Panel Hedef & Performans:** günlük/aylık ciro·sipariş·net kâr + prim baremi (kademeli çubuk + tahmini prim + %25 rozeti + 7g sparkline) + canlı saat + 20dk oto-yenileme
+- **Hedefler & Primler** (Ayarlar): SalesBonusTier/Config — kademe CRUD, %25 eşiği, ciro kaynağı
+- **Dopigo Ortalama Sepet** KPI · **Eczane Fırsatları** tab (cap/kural kaçağı)
+- **Cron endpoint** `/api/cron` (dopigo+buybox, CRON_SECRET) — Scheduled Task kurulumu bekliyor
+- **Dopigo export:** Temu kolonları + site fiyatı→Shopify + genel kolonlar PSF/%10
+- **Güvenlik denetimi:** ice-aktar guard, xlsx CVE, compose localhost, otomatik DB yedeği
+- **MCP prod full-access** · **Navbar yeniden sıra** (Ürünler üstte) + ferah boşluklar · Takas rozeti nötr · hareketsiz rapor ana-depo bazlı
 
 ### ✅ Tamamlanan Büyük Modüller
 - **Finans:** Alış Faturaları, Gelir/Gider, Eksik Alış, Mutabakat (Trendyol)

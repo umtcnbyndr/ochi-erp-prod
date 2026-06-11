@@ -111,12 +111,18 @@ components/layout/          → sidebar, navigation
 - `lib/services/reports.ts` — tüm rapor servisleri
 - `lib/services/trendyol/` — TY API (client + buybox + products)
 
-**Aktif modüller (sidebar grupları):**
+**Aktif modüller (sidebar — önem sırasına göre, 2026-06-11):**
+- Genel: **Panel** (Hedef&Performans: günlük/aylık ciro + prim baremi + canlı saat + 20dk oto-yenileme)
 - Ürünler: Ürünler, Ürün Giriş/Çıkış, Takas, Stok Hareketleri, Set Ürünler, Siparişler, Kampanyalar
-- Eczane: Veri Yükleme · Pazaryeri: Barkod Eşleştirme, Dopigo Yükle/Aktar, Fiyat Önerileri/Kontrol, Trendyol Favorilenme, Komisyon Tarifeleri, Kupon Önerileri, Dopigo Siparişler, **Stok Uyarıları**
-- **Finans:** Alış Faturaları, Gelir/Gider, **Eksik Alış**, **Mutabakat**
-- Tanımlar: Markalar, Kategoriler, Pazar Yerleri, Cariler
-- Sistem: Raporlar, Yedekleme, Toplu İsim Düzelt, Ayarlar
+- Pazaryeri: Dopigo Siparişler (+Ort. Sepet), **Stok Uyarıları** (+Eczane Fırsatları tab), Dopigo Aktar/Yükle, Fiyat Önerileri/Kontrol, Komisyon Tarifeleri, Kupon Önerileri, TY Favorilenme, Barkod Eşleştirme
+- Eczane: Veri Yükleme
+- **Finans:** Mutabakat, Gelir/Gider, Alış Faturaları, Eksik Alış
+- Raporlar · Tanımlar: Markalar, Kategoriler, Pazar Yerleri, Cariler
+- Sistem: Ayarlar (+**Hedefler & Primler**), Yedekleme, Toplu İsim Düzelt
+
+**Panel prim baremi:** aylık net ciro (iade hariç, tüm pazaryeri) × ulaşılan kademe = prim. Default 2M=%0.35, 2.25M=%0.70, 3M=%1.05 (Ayarlar→Hedefler&Primler). %25 kâr sadece gösterilir. Schema: SalesBonusTier + SalesBonusConfig.
+**Cron:** `/api/cron?secret=&job=dopigo|buybox` (CRON_SECRET korumalı). Otomatik dönmesi için Coolify Scheduled Task gerek (Dopigo 20dk, BuyBox saatlik). docker-entrypoint runtime `prisma generate` çalıştırır.
+**Dopigo senkron:** scalar FK yerine ilişki-connect formu — bkz [[prod-prisma-relation-form]].
 
 **Yetki:** `UserRole` (ADMIN/MANAGER/STAFF/**SALES**). SALES + `UserAllowedBrand` → marka kısıtı (siparişler/ürünler/kampanyalar uygulanmış; raporlar/fiyat-kontrol henüz eksik — yapılacak).
 
