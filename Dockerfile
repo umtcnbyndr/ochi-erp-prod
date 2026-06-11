@@ -12,8 +12,10 @@ COPY package.json pnpm-lock.yaml* .npmrc* ./
 # Install pnpm
 RUN corepack enable pnpm && corepack prepare pnpm@10.30.3 --activate
 
-# Install dependencies (frozen lockfile for reproducibility)
-RUN pnpm install --frozen-lockfile
+# Install dependencies (frozen lockfile for reproducibility).
+# --prod=false: NODE_ENV=production build env'inde bile devDeps'i (typescript,
+# prisma CLI vb.) zorla kur — yoksa prisma generate runtime DMMF ile uyuşmaz client üretir.
+RUN pnpm install --frozen-lockfile --prod=false
 
 # ---- Stage 2: builder ----
 FROM node:20-alpine AS builder
