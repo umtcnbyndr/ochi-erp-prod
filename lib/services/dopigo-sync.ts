@@ -135,13 +135,19 @@ export const DOPIGO_HEADERS: string[] = [
   "Dopigo E-Ticaret indirim yüzdesi",
   "Dopigo E-Ticaret zam yüzdesi",
   "Dopigo E-Ticaret hazırlık süresi",
-  // 83-87: Shopify (kullanılmıyor)
+  // 83-87: Shopify ← Web Sitesi (site) satış fiyatı buraya yazılır
   "Shopify Fiyatı",
   "Shopify Liste Fiyatı",
   "Shopify indirim yüzdesi",
   "Shopify zam yüzdesi",
   "Shopify hazırlık süresi",
-  // 88-96: Ek alanlar
+  // 88-92: Temu (Dopigo 2026-06 güncellemesiyle eklendi — kullanmıyoruz, hizalama için)
+  "Temu Fiyatı",
+  "Temu Liste Fiyatı",
+  "Temu indirim yüzdesi",
+  "Temu zam yüzdesi",
+  "Temu hazırlık süresi",
+  // 93-101: Ek alanlar
   "Genel indirim yüzdesi",
   "Genel zam yüzdesi",
   "trendyol_disabled",
@@ -167,6 +173,11 @@ const MARKETPLACE_TO_DOPIGO: Record<string, string> = {
 
 // LISTE_CARPANI: Liste fiyatı = satış × 1.5 (kullanıcı kuralı)
 const LIST_PRICE_MULTIPLIER = 1.5
+
+// Genel "fiyat"/"liste fiyatı" kolonları PSF bazlı (2026-06-11 user kararı):
+//   liste fiyatı = PSF (normal perakende), fiyat (satış) = PSF × 0.90 (%10 indirim).
+// Site (Web Sitesi) satış fiyatı artık Shopify kolonlarına yazılıyor.
+const GENERIC_PSF_SALE_DISCOUNT = 0.9
 
 // ============== Tipler ==============
 
@@ -1278,20 +1289,34 @@ export async function buildExportExcel(
     // Yardımcı: kampanya/recommendation kararı için yerel reusable bilgi
     void campaignActive  // bilgi amaçlı, sale döngülerinde purchase zaten kampanyalı
 
-    // 4) Web Sitesi → genel "fiyat" + "liste fiyatı" (H, I)
+    // 4a) Genel "fiyat" + "liste fiyatı" (H, I) — PSF bazlı (2026-06-11 user kararı)
+    //   liste fiyatı = PSF (normal perakende), fiyat (satış) = PSF × 0.90 (%10 indirim).
+    //   PSF yoksa: GIFT için giftMin, o da yoksa Web Sitesi formül fiyatına düş (export boş kalmasın).
+    if (options.fields.websitePrices) {
+      const psfNum = p.psf != null ? Number(p.psf) : null
+      if (psfNum != null && psfNum > 0) {
+        row[headerIndex["liste fiyatı"]] = round2(psfNum)
+        row[headerIndex["fiyat"]] = round2(psfNum * GENERIC_PSF_SALE_DISCOUNT)
+      } else if (giftMin != null && giftMin > 0) {
+        const g = isOOS ? giftMin * OOS_PRICE_MULTIPLIER : giftMin
+        row[headerIndex["liste fiyatı"]] = round2(g * LIST_PRICE_MULTIPLIER)
+        row[headerIndex["fiyat"]] = round2(g)
+      }
+      // PSF de giftMin de yoksa → aşağıdaki Shopify bloğunda hesaplanan sale fallback olur
+    }
+
+    // 4b) Web Sitesi (site) satış fiyatı → SHOPIFY kolonları (2026-06-11 user kararı)
+    //   Artık genel "fiyat"a değil Shopify'a yazılıyor. Formül/komisyon aynı (Web Sitesi kanalı).
     if (options.fields.websitePrices && websiteMp) {
       try {
         const override = getManualOverrideFor(p, websiteMp.id)
         let sale: number | null = null
 
         if (override != null) {
-          // Manuel override her zaman korunur (OOS dahil)
           sale = override
         } else if (giftMin != null && giftMin > 0) {
-          // GIFT: giftMinSalePrice kullan, OOS ise × 1.5
           sale = isOOS ? giftMin * OOS_PRICE_MULTIPLIER : giftMin
         } else if (purchase != null) {
-          // Normal formül (kademeli komisyon aware)
           sale = computeFormulaPriceWithTariff(
             p.id,
             websiteMp,
@@ -1299,13 +1324,17 @@ export async function buildExportExcel(
             p.brand.targetProfit ?? undefined,
             tariffMap,
           )
-          // OOS: formül fiyatını × 1.5 yükselt
           if (isOOS) sale = sale * OOS_PRICE_MULTIPLIER
         }
 
         if (sale != null) {
-          row[headerIndex["fiyat"]] = round2(sale)
-          row[headerIndex["liste fiyatı"]] = round2(sale * LIST_PRICE_MULTIPLIER)
+          row[headerIndex["Shopify Fiyatı"]] = round2(sale)
+          row[headerIndex["Shopify Liste Fiyatı"]] = round2(sale * LIST_PRICE_MULTIPLIER)
+          // PSF yoksa genel kolonlar boş kalmasın diye fallback
+          if (row[headerIndex["fiyat"]] == null) {
+            row[headerIndex["fiyat"]] = round2(sale)
+            row[headerIndex["liste fiyatı"]] = round2(sale * LIST_PRICE_MULTIPLIER)
+          }
         }
       } catch {
         // skip
