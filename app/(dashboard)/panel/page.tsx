@@ -14,6 +14,7 @@ import { getAuthUser } from "@/lib/permissions"
 import { getDashboardSnapshot } from "@/lib/services/dashboard-data"
 import { getBonusDashboard } from "@/lib/services/sales-bonus"
 import { PerformanceSection } from "@/components/panel/performance-section"
+import { PanelLive } from "@/components/panel/panel-live"
 import { MetricCard } from "@/components/ui/metric-card"
 import { Section } from "@/components/common/section"
 import { FreshnessRow } from "@/components/panel/freshness-row"
@@ -81,7 +82,10 @@ export default async function PanelPage() {
               Panel
             </p>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl mt-1">{greeting}</h1>
-            <p className="text-xs text-muted-foreground mt-1 capitalize">{today}</p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+              <p className="text-xs text-muted-foreground capitalize">{today}</p>
+              <PanelLive />
+            </div>
           </div>
           {/* Quick actions — modernize: backdrop blur + ring */}
           <div className="-mx-4 px-4 sm:m-0 sm:p-0 overflow-x-auto scrollbar-none">
