@@ -429,8 +429,10 @@ export async function analyzePharmacyUpload(
       psfWarning,
     }
 
-    if (!barcode) {
-      preview.rows.push({ ...baseRow, decision: { kind: "error", message: "Barkod boş" } })
+    // Eşleştirme SADECE Tria/eczane kodu ile yapıldığından, barkodu boş ama
+    // kodu olan satırlar da işlenmeli. Yalnızca her ikisi de yoksa kullanılamaz.
+    if (!barcode && !productCode) {
+      preview.rows.push({ ...baseRow, decision: { kind: "error", message: "Barkod ve ürün kodu boş" } })
       preview.stats.errors++
       return
     }
@@ -440,18 +442,20 @@ export async function analyzePharmacyUpload(
       return
     }
 
-    // file-level dupe check
-    const seen = seenBarcodes.get(barcode)
-    if (seen) {
-      seen.push(rowNumber)
-      preview.rows.push({
-        ...baseRow,
-        decision: { kind: "error", message: `Barkod bu dosyada birden fazla satırda (ilk: ${seen[0]})` },
-      })
-      preview.stats.duplicatesInFile++
-      return
+    // file-level dupe check — yalnızca barkod varsa (boş barkod dedupe edilemez)
+    if (barcode) {
+      const seen = seenBarcodes.get(barcode)
+      if (seen) {
+        seen.push(rowNumber)
+        preview.rows.push({
+          ...baseRow,
+          decision: { kind: "error", message: `Barkod bu dosyada birden fazla satırda (ilk: ${seen[0]})` },
+        })
+        preview.stats.duplicatesInFile++
+        return
+      }
+      seenBarcodes.set(barcode, [rowNumber])
     }
-    seenBarcodes.set(barcode, [rowNumber])
 
     // track brand/category seen
     if (brandName) brandsSeen.set(norm(brandName), brandName)
