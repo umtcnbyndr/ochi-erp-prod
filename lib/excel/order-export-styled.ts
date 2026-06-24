@@ -50,6 +50,14 @@ export interface StyledOrderExportData {
     netPrice: number
     /** Net alış — brüt (kampanya öncesi). İndirim yoksa netPrice ile aynı. */
     grossNetPrice: number
+    /** DB'deki mevcut alış (Product.mainPurchasePrice) — kıyas için */
+    mainPurchasePrice: number | null
+    /** Net alıştan formülle hesaplanmış optimal satış (komisyon+kâr) */
+    formulaSalePrice: number | null
+    /** Trendyol etkin komisyon (% — Konum hesabı için) */
+    commissionPct: number | null
+    /** Trendyol stopaj (% — Konum hesabı için) */
+    withholdingPct: number | null
     discountOverridePct: number | null
     effectiveDiscountPct: number | null
     lineTotal: number
@@ -75,27 +83,46 @@ interface ColumnDef {
   align?: "left" | "right" | "center"
 }
 
-const COLUMNS_TEMPLATE: (analysisDays: number) => ColumnDef[] = (days) => [
-  { header: "Barkod", key: "barcode", width: 16, align: "left" },
-  { header: "Ürün Adı", key: "name", width: 42, align: "left" },
-  { header: "Marka", key: "brand", width: 16, align: "left" },
-  { header: "Ana Stok", key: "mainStock", width: 10, numFmt: FMT_INTEGER, align: "right" },
-  { header: "Ecz. Stok", key: "streetStock", width: 10, numFmt: FMT_INTEGER, align: "right" },
-  { header: `Son ${days}g Satış`, key: "totalSold", width: 14, numFmt: FMT_INTEGER, align: "right" },
-  { header: "Günlük Satış", key: "dailySalesAvg", width: 12, numFmt: FMT_DECIMAL1, align: "right" },
-  { header: "Bitme (Gün)", key: "daysUntilStockout", width: 12, numFmt: FMT_INTEGER, align: "right" },
-  { header: "PSF", key: "psf", width: 12, numFmt: FMT_CURRENCY, align: "right" },
-  { header: "Liste Fiyat", key: "listPrice", width: 14, numFmt: FMT_CURRENCY, align: "right" },
-  { header: "Brüt Net", key: "grossNetPrice", width: 13, numFmt: FMT_CURRENCY, align: "right" },
-  { header: "Kamp. İnd. %", key: "effectiveDiscountPct", width: 12, numFmt: '0.00"%"', align: "right" },
-  { header: "Net Alış", key: "netPrice", width: 14, numFmt: FMT_CURRENCY, align: "right" },
-  { header: "BuyBox", key: "buyboxPrice", width: 13, numFmt: FMT_CURRENCY, align: "right" },
-  { header: "Bizim Satış", key: "ourSalePrice", width: 13, numFmt: FMT_CURRENCY, align: "right" },
-  { header: "Konum", key: "position", width: 32, align: "left" },
-  { header: "Öneri", key: "suggestedQty", width: 8, numFmt: FMT_INTEGER, align: "right" },
-  { header: "Sipariş Adet", key: "qty", width: 12, numFmt: FMT_INTEGER, align: "right" },
-  { header: "Satır Toplam", key: "lineTotal", width: 16, numFmt: FMT_CURRENCY, align: "right" },
-]
+/**
+ * Kolonları şartlı oluştur:
+ *   - Brüt Net + Kamp. İnd. %: sadece siparişte ek iskonto VARSA görünür
+ *   - Önceki Alış: her zaman görünür (kıyas için)
+ *   - Formül Satış: her zaman (öneri için)
+ *   - Notlar: her zaman (boş veya değerlendirme metni)
+ */
+function buildColumns(analysisDays: number, hasDiscount: boolean): ColumnDef[] {
+  const cols: ColumnDef[] = [
+    { header: "Barkod", key: "barcode", width: 16, align: "left" },
+    { header: "Ürün Adı", key: "name", width: 42, align: "left" },
+    { header: "Marka", key: "brand", width: 16, align: "left" },
+    { header: "Ana Stok", key: "mainStock", width: 10, numFmt: FMT_INTEGER, align: "right" },
+    { header: "Ecz. Stok", key: "streetStock", width: 10, numFmt: FMT_INTEGER, align: "right" },
+    { header: `Son ${analysisDays}g Satış`, key: "totalSold", width: 14, numFmt: FMT_INTEGER, align: "right" },
+    { header: "Günlük Satış", key: "dailySalesAvg", width: 12, numFmt: FMT_DECIMAL1, align: "right" },
+    { header: "Bitme (Gün)", key: "daysUntilStockout", width: 12, numFmt: FMT_INTEGER, align: "right" },
+    { header: "PSF", key: "psf", width: 12, numFmt: FMT_CURRENCY, align: "right" },
+    { header: "Liste Fiyat", key: "listPrice", width: 14, numFmt: FMT_CURRENCY, align: "right" },
+  ]
+  if (hasDiscount) {
+    cols.push(
+      { header: "Brüt Net", key: "grossNetPrice", width: 13, numFmt: FMT_CURRENCY, align: "right" },
+      { header: "Kamp. İnd. %", key: "effectiveDiscountPct", width: 12, numFmt: '0.00"%"', align: "right" },
+    )
+  }
+  cols.push(
+    { header: "Net Alış", key: "netPrice", width: 14, numFmt: FMT_CURRENCY, align: "right" },
+    { header: "Önceki Alış", key: "mainPurchasePrice", width: 13, numFmt: FMT_CURRENCY, align: "right" },
+    { header: "Formül Satış", key: "formulaSalePrice", width: 14, numFmt: FMT_CURRENCY, align: "right" },
+    { header: "Trendyol Kayıtlı", key: "ourSalePrice", width: 14, numFmt: FMT_CURRENCY, align: "right" },
+    { header: "BuyBox", key: "buyboxPrice", width: 13, numFmt: FMT_CURRENCY, align: "right" },
+    { header: "Konum", key: "position", width: 22, align: "left" },
+    { header: "Notlar", key: "notes", width: 26, align: "left" },
+    { header: "Öneri", key: "suggestedQty", width: 8, numFmt: FMT_INTEGER, align: "right" },
+    { header: "Sipariş Adet", key: "qty", width: 12, numFmt: FMT_INTEGER, align: "right" },
+    { header: "Satır Toplam", key: "lineTotal", width: 16, numFmt: FMT_CURRENCY, align: "right" },
+  )
+  return cols
+}
 
 function hexToArgb(hex: string): string {
   // exceljs ARGB ister. # ile gelirse, FF ile başlat.
@@ -119,7 +146,11 @@ export async function buildStyledOrderWorkbook(
     views: [{ state: "frozen", ySplit: 1 }],
   })
 
-  const cols = COLUMNS_TEMPLATE(data.analysisDays)
+  // Şartlı kolon: ek iskonto varsa Brüt Net + Kamp. İnd. % kolonları görünür
+  const hasDiscount = data.items.some(
+    (i) => i.effectiveDiscountPct != null && i.effectiveDiscountPct > 0,
+  )
+  const cols = buildColumns(data.analysisDays, hasDiscount)
   ws.columns = cols.map((c) => ({
     header: c.header,
     key: c.key,
@@ -151,14 +182,50 @@ export async function buildStyledOrderWorkbook(
         ? Math.round(i.dailySalesAvg * data.analysisDays)
         : null)
 
-    // BuyBox konumu — Trendyol default %18 komisyon + %1 stopaj varsayımı
+    // BuyBox konumu — gerçek Trendyol komisyon (dinamik, snapshot)
     const position = calculateBuyboxPosition({
       ourSalePrice: i.ourSalePrice,
       buyboxPrice: i.buyboxPrice,
       netPurchasePrice: i.netPrice,
-      commissionPct: 18,
-      withholdingPct: 1,
+      commissionPct: i.commissionPct ?? 19,
+      withholdingPct: i.withholdingPct ?? 1,
     })
+
+    // Kompakt Konum etiketi (uzun açıklama → cell.note ile tooltip)
+    const compactPositionLabel = (() => {
+      if (position.status === "no_data") return ""
+      const m = position.marginNow != null ? `${position.marginNow}m` : ""
+      const bb =
+        position.diffPctVsBB != null
+          ? `BB${position.diffPctVsBB >= 0 ? "+" : ""}${position.diffPctVsBB}%`
+          : ""
+      const emoji =
+        position.status === "profitable"
+          ? "🟢"
+          : position.status === "opportunity"
+            ? "🔵"
+            : position.status === "tight"
+              ? "🟡"
+              : "🔴"
+      return [emoji, bb, m].filter(Boolean).join(" · ")
+    })()
+
+    // Notlar — Formül satıştan düşükse uyarı
+    const notes: string[] = []
+    if (
+      i.formulaSalePrice != null &&
+      i.ourSalePrice != null &&
+      i.ourSalePrice < i.formulaSalePrice * 0.95
+    ) {
+      notes.push(`⚠ Fiyat artır — formül ₺${i.formulaSalePrice.toFixed(0)}`)
+    }
+    if (
+      i.mainPurchasePrice != null &&
+      i.netPrice > i.mainPurchasePrice * 1.15
+    ) {
+      const diff = ((i.netPrice / i.mainPurchasePrice - 1) * 100).toFixed(0)
+      notes.push(`Yeni alış %${diff} pahalı`)
+    }
 
     const rowData: Record<string, string | number | null> = {
       barcode: i.barcode,
@@ -174,15 +241,27 @@ export async function buildStyledOrderWorkbook(
       grossNetPrice: i.grossNetPrice,
       effectiveDiscountPct: i.effectiveDiscountPct, // 0 / null → numFmt boş gösterir
       netPrice: i.netPrice,
+      mainPurchasePrice: i.mainPurchasePrice,
+      formulaSalePrice: i.formulaSalePrice,
       buyboxPrice: i.buyboxPrice,
       ourSalePrice: i.ourSalePrice,
-      position: position.label,
+      position: compactPositionLabel,
+      notes: notes.join(" · "),
       suggestedQty: i.suggestedQty,
       qty: i.qty,
       lineTotal: i.lineTotal,
     }
     const row = ws.addRow(rowData)
     row.height = 22
+
+    // Konum hücresine tam açıklamayı yorum olarak ekle (kullanıcı tıklayınca görür)
+    if (position.status !== "no_data") {
+      const colIdx = cols.findIndex((c) => c.key === "position")
+      if (colIdx >= 0) {
+        const cell = row.getCell(colIdx + 1)
+        cell.note = position.label
+      }
+    }
 
     // Hücre stilleri
     cols.forEach((c, colIdx) => {

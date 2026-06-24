@@ -973,8 +973,8 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                                   ourSalePrice: item.ourSalePrice,
                                   buyboxPrice: item.buyboxPrice,
                                   netPurchasePrice: item.netPurchasePrice,
-                                  commissionPct: 18,
-                                  withholdingPct: 1,
+                                  commissionPct: item.commissionPct ?? 19,
+                                  withholdingPct: item.withholdingPct ?? 1,
                                 })
                                 if (pos.status === "no_data") return null
                                 return (

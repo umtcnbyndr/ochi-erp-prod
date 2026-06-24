@@ -6,6 +6,7 @@
  */
 import { prisma } from "@/lib/db"
 import type { SalesAnalysisItem } from "./sales-analysis"
+import { calculatePurchaseNetPrice } from "@/lib/pricing/purchase-net-price"
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -50,13 +51,6 @@ function pickEffectiveDiscountPct(
   return null
 }
 
-/** İndirim uygulanmış net alış. discountPct null/0 ise olduğu gibi. */
-function applyDiscount(price: number, discountPct: number | null): number {
-  if (discountPct == null || discountPct <= 0) return price
-  const factor = 1 - discountPct / 100
-  return Math.round(price * factor * 10000) / 10000
-}
-
 // ─── Create order ────────────────────────────────────────────
 
 export async function createPurchaseOrder(input: CreateOrderInput) {
@@ -70,14 +64,48 @@ export async function createPurchaseOrder(input: CreateOrderInput) {
     throw new Error("En az bir ürün için sipariş miktarı girilmeli")
   }
 
-  // Her kalem için etkin indirim ve indirilmiş net alış hesabı
+  // Net alış formülünü backend'de yeniden hesapla (tek doğru kaynak — client'ın
+  // gönderdiği değeri güvenmiyoruz). Bunun için her ürün için product+brand+vatRate
+  // gerekli — tek sorgu ile toplu çek (N+1 önlemi).
+  const productIds = validItems.map((i) => i.productId)
+  const productsForCalc = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    select: {
+      id: true,
+      vatRate: true,
+      brand: {
+        select: {
+          invoiceDiscount1: true,
+          invoiceDiscount2: true,
+          invoiceDiscount3: true,
+          yearEndDiscount1: true,
+          yearEndDiscount2: true,
+          yearEndDiscount3: true,
+          pharmacyMargin: true,
+        },
+      },
+    },
+  })
+  const productMap = new Map(productsForCalc.map((p) => [p.id, p]))
+
+  // Her kalem için etkin indirim + formülle yeniden hesaplanmış net alış
   const itemRows = validItems.map((i) => {
     const effDisc = pickEffectiveDiscountPct(
       input.brandDiscountPct ?? null,
       i.discountOverridePct ?? null,
     )
-    const discountedNet = applyDiscount(i.netPurchasePrice, effDisc)
-    return { ...i, effDisc, discountedNet }
+    const meta = productMap.get(i.productId)
+    if (!meta) {
+      throw new Error(`Product ${i.productId} bulunamadı (sipariş oluşturma)`)
+    }
+    const recalculatedNet = calculatePurchaseNetPrice({
+      listPrice: i.listPrice,
+      isVatIncluded: i.isVatIncluded,
+      vatRate: meta.vatRate,
+      brand: meta.brand,
+      extraDiscountPct: effDisc,
+    })
+    return { ...i, effDisc, discountedNet: recalculatedNet }
   })
 
   // Toplamlar — listPrice ham; netNet indirim uygulanmış
@@ -469,6 +497,7 @@ export async function getOrderExportData(orderId: number) {
               primaryBarcode: true,
               psf: true,
               streetStock: true,
+              mainPurchasePrice: true,
               brand: { select: { name: true } },
             },
           },
@@ -479,7 +508,19 @@ export async function getOrderExportData(orderId: number) {
   })
   if (!order) throw new Error("Sipariş bulunamadı")
 
-  return order
+  // Trendyol marketplace bilgisi — Konum hesabı + Formül satış için
+  const trendyol = await prisma.marketplace.findFirst({
+    where: { name: "Trendyol" },
+    select: {
+      commissionRate: true,
+      withholdingTax: true,
+      shippingCost: true,
+      extraCost: true,
+      targetProfit: true,
+    },
+  })
+
+  return { ...order, trendyol }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────

@@ -181,6 +181,14 @@ export async function getOrderExportDataAction(
     qty: number
     listPrice: number
     netPrice: number
+    /** DB'deki mevcut alış (Product.mainPurchasePrice) — kıyas için */
+    mainPurchasePrice: number | null
+    /** Net alıştan formülle hesaplanmış optimal satış (komisyon+kâr) */
+    formulaSalePrice: number | null
+    /** Trendyol etkin komisyon (% — Konum hesabı için) */
+    commissionPct: number | null
+    /** Trendyol stopaj (% — Konum hesabı için) */
+    withholdingPct: number | null
     /** Brüt (kampanya öncesi) net alış. Eğer indirim yoksa netPrice ile aynı. */
     grossNetPrice: number
     discountOverridePct: number | null
@@ -207,8 +215,28 @@ export async function getOrderExportDataAction(
         items: order.items.map((i) => {
           const netPrice = Number(i.netPurchasePrice)
           const effDisc = i.effectiveDiscountPct ? Number(i.effectiveDiscountPct) : null
-          // grossNetPrice: brüt (kampanya öncesi) net. Eski siparişlerde indirim yoksa eşit.
-          const grossNetPrice = effDisc && effDisc > 0 ? netPrice / (1 - effDisc / 100) : netPrice
+          // grossNetPrice: brüt (kampanya öncesi) net. Yeni formül BÖLME ile uygular,
+          // brüte dönmek için: netPrice × (1 + effDisc/100). Eski siparişlerde indirim
+          // yoksa netPrice ile eşit kalır.
+          const grossNetPrice =
+            effDisc && effDisc > 0 ? netPrice * (1 + effDisc / 100) : netPrice
+
+          // Formül satış — net alıştan komisyon+kâr formülüyle optimal satış
+          let formulaSalePrice: number | null = null
+          if (order.trendyol && netPrice > 0) {
+            const ty = order.trendyol
+            const targetProfit = Number(ty.targetProfit)
+            const commission = Number(ty.commissionRate)
+            const withholding = Number(ty.withholdingTax)
+            const shipping = Number(ty.shippingCost)
+            const extra = Number(ty.extraCost ?? 0)
+            const divisor = 1 - (commission + withholding + targetProfit) / 100
+            if (divisor > 0) {
+              formulaSalePrice =
+                Math.round(((netPrice + shipping + extra) / divisor) * 100) / 100
+            }
+          }
+
           return {
             barcode: i.product.primaryBarcode,
             name: i.product.name,
@@ -226,6 +254,12 @@ export async function getOrderExportDataAction(
             qty: i.orderedQty,
             listPrice: Number(i.listPrice),
             netPrice,
+            mainPurchasePrice: i.product.mainPurchasePrice
+              ? Number(i.product.mainPurchasePrice)
+              : null,
+            formulaSalePrice,
+            commissionPct: order.trendyol ? Number(order.trendyol.commissionRate) : null,
+            withholdingPct: order.trendyol ? Number(order.trendyol.withholdingTax) : null,
             grossNetPrice: Math.round(grossNetPrice * 10000) / 10000,
             discountOverridePct: i.discountOverridePct ? Number(i.discountOverridePct) : null,
             effectiveDiscountPct: effDisc,

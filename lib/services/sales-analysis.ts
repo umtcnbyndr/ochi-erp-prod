@@ -55,6 +55,13 @@ export interface SalesAnalysisItem {
   buyboxPrice: number | null         // son BuyBox observation
   buyboxRanking: number | null       // 1 = bizdeyiz
 
+  /** Trendyol etkin komisyon (% — kademeli tarife veya marketplace default). UI ve Excel'de Konum hesabı için kullanılır. */
+  commissionPct: number | null
+  /** Trendyol stopaj (%). */
+  withholdingPct: number | null
+  /** Formülden hesaplanmış optimal satış fiyatı (net alış × komisyon+kâr formülü). */
+  formulaSalePrice: number | null
+
   // Marj
   unitMarginTL: number | null        // satış - alış
   unitMarginPct: number | null       // % cinsinden
@@ -128,6 +135,8 @@ export async function getSalesAnalysis(
           yearEndDiscount1: true,
           yearEndDiscount2: true,
           yearEndDiscount3: true,
+          pharmacyMargin: true,
+          targetProfit: true,
         },
       },
       priceListItems: {
@@ -251,23 +260,28 @@ export async function getSalesAnalysis(
     const dailyAvg = analysisDays > 0 ? totalSold / analysisDays : 0
     const totalStock = p.mainStock + p.streetStock
 
-    const daysUntilStockout = dailyAvg > 0 ? Math.floor(totalStock / dailyAvg) : null
+    // Bitme süresi + önerim ANA STOK BAZLI olmalı (online satış ana depodan gider).
+    // Cadde stoğu eczane fiziksel satışındadır, online pazaryeri için satılamaz.
+    // E7 fix (2026-06-24): mainStock kullan, cadde sayma → 16 gün bug'ı çözer.
+    const stockForSale = p.mainStock
+    const daysUntilStockout =
+      dailyAvg > 0 ? Math.floor(stockForSale / dailyAvg) : null
 
-    // Stok durumu
+    // Stok durumu — ana stok bazlı (cadde varlığı yatıştırıcı değil)
     let stockStatus: SalesAnalysisItem["stockStatus"] = "no_data"
     if (daysUntilStockout !== null) {
       if (daysUntilStockout < 7) stockStatus = "critical"
       else if (daysUntilStockout < 21) stockStatus = "warning"
       else stockStatus = "ok"
-    } else if (totalStock === 0 && totalSold === 0) {
+    } else if (stockForSale === 0 && totalSold === 0) {
       stockStatus = "no_data"
     } else {
       stockStatus = "ok"
     }
 
-    // Önerilen sipariş miktarı
+    // Önerilen sipariş miktarı — ana stok bazlı
     const targetStock = Math.ceil(dailyAvg * targetStockDays)
-    const suggested = Math.max(0, targetStock - totalStock)
+    const suggested = Math.max(0, targetStock - stockForSale)
 
     // Liste fiyat & net alış hesabı
     const priceListItem = p.priceListItems[0] ?? null
@@ -333,6 +347,36 @@ export async function getSalesAnalysis(
     const buyboxData = buyboxMap.get(p.id)
     const buyboxPrice = buyboxData?.price ?? null
     const buyboxRanking = buyboxData?.ranking ?? null
+
+    // Marketplace (Trendyol) komisyon + stopaj — UI/Excel Konum hesabı için
+    const commissionPct = tyMp?.marketplace
+      ? toNumber(tyMp.marketplace.commissionRate)
+      : null
+    const withholdingPct = tyMp?.marketplace
+      ? toNumber(tyMp.marketplace.withholdingTax)
+      : null
+
+    // Formül satış — net alıştan optimal satış (komisyon + kâr formülü)
+    let formulaSalePrice: number | null = null
+    if (netPurchasePrice !== null && tyMp?.marketplace) {
+      try {
+        formulaSalePrice = calculateSalePrice({
+          netPurchasePrice,
+          marketplace: {
+            commissionRate: toNumber(tyMp.marketplace.commissionRate),
+            shippingCost: toNumber(tyMp.marketplace.shippingCost),
+            withholdingTax: toNumber(tyMp.marketplace.withholdingTax),
+            targetProfit: toNumber(tyMp.marketplace.targetProfit),
+            extraCost: toNumber(tyMp.marketplace.extraCost),
+          },
+          brandTargetProfit: p.brand?.targetProfit
+            ? toNumber(p.brand.targetProfit)
+            : undefined,
+        })
+      } catch {
+        formulaSalePrice = null
+      }
+    }
 
     // ─── Net Marj (komisyon + stopaj + kargo + ek maliyet düşülmüş) ───
     // 100 TL aldık, 200 TL sattık. Komisyon %20, stopaj %1, kargo 30 TL, ek 5 TL.
@@ -443,6 +487,10 @@ export async function getSalesAnalysis(
       ourSalePrice,
       buyboxPrice,
       buyboxRanking,
+
+      commissionPct,
+      withholdingPct,
+      formulaSalePrice,
 
       unitMarginTL,
       unitMarginPct,
