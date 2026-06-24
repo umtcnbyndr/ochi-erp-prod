@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { requirePermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/common/page-header"
 import {
   getStockSummary,
@@ -24,6 +25,11 @@ interface PageProps {
 }
 
 export default async function RaporlarPage({ searchParams }: PageProps) {
+  // Yetki guard — bu sayfa eskiden korumasızdı (giriş yapmış herkes açabiliyordu).
+  // Not: marka-bazlı veri kısıtı (SALES allowedBrandIds → rapor servisleri) ayrı
+  // tasarım işi — 7 rapor servisinin where'i değişecek, kullanıcı onayıyla yapılacak.
+  await requirePermission("raporlar", "view")
+
   const sp = await searchParams
   const tab =
     (sp.tab as

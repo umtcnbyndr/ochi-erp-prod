@@ -1183,6 +1183,7 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                                   netPurchasePrice: liveNet,
                                   commissionPct: item.commissionPct ?? 19,
                                   withholdingPct: item.withholdingPct ?? 1,
+                                  shippingCost: item.marketplaceAddCost ?? 0,
                                 })
                                 const expensive =
                                   liveNet != null &&

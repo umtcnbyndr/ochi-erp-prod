@@ -14,7 +14,17 @@ import crypto from "node:crypto"
 const ALGO = "aes-256-gcm"
 
 function getKey(): Buffer {
-  const secret = process.env.AUTH_SECRET ?? "dev-fallback-not-secure"
+  const secret = process.env.AUTH_SECRET
+  if (!secret) {
+    // Prod'da AUTH_SECRET zorunlu — yoksa Trendyol apiSecret bilinen anahtarla
+    // şifrelenir (güvenlik açığı). Dev'de sabit fallback ile devam.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "AUTH_SECRET tanımlı değil — production'da secret şifreleme için zorunlu.",
+      )
+    }
+    return crypto.scryptSync("dev-fallback-not-secure", "ochi-trendyol-salt", 32)
+  }
   return crypto.scryptSync(secret, "ochi-trendyol-salt", 32)
 }
 

@@ -356,13 +356,21 @@ export async function saveReconciliation(input: {
     if (!dbMap.has(orderNo)) dbMap.set(orderNo, o.id)
   }
 
+  // Mevcut kayıtları TEK sorguda çek (N+1 yerine) — created/updated sayımı + upsert için
+  const incomingIds = input.rows.map((r) => r.serviceOrderId)
+  const existingSet = new Set(
+    (
+      await prisma.trendyolOrderReconciliation.findMany({
+        where: { serviceOrderId: { in: incomingIds } },
+        select: { serviceOrderId: true },
+      })
+    ).map((x) => x.serviceOrderId),
+  )
+
   let created = 0
   let updated = 0
   for (const r of input.rows) {
     const dopigoOrderId = dbMap.get(r.serviceOrderId) ?? null
-    const existing = await prisma.trendyolOrderReconciliation.findUnique({
-      where: { serviceOrderId: r.serviceOrderId },
-    })
     const data = {
       serviceOrderId: r.serviceOrderId,
       dopigoOrderId,
@@ -386,16 +394,15 @@ export async function saveReconciliation(input: {
       importedBy: input.userId,
       rawJson: r.rawJson as Prisma.InputJsonValue,
     } satisfies Prisma.TrendyolOrderReconciliationUncheckedCreateInput
-    if (existing) {
-      await prisma.trendyolOrderReconciliation.update({
-        where: { id: existing.id },
-        data,
-      })
-      updated++
-    } else {
-      await prisma.trendyolOrderReconciliation.create({ data })
-      created++
-    }
+    // serviceOrderId @unique → upsert ile tek sorgu (idempotent; yarım kalırsa
+    // aynı Excel tekrar yüklenince tutarlı olur).
+    await prisma.trendyolOrderReconciliation.upsert({
+      where: { serviceOrderId: r.serviceOrderId },
+      create: data,
+      update: data,
+    })
+    if (existingSet.has(r.serviceOrderId)) updated++
+    else created++
   }
 
   return { created, updated }

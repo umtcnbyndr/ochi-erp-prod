@@ -50,9 +50,6 @@ export async function importDopigoSnapshot(
   const sheet = wb.Sheets[wb.SheetNames[0]]
   const rows = XLSX.utils.sheet_to_json<DopigoExcelRow>(sheet, { defval: null })
 
-  // Truncate önceki snapshot
-  await prisma.dopigoListing.deleteMany({})
-
   let withBarcode = 0
   const records: Prisma.DopigoListingCreateManyInput[] = []
 
@@ -81,19 +78,25 @@ export async function importDopigoSnapshot(
     })
   }
 
-  // createMany batch (PostgreSQL limit ~65K params; her record ~6 alan = 10K record/batch güvenli)
+  // Truncate + insert + run kaydı TEK transaction'da: batch ortada patlarsa eski
+  // snapshot silinmiş + yeni yarım kalmasın (ya hepsi ya hiçbiri).
   const BATCH = 1000
-  for (let i = 0; i < records.length; i += BATCH) {
-    const slice = records.slice(i, i + BATCH)
-    await prisma.dopigoListing.createMany({ data: slice })
-  }
-
-  const run = await prisma.dopigoSyncRun.create({
-    data: {
-      filename: opts.filename,
-      rowCount: rows.length,
+  const run = await prisma.$transaction(
+    async (tx) => {
+      await tx.dopigoListing.deleteMany({})
+      for (let i = 0; i < records.length; i += BATCH) {
+        const slice = records.slice(i, i + BATCH)
+        await tx.dopigoListing.createMany({ data: slice })
+      }
+      return tx.dopigoSyncRun.create({
+        data: {
+          filename: opts.filename,
+          rowCount: rows.length,
+        },
+      })
     },
-  })
+    { timeout: 30_000 },
+  )
 
   return {
     runId: run.id,

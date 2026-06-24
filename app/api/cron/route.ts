@@ -14,6 +14,7 @@
  *   saatte 1  → /api/cron?secret=XXX&job=buybox
  *   gece 3'te → /api/cron?secret=XXX&job=rematch
  */
+import crypto from "node:crypto"
 import { NextResponse, type NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import {
@@ -25,12 +26,20 @@ import { refreshBuyboxForProducts } from "@/lib/services/price-recommendation"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300 // buybox toplu çekim uzun sürebilir
 
+/** Uzunluk sızdırmadan sabit-zamanlı karşılaştırma (sha256 digest üzerinden). */
+function safeEqual(a: string | null | undefined, b: string): boolean {
+  if (!a) return false
+  const ha = crypto.createHash("sha256").update(a).digest()
+  const hb = crypto.createHash("sha256").update(b).digest()
+  return crypto.timingSafeEqual(ha, hb)
+}
+
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
   if (!secret) return false
   const q = req.nextUrl.searchParams.get("secret")
   const h = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
-  return q === secret || h === secret
+  return safeEqual(q, secret) || safeEqual(h, secret)
 }
 
 export async function GET(req: NextRequest) {

@@ -24,6 +24,32 @@
 5. **[araştır] Dopigo eşleştirme önerileri** — XML feed (foreign_sku/barcode + çok-kanal kategori mapping) ile eşleşmemiş ürün/kanal tespiti + öneri. Kapsam netleşecek (tartışılıyor).
 6. **[sürekli] E-ticaret danışmanlığı** — bu sohbette; sistem + prod veri görünür, proaktif içgörü. Aksiyon değil.
 
+**📌 Açık kuyruk (2026-06-24):**
+- **Ürün 887 (Anthelios Uvmune Fluid, barkod 3337875917407) hâlâ 0/0** — Fix #1 (barkod-skip) deploy oldu ama 887 çözülmedi. Excel'de o satırın gerçek barkod+Tria kodu nedir, soruşturma kuyrukta.
+- **Eşleşmeyen kalem 1.098 (+36/hafta artıyor)** — re-match taraması ve/veya "bizim değil" etiketi gerek.
+- **Çift Trendyol listing (7 ürün)** — Vichy ters-veri net hata, hemen düzeltilebilir; diğer 6 için Trendyol teyidi gerek.
+- **Cron Scheduled Tasks Coolify'da kurulmadı** — Dopigo 20dk + BuyBox saatlik; endpoint çalışıyor, otomatik tetik yok.
+- **5433 firewall** sende kalmıştı (prod DB dış erişim).
+- **Güvenlik denetiminden O1-O5** — AUTH_SECRET ayır, güvenlik header, login rate-limit IP+username, CI, kritik yol testleri.
+
+**🔍 Kapsamlı denetim bulguları (2026-06-25):**
+
+_P0 — SENİN aksiyonun (kod değil, veri):_
+- **79 üründe alış yok ama satış var** → net kâr şişik. `mainPurchasePrice` NULL 410/565 aktif üründe; 79'u satışlı + ManualPurchasePrice de yok (COGS=0). → Eksik Alış'tan o ürünlere alış gir.
+- **Haziran mutabakatı yüklenmemiş** — `TrendyolOrderReconciliation` sadece 2026-05 var. Haziran kârı tahminle hesaplanıyor. → `/finans/mutabakat`'tan Haziran Excel yükle.
+- **Sipariş #2: 34 gündür CONFIRMED, ₺433K** — geldiyse kapat, gelmediyse beklet (sen kontrol edeceksin).
+- **561 Dopigo satışı eşleşmemiş (~%11)** — ürün-bazlı kâr/hızdan düşüyor (rematch/etiket gerek).
+
+_✅ Bu denetimde yapıldı (kod, deploy edildi):_
+- Zombie 2 RUNNING sync kaydı temizlendi (id 7,8); `dopigo-import` truncate+insert transaction'a alındı; `saveReconciliation` N+1 → upsert.
+- AUTH_SECRET prod'da yoksa fail-fast; cron secret timing-safe.
+- `/raporlar` artık `requirePermission` ile korumalı (eskiden açıktı).
+- Builder margin hesabına kargo+ek maliyet geçirildi; effective-commission (kademeli) testleri (+9).
+
+_⏳ Tasarım gerektiren (sen uyanınca konuşulacak):_
+- **SALES marka-veri kısıtı raporlar+fiyat-kontrol'de aggregate seviyede eksik** — 7 rapor servisinin where'ine `allowedBrandIds` eklenecek (1 gerçek SALES kullanıcı var, 4 markalı). Para/SQL mantığı → tasarım sonrası.
+- **Sync zombie kalıcı çözüm** — startup-sweep: 1 günden eski RUNNING → FAILED.
+
 **📝 User'ın işaretledikleri (kapsam sonra detaylandırılacak — 2026-06-11):**
 - **Komisyon tarifeleri eksikleri** — eksik kalan kısımlar var (hangi pazaryeri/kademe/ürün? sonra netleştir).
 - **Hepsiburada** — entegrasyon + komisyon + mutabakat (şu an sadece Trendyol var).
