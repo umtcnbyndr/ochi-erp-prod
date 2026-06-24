@@ -777,6 +777,32 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                           </TooltipContent>
                         </Tooltip>
                       </TableHead>
+                      <TableHead className="text-right">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center justify-end gap-1 cursor-help">
+                              Ek İsk. %
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[260px]">
+                            Ürün bazlı ek iskonto (% — sadece bu sipariş için). Boşsa marka geneli oranı uygulanır.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center justify-end gap-1 cursor-help">
+                              Formül Satış
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[280px]">
+                            Net alıştan formülle (komisyon+stopaj+hedef kâr) çıkan optimal satış. Bizim Satış bunun altındaysa zarar/düşük marj.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableHead>
                       <TableHead className="text-right">Bizim Satış</TableHead>
                       <TableHead className="text-right">BuyBox</TableHead>
                       <TableHead className="text-right">Marj</TableHead>
@@ -787,7 +813,7 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                   <TableBody>
                     {filteredItems.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={19} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={21} className="text-center py-8 text-muted-foreground">
                           Filtreye uyan ürün yok
                         </TableCell>
                       </TableRow>
@@ -943,10 +969,79 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                               {item.mainPurchasePrice !== null ? item.mainPurchasePrice.toFixed(2) : "—"}
                             </TableCell>
                             <TableCell className="text-right tabular-nums font-medium">
-                              {item.netPurchasePrice !== null ? item.netPurchasePrice.toFixed(2) : "—"}
+                              {(() => {
+                                if (item.netPurchasePrice === null) return "—"
+                                const override = itemDiscounts.get(item.productId)
+                                const effDisc =
+                                  override != null && Number.isFinite(override) && override > 0
+                                    ? override
+                                    : brandDiscountPct ?? 0
+                                const discountedNet =
+                                  effDisc > 0
+                                    ? item.netPurchasePrice / (1 + effDisc / 100)
+                                    : item.netPurchasePrice
+                                return (
+                                  <>
+                                    <div>{discountedNet.toFixed(2)}</div>
+                                    {effDisc > 0 && (
+                                      <div className="text-[9px] text-emerald-600 tabular-nums">
+                                        −%{effDisc.toFixed(1)} (brüt {item.netPurchasePrice.toFixed(0)})
+                                      </div>
+                                    )}
+                                  </>
+                                )
+                              })()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                step="0.5"
+                                min="0"
+                                max="100"
+                                value={itemDiscounts.get(item.productId)?.toString() ?? ""}
+                                onChange={(e) => {
+                                  const v = parseFloat(e.target.value.replace(",", "."))
+                                  setItemDiscounts((prev) => {
+                                    const next = new Map(prev)
+                                    if (Number.isFinite(v) && v > 0) next.set(item.productId, v)
+                                    else next.delete(item.productId)
+                                    return next
+                                  })
+                                }}
+                                placeholder={brandDiscountPct != null ? `%${brandDiscountPct.toFixed(1)}` : "—"}
+                                className="h-7 w-16 text-right text-[11px] tabular-nums ml-auto"
+                              />
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
-                              {item.ourSalePrice !== null ? item.ourSalePrice.toFixed(2) : "—"}
+                              {item.formulaSalePrice !== null ? (
+                                <span
+                                  className={
+                                    item.ourSalePrice !== null &&
+                                    item.ourSalePrice < item.formulaSalePrice * 0.95
+                                      ? "text-red-600 font-semibold"
+                                      : "text-emerald-700"
+                                  }
+                                >
+                                  {item.formulaSalePrice.toFixed(2)}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {item.ourSalePrice !== null ? (
+                                <>
+                                  {item.ourSalePrice.toFixed(2)}
+                                  {item.formulaSalePrice !== null &&
+                                    item.ourSalePrice < item.formulaSalePrice * 0.95 && (
+                                      <div className="text-[9px] text-red-600">
+                                        ⚠ formülden düşük
+                                      </div>
+                                    )}
+                                </>
+                              ) : (
+                                "—"
+                              )}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {item.buyboxPrice !== null ? (
