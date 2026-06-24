@@ -43,57 +43,113 @@ export interface PurchaseNetPriceInput {
   extraDiscountPct?: number | null
 }
 
-export function calculatePurchaseNetPrice({
+/** Net alış hesabının ara adımları — UI/Excel kolonlarında zincir göstermek için. */
+export interface NetPriceSteps {
+  /** Liste fiyatı KDV'siz hale getirilmiş (giriş KDV dahilse çıkarılmış) */
+  listVatExcluded: number
+  /** Ek iskonto sonrası */
+  afterExtra: number
+  /** Fatura altı iskontolar sonrası */
+  afterInvoice: number
+  /** Yıl sonu iskontolar sonrası */
+  afterYearEnd: number
+  /** Eczane kâr payı uygulandıktan sonra (KDV hariç) */
+  afterPharmacy: number
+  /** Net alış — KDV dahil (final) */
+  net: number
+  /** Uygulanan toplam fatura altı % (gösterim için, slot'ların birleşik etkisi) */
+  invoicePctLabel: number[]
+  /** Uygulanan toplam yıl sonu % */
+  yearEndPctLabel: number[]
+  /** Eczane kâr payı % */
+  pharmacyMarginPct: number
+}
+
+export function calculateNetPriceSteps({
   listPrice,
   isVatIncluded,
   vatRate,
   brand,
   extraDiscountPct,
-}: PurchaseNetPriceInput): number {
-  let p = toNumber(listPrice)
-  if (p <= 0) return 0
-
+}: PurchaseNetPriceInput): NetPriceSteps {
   const vat = toNumber(vatRate)
+  let p = toNumber(listPrice)
 
-  // 1. Liste fiyatı KDV dahilse → önce KDV'yi çıkar (KDV'siz hale getir)
-  // Sonra iskonto + eczane uygulanır, en son KDV yine eklenir.
-  if (isVatIncluded && vat > 0) {
-    p /= 1 + vat / 100
+  const zero: NetPriceSteps = {
+    listVatExcluded: 0,
+    afterExtra: 0,
+    afterInvoice: 0,
+    afterYearEnd: 0,
+    afterPharmacy: 0,
+    net: 0,
+    invoicePctLabel: [],
+    yearEndPctLabel: [],
+    pharmacyMarginPct: 0,
   }
+  if (p <= 0) return zero
 
-  // 2. Ek iskonto — en başta (sipariş bazlı, kampanya/dönemsel)
+  // 1. KDV dahilse çıkar
+  if (isVatIncluded && vat > 0) p /= 1 + vat / 100
+  const listVatExcluded = round4(p)
+
+  // 2. Ek iskonto (en başta)
   if (extraDiscountPct != null && extraDiscountPct > 0) {
     p /= 1 + extraDiscountPct / 100
   }
+  const afterExtra = round4(p)
 
-  // 3. Fatura altı iskontolar (sırayla bölme)
-  const inv1 = toNumber(brand.invoiceDiscount1)
-  if (inv1 > 0) p /= 1 + inv1 / 100
+  // 3. Fatura altı iskontolar
+  const invoicePctLabel: number[] = []
+  for (const d of [
+    toNumber(brand.invoiceDiscount1),
+    toNumber(brand.invoiceDiscount2),
+    toNumber(brand.invoiceDiscount3),
+  ]) {
+    if (d > 0) {
+      p /= 1 + d / 100
+      invoicePctLabel.push(d)
+    }
+  }
+  const afterInvoice = round4(p)
 
-  const inv2 = toNumber(brand.invoiceDiscount2)
-  if (inv2 > 0) p /= 1 + inv2 / 100
+  // 4. Yıl sonu iskontolar
+  const yearEndPctLabel: number[] = []
+  for (const d of [
+    toNumber(brand.yearEndDiscount1),
+    toNumber(brand.yearEndDiscount2),
+    toNumber(brand.yearEndDiscount3),
+  ]) {
+    if (d > 0) {
+      p /= 1 + d / 100
+      yearEndPctLabel.push(d)
+    }
+  }
+  const afterYearEnd = round4(p)
 
-  const inv3 = toNumber(brand.invoiceDiscount3)
-  if (inv3 > 0) p /= 1 + inv3 / 100
-
-  // 4. Yıl sonu iskontolar (sırayla bölme)
-  const yed1 = toNumber(brand.yearEndDiscount1)
-  if (yed1 > 0) p /= 1 + yed1 / 100
-
-  const yed2 = toNumber(brand.yearEndDiscount2)
-  if (yed2 > 0) p /= 1 + yed2 / 100
-
-  const yed3 = toNumber(brand.yearEndDiscount3)
-  if (yed3 > 0) p /= 1 + yed3 / 100
-
-  // 5. Eczane kâr payı — çarp (bizim kârımız net alışa eklenir)
+  // 5. Eczane kâr payı (çarp)
   const margin = brand.pharmacyMargin != null ? toNumber(brand.pharmacyMargin) : 0
   if (margin > 0) p *= 1 + margin / 100
+  const afterPharmacy = round4(p)
 
-  // 6. KDV — en son (sonuç KDV dahil)
+  // 6. KDV — en son
   if (vat > 0) p *= 1 + vat / 100
+  const net = round4(p)
 
-  return round4(p)
+  return {
+    listVatExcluded,
+    afterExtra,
+    afterInvoice,
+    afterYearEnd,
+    afterPharmacy,
+    net,
+    invoicePctLabel,
+    yearEndPctLabel,
+    pharmacyMarginPct: margin,
+  }
+}
+
+export function calculatePurchaseNetPrice(input: PurchaseNetPriceInput): number {
+  return calculateNetPriceSteps(input).net
 }
 
 /**

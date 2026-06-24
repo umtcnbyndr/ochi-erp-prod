@@ -50,6 +50,17 @@ export interface SalesAnalysisItem {
   isVatIncluded: boolean
   netPurchasePrice: number | null   // hesaplanmış (KDV dahil, iskontolar uygulanmış)
 
+  /** Marka iskonto verisi — UI'da net alış zincirini canlı hesaplamak için. */
+  brandPricing: {
+    invoiceDiscount1: number
+    invoiceDiscount2: number
+    invoiceDiscount3: number
+    yearEndDiscount1: number
+    yearEndDiscount2: number
+    yearEndDiscount3: number
+    pharmacyMargin: number
+  } | null
+
   // Satış fiyatı (Trendyol marketplace üzerinden)
   ourSalePrice: number | null       // formula veya manualOverride veya recommended
   buyboxPrice: number | null         // son BuyBox observation
@@ -59,6 +70,10 @@ export interface SalesAnalysisItem {
   commissionPct: number | null
   /** Trendyol stopaj (%). */
   withholdingPct: number | null
+  /** Hedef kâr (% — brand override veya marketplace default). İnternet satış canlı hesabı için. */
+  targetProfitPct: number | null
+  /** Kargo + ek maliyet (TL) — formül payına eklenir. */
+  marketplaceAddCost: number | null
   /** Formülden hesaplanmış optimal satış fiyatı (net alış × komisyon+kâr formülü). */
   formulaSalePrice: number | null
 
@@ -355,6 +370,15 @@ export async function getSalesAnalysis(
     const withholdingPct = tyMp?.marketplace
       ? toNumber(tyMp.marketplace.withholdingTax)
       : null
+    // Hedef kâr (brand override > marketplace) + ek maliyet — İnternet satış canlı hesabı
+    const targetProfitPct = tyMp?.marketplace
+      ? p.brand?.targetProfit && Number(p.brand.targetProfit) > 0
+        ? Number(p.brand.targetProfit)
+        : toNumber(tyMp.marketplace.targetProfit)
+      : null
+    const marketplaceAddCost = tyMp?.marketplace
+      ? toNumber(tyMp.marketplace.shippingCost) + toNumber(tyMp.marketplace.extraCost)
+      : null
 
     // Formül satış — net alıştan optimal satış (komisyon + kâr formülü)
     let formulaSalePrice: number | null = null
@@ -484,12 +508,24 @@ export async function getSalesAnalysis(
       isVatIncluded,
       netPurchasePrice,
 
+      brandPricing: {
+        invoiceDiscount1: Number(p.brand.invoiceDiscount1),
+        invoiceDiscount2: Number(p.brand.invoiceDiscount2),
+        invoiceDiscount3: Number(p.brand.invoiceDiscount3),
+        yearEndDiscount1: Number(p.brand.yearEndDiscount1),
+        yearEndDiscount2: Number(p.brand.yearEndDiscount2),
+        yearEndDiscount3: Number(p.brand.yearEndDiscount3),
+        pharmacyMargin: Number(p.brand.pharmacyMargin),
+      },
+
       ourSalePrice,
       buyboxPrice,
       buyboxRanking,
 
       commissionPct,
       withholdingPct,
+      targetProfitPct,
+      marketplaceAddCost,
       formulaSalePrice,
 
       unitMarginTL,

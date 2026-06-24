@@ -30,6 +30,7 @@ import {
   calculateBuyboxPosition,
   BUYBOX_POSITION_COLORS,
 } from "@/lib/pricing/buybox-position"
+import { calculateNetPriceSteps } from "@/lib/pricing/purchase-net-price"
 
 interface BrandOption {
   id: number
@@ -710,83 +711,36 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[200px]">Ürün</TableHead>
-                      <TableHead className="text-center w-24">
-                        <SortableHead col="priority">Öncelik</SortableHead>
-                      </TableHead>
-                      <TableHead className="text-center w-16">
-                        <SortableHead col="lifetime">Lifetime</SortableHead>
-                      </TableHead>
                       <TableHead className="text-center">
                         <SortableHead col="stock">Stok</SortableHead>
                       </TableHead>
                       <TableHead className="text-center">Ecz. Stok</TableHead>
                       <TableHead className="text-center">
-                        <SortableHead col="sales">Günlük Satış</SortableHead>
-                      </TableHead>
-                      <TableHead className="text-center">
-                        <SortableHead col="stockout">Bitme</SortableHead>
-                      </TableHead>
-                      <TableHead className="text-center">
-                        <SortableHead col="views">Görüntü</SortableHead>
-                      </TableHead>
-                      <TableHead className="text-center">
-                        <SortableHead col="carts">Sepet</SortableHead>
-                      </TableHead>
-                      <TableHead className="text-center">
-                        <SortableHead col="trend">Trend</SortableHead>
-                      </TableHead>
-                      <TableHead className="text-center">
-                        <SortableHead col="conversion">Dönüşüm</SortableHead>
+                        <SortableHead col="sales">Satış ({analysisDays}g)</SortableHead>
                       </TableHead>
                       <TableHead className="text-right">
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="flex items-center justify-end gap-1 cursor-help">
-                              Liste Fiyat
+                              Liste (KDV&apos;siz)
                               <Info className="h-3 w-3 text-muted-foreground" />
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-[220px]">
-                            Marka liste fiyat Excel&apos;inden gelen fiyat
+                            Marka liste fiyatı (KDV hariç)
                           </TooltipContent>
                         </Tooltip>
                       </TableHead>
-                      <TableHead className="text-right">
+                      <TableHead className="text-center w-20">
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="flex items-center justify-end gap-1 cursor-help">
-                              Mevcut Alış
-                              <Info className="h-3 w-3 text-muted-foreground" />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="max-w-[250px]">
-                            Şu anki ağırlıklı ortalama alış fiyatınız (DB&apos;deki değer)
-                          </TooltipContent>
-                        </Tooltip>
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center justify-end gap-1 cursor-help">
-                              Net Alış
-                              <Info className="h-3 w-3 text-muted-foreground" />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="max-w-[280px]">
-                            Liste fiyattan iskontolar uygulanarak hesaplanan net alış (KDV dahil)
-                          </TooltipContent>
-                        </Tooltip>
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center justify-end gap-1 cursor-help">
-                              Ek İsk. %
+                            <span className="flex items-center justify-center gap-1 cursor-help">
+                              Ek İsk.
                               <Info className="h-3 w-3 text-muted-foreground" />
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-[260px]">
-                            Ürün bazlı ek iskonto (% — sadece bu sipariş için). Boşsa marka geneli oranı uygulanır.
+                            Ürün bazlı ek iskonto (%). Buraya yazınca sağdaki tüm sütunlar (fatura altı, yıl sonu, eczane, net, satış) canlı güncellenir. Boşsa marka geneli oranı uygulanır.
                           </TooltipContent>
                         </Tooltip>
                       </TableHead>
@@ -794,18 +748,69 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="flex items-center justify-end gap-1 cursor-help">
-                              Formül Satış
+                              Fatura Altı
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px]">
+                            Fatura altı iskonto uygulandıktan sonraki fiyat (KDV hariç)
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center justify-end gap-1 cursor-help">
+                              Yıl Sonu
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px]">
+                            Yıl sonu iskonto uygulandıktan sonraki fiyat (KDV hariç)
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center justify-end gap-1 cursor-help">
+                              Eczane Kâr
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px]">
+                            Eczane kâr payı eklendikten sonraki fiyat (KDV hariç)
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center justify-end gap-1 cursor-help font-semibold">
+                              Net Alış
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[260px]">
+                            Net alış — KDV dahil (tüm iskontolar + eczane kâr uygulanmış). Altta mevcut alış kıyas.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center justify-end gap-1 cursor-help">
+                              İnternet Satış
                               <Info className="h-3 w-3 text-muted-foreground" />
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-[280px]">
-                            Net alıştan formülle (komisyon+stopaj+hedef kâr) çıkan optimal satış. Bizim Satış bunun altındaysa zarar/düşük marj.
+                            Net alıştan formülle (komisyon+stopaj+hedef kâr) çıkan optimal satış fiyatı.
                           </TooltipContent>
                         </Tooltip>
                       </TableHead>
-                      <TableHead className="text-right">Bizim Satış</TableHead>
                       <TableHead className="text-right">BuyBox</TableHead>
-                      <TableHead className="text-right">Marj</TableHead>
+                      <TableHead className="min-w-[150px]">Not</TableHead>
                       <TableHead className="text-center">Öneri</TableHead>
                       <TableHead className="text-center w-24">Sipariş</TableHead>
                     </TableRow>
@@ -813,186 +818,107 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                   <TableBody>
                     {filteredItems.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={21} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={15} className="text-center py-8 text-muted-foreground">
                           Filtreye uyan ürün yok
                         </TableCell>
                       </TableRow>
                     ) : (
                       filteredItems.map((item) => {
                         const qty = quantities.get(item.productId) ?? 0
-                        const isCritical = item.stockStatus === "critical"
-                        const isWarning = item.stockStatus === "warning"
                         const noListPrice = item.listPrice === null
                         const itemBacklog = backlog.filter((b) => b.productId === item.productId)
-                        const priorityInfo = ORDER_PRIORITY_LABELS[item.priority]
+
+                        // ─── Net alış zinciri (canlı — ek iskontoya göre) ───
+                        const override = itemDiscounts.get(item.productId)
+                        const effDisc =
+                          override != null && Number.isFinite(override) && override > 0
+                            ? override
+                            : brandDiscountPct ?? 0
+                        const steps =
+                          item.listPrice !== null && item.brandPricing
+                            ? calculateNetPriceSteps({
+                                listPrice: item.listPrice,
+                                isVatIncluded: item.isVatIncluded,
+                                vatRate: item.vatRate,
+                                brand: item.brandPricing,
+                                extraDiscountPct: effDisc,
+                              })
+                            : null
+                        // İnternet satış — canlı net'ten formülle yeniden hesap
+                        const liveNet = steps?.net ?? null
+                        const internetSale =
+                          liveNet != null &&
+                          item.targetProfitPct != null &&
+                          item.commissionPct != null &&
+                          item.withholdingPct != null
+                            ? (() => {
+                                const divisor =
+                                  1 -
+                                  (item.commissionPct! +
+                                    item.withholdingPct! +
+                                    item.targetProfitPct!) /
+                                    100
+                                if (divisor <= 0) return null
+                                return (liveNet + (item.marketplaceAddCost ?? 0)) / divisor
+                              })()
+                            : item.formulaSalePrice
+                        const fmt = (n: number) =>
+                          n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
                         return (
-                          <TableRow
-                            key={item.productId}
-                            className={
-                              item.priority === "URGENT"
-                                ? "bg-red-50/50 dark:bg-red-950/20"
-                                : item.priority === "HIGH"
-                                ? "bg-orange-50/50 dark:bg-orange-950/20"
-                                : ""
-                            }
-                          >
+                          <TableRow key={item.productId}>
+                            {/* Ürün */}
                             <TableCell>
                               <div className="font-medium leading-tight">{item.productName}</div>
                               <div className="text-[10px] text-muted-foreground font-mono">
                                 {item.primaryBarcode}{" "}
                                 <span className="ml-1">{item.brandName}</span>
                               </div>
-                              {item.priorityReasons.length > 0 && (
-                                <div className="text-[10px] text-muted-foreground mt-0.5 italic">
-                                  {item.priorityReasons.join(" · ")}
-                                </div>
-                              )}
                               {itemBacklog.length > 0 && (
                                 <div className="text-[10px] text-orange-600 flex items-center gap-1 mt-0.5">
                                   <AlertTriangle className="h-3 w-3" />
                                   {itemBacklog
-                                    .map(
-                                      (b) =>
-                                        `#${b.orderId}'den ${b.remainingQty} adet bakiye`
-                                    )
+                                    .map((b) => `#${b.orderId}'den ${b.remainingQty} adet bakiye`)
                                     .join(", ")}
                                 </div>
                               )}
                             </TableCell>
-                            <TableCell className="text-center">
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold ${priorityInfo.className}`}
-                                title={`Skor: ${item.priorityScore}/100`}
-                              >
-                                {priorityInfo.emoji} {priorityInfo.label}
-                              </span>
-                              <div className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
-                                {item.priorityScore}/100
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <LifetimeBadge score={item.lifetimeScore} size="compact" />
-                            </TableCell>
+                            {/* Stok */}
                             <TableCell className="text-center tabular-nums font-medium">
-                              {item.mainStock}
+                              {item.mainStock === 0 ? (
+                                <span className="text-red-600">0</span>
+                              ) : (
+                                item.mainStock
+                              )}
                             </TableCell>
+                            {/* Ecz. Stok */}
                             <TableCell className="text-center tabular-nums">
                               {item.streetStock > 0 ? (
-                                <span className="text-blue-600 font-medium">
-                                  {item.streetStock}
-                                </span>
+                                <span className="text-blue-600 font-medium">{item.streetStock}</span>
                               ) : (
                                 <span className="text-muted-foreground">—</span>
                               )}
                             </TableCell>
+                            {/* Satış (Ng) */}
                             <TableCell className="text-center tabular-nums">
-                              {item.dailySalesAvg > 0 ? item.dailySalesAvg.toFixed(2) : "—"}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {item.daysUntilStockout !== null ? (
-                                <Badge
-                                  variant={isCritical ? "destructive" : isWarning ? "default" : "secondary"}
-                                  className="text-[10px] tabular-nums"
-                                >
-                                  {item.daysUntilStockout} gün
-                                </Badge>
+                              {item.totalSold > 0 ? (
+                                <span className="font-medium">{item.totalSold}</span>
                               ) : (
-                                <span className="text-muted-foreground">—</span>
+                                <span className="text-muted-foreground">0</span>
                               )}
                             </TableCell>
-                            {/* Trendyol Favorilenme: Görüntü / Sepet / Trend / Dönüşüm */}
-                            <TableCell className="text-center tabular-nums text-xs">
-                              {item.weeklyViews != null
-                                ? item.weeklyViews.toLocaleString("tr-TR")
-                                : <span className="text-muted-foreground">—</span>}
-                            </TableCell>
-                            <TableCell className="text-center tabular-nums text-xs">
-                              {item.cartAdds != null && item.cartAdds > 0 ? (
-                                <span className="font-medium text-pink-600">
-                                  {item.cartAdds.toLocaleString("tr-TR")}
-                                </span>
-                              ) : item.cartAdds === 0 ? (
-                                "0"
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-center tabular-nums text-xs">
-                              {item.trendScore != null ? (
-                                <span
-                                  className={
-                                    item.trendScore >= 0.2
-                                      ? "text-emerald-600 font-medium"
-                                      : item.trendScore <= -0.2
-                                      ? "text-red-600 font-medium"
-                                      : "text-muted-foreground"
-                                  }
-                                >
-                                  {item.trendScore > 0 ? "+" : ""}
-                                  {(item.trendScore * 100).toFixed(0)}%
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-center tabular-nums text-xs">
-                              {item.conversionRate != null ? (
-                                <span
-                                  className={
-                                    item.conversionRate >= 0.05
-                                      ? "text-emerald-600 font-medium"
-                                      : ""
-                                  }
-                                >
-                                  %{(item.conversionRate * 100).toFixed(1)}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
+                            {/* Liste (KDV'siz) */}
                             <TableCell className="text-right tabular-nums">
-                              {item.listPrice !== null ? (
-                                <>
-                                  {item.listPrice.toFixed(2)}
-                                  <span className="text-[10px] text-muted-foreground block">
-                                    {item.isVatIncluded ? "KDV dahil" : "KDV hariç"}
-                                  </span>
-                                </>
+                              {steps !== null ? (
+                                fmt(steps.listVatExcluded)
                               ) : (
-                                <span className="text-orange-500 text-[11px]" title="Marka liste fiyat Excel'i yüklenmemiş veya bu ürün listede yok">
+                                <span className="text-orange-500 text-[11px]" title="Marka liste fiyatı yok">
                                   Liste yok
                                 </span>
                               )}
                             </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {item.mainPurchasePrice !== null ? item.mainPurchasePrice.toFixed(2) : "—"}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums font-medium">
-                              {(() => {
-                                if (item.netPurchasePrice === null) return "—"
-                                const override = itemDiscounts.get(item.productId)
-                                const effDisc =
-                                  override != null && Number.isFinite(override) && override > 0
-                                    ? override
-                                    : brandDiscountPct ?? 0
-                                const discountedNet =
-                                  effDisc > 0
-                                    ? item.netPurchasePrice / (1 + effDisc / 100)
-                                    : item.netPurchasePrice
-                                return (
-                                  <>
-                                    <div>{discountedNet.toFixed(2)}</div>
-                                    {effDisc > 0 && (
-                                      <div className="text-[9px] text-emerald-600 tabular-nums">
-                                        −%{effDisc.toFixed(1)} (brüt {item.netPurchasePrice.toFixed(0)})
-                                      </div>
-                                    )}
-                                  </>
-                                )
-                              })()}
-                            </TableCell>
-                            <TableCell className="text-right">
+                            {/* Ek İsk. (input) */}
+                            <TableCell className="text-center">
                               <Input
                                 type="number"
                                 step="0.5"
@@ -1009,44 +935,96 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                                   })
                                 }}
                                 placeholder={brandDiscountPct != null ? `%${brandDiscountPct.toFixed(1)}` : "—"}
-                                className="h-7 w-16 text-right text-[11px] tabular-nums ml-auto"
+                                className="h-7 w-16 text-right text-[11px] tabular-nums mx-auto"
                               />
                             </TableCell>
+                            {/* Fatura Altı */}
                             <TableCell className="text-right tabular-nums">
-                              {item.formulaSalePrice !== null ? (
-                                <span
-                                  className={
-                                    item.ourSalePrice !== null &&
-                                    item.ourSalePrice < item.formulaSalePrice * 0.95
-                                      ? "text-red-600 font-semibold"
-                                      : "text-emerald-700"
-                                  }
-                                >
-                                  {item.formulaSalePrice.toFixed(2)}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {item.ourSalePrice !== null ? (
+                              {steps !== null ? (
                                 <>
-                                  {item.ourSalePrice.toFixed(2)}
-                                  {item.formulaSalePrice !== null &&
-                                    item.ourSalePrice < item.formulaSalePrice * 0.95 && (
-                                      <div className="text-[9px] text-red-600">
-                                        ⚠ formülden düşük
-                                      </div>
-                                    )}
+                                  <div>{fmt(steps.afterInvoice)}</div>
+                                  {steps.invoicePctLabel.length > 0 && (
+                                    <div className="text-[9px] text-muted-foreground">
+                                      −%{steps.invoicePctLabel.join("+%")}
+                                    </div>
+                                  )}
                                 </>
                               ) : (
                                 "—"
                               )}
                             </TableCell>
+                            {/* Yıl Sonu */}
+                            <TableCell className="text-right tabular-nums">
+                              {steps !== null ? (
+                                <>
+                                  <div>{fmt(steps.afterYearEnd)}</div>
+                                  {steps.yearEndPctLabel.length > 0 && (
+                                    <div className="text-[9px] text-muted-foreground">
+                                      −%{steps.yearEndPctLabel.join("+%")}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                            {/* Eczane Kâr */}
+                            <TableCell className="text-right tabular-nums">
+                              {steps !== null ? (
+                                <>
+                                  <div>{fmt(steps.afterPharmacy)}</div>
+                                  {steps.pharmacyMarginPct > 0 && (
+                                    <div className="text-[9px] text-emerald-600">
+                                      +%{steps.pharmacyMarginPct}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                            {/* Net Alış (KDV'li) */}
+                            <TableCell className="text-right tabular-nums font-semibold">
+                              {steps !== null ? (
+                                <>
+                                  <div>{fmt(steps.net)}</div>
+                                  {effDisc > 0 && (
+                                    <div className="text-[9px] text-emerald-600 font-normal">
+                                      ek −%{effDisc.toFixed(1)}
+                                    </div>
+                                  )}
+                                  {item.mainPurchasePrice !== null && (
+                                    <div className="text-[9px] text-muted-foreground font-normal">
+                                      önceki {fmt(item.mainPurchasePrice)}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                            {/* İnternet Satış */}
+                            <TableCell className="text-right tabular-nums">
+                              {internetSale != null ? (
+                                <span
+                                  className={
+                                    item.ourSalePrice !== null &&
+                                    item.ourSalePrice < internetSale * 0.95
+                                      ? "text-red-600 font-semibold"
+                                      : "text-emerald-700 font-medium"
+                                  }
+                                >
+                                  {fmt(internetSale)}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                            {/* BuyBox */}
                             <TableCell className="text-right tabular-nums">
                               {item.buyboxPrice !== null ? (
                                 <>
-                                  {item.buyboxPrice.toFixed(2)}
+                                  {fmt(item.buyboxPrice)}
                                   {item.buyboxRanking === 1 && (
                                     <span className="text-[10px] text-green-600 block">Bizdeyiz</span>
                                   )}
@@ -1055,46 +1033,56 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                                 "—"
                               )}
                             </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {item.unitMarginPct !== null ? (
-                                <span className={item.unitMarginPct < 10 ? "text-red-600" : ""}>
-                                  %{item.unitMarginPct.toFixed(0)}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
+                            {/* Not — değerlendirme */}
+                            <TableCell className="text-[11px] leading-snug">
                               {(() => {
+                                const notes: React.ReactNode[] = []
+                                // Trendyol kayıtlı satış kıyası
+                                if (item.ourSalePrice !== null) {
+                                  const low =
+                                    internetSale != null && item.ourSalePrice < internetSale * 0.95
+                                  notes.push(
+                                    <div key="ty" className={low ? "text-red-600" : "text-muted-foreground"}>
+                                      {low ? "⚠ " : ""}TY kayıtlı: {fmt(item.ourSalePrice)}
+                                      {low && " (formülün altında, fiyat artır)"}
+                                    </div>,
+                                  )
+                                }
+                                // BuyBox konumu
                                 const pos = calculateBuyboxPosition({
                                   ourSalePrice: item.ourSalePrice,
                                   buyboxPrice: item.buyboxPrice,
-                                  netPurchasePrice: item.netPurchasePrice,
+                                  netPurchasePrice: liveNet,
                                   commissionPct: item.commissionPct ?? 19,
                                   withholdingPct: item.withholdingPct ?? 1,
                                 })
-                                if (pos.status === "no_data") return null
-                                return (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div
-                                        className="mt-0.5 text-[9px] font-semibold cursor-help truncate"
-                                        style={{ color: BUYBOX_POSITION_COLORS[pos.status] }}
-                                      >
-                                        {pos.status === "profitable"
-                                          ? "🟢 BB Bizde"
-                                          : pos.status === "opportunity"
-                                            ? "🔵 Mevcut Kârlı"
-                                            : pos.status === "tight"
-                                              ? "🟡 Eşitle"
-                                              : "🔴 Feda"}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="left" className="max-w-[260px] text-xs">
+                                if (pos.status !== "no_data") {
+                                  notes.push(
+                                    <div
+                                      key="bb"
+                                      style={{ color: BUYBOX_POSITION_COLORS[pos.status] }}
+                                    >
                                       {pos.label}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )
+                                    </div>,
+                                  )
+                                }
+                                // Yeni alış pahalı uyarısı
+                                if (
+                                  liveNet != null &&
+                                  item.mainPurchasePrice !== null &&
+                                  liveNet > item.mainPurchasePrice * 1.15
+                                ) {
+                                  const diff = ((liveNet / item.mainPurchasePrice - 1) * 100).toFixed(0)
+                                  notes.push(
+                                    <div key="exp" className="text-amber-600">
+                                      Yeni alış %{diff} pahalı
+                                    </div>,
+                                  )
+                                }
+                                return notes.length > 0 ? notes : <span className="text-muted-foreground">—</span>
                               })()}
                             </TableCell>
+                            {/* Öneri */}
                             <TableCell className="text-center tabular-nums">
                               {item.suggestedQty > 0 ? (
                                 <span className="font-medium text-primary">{item.suggestedQty}</span>
@@ -1102,6 +1090,7 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                                 <span className="text-muted-foreground">—</span>
                               )}
                             </TableCell>
+                            {/* Sipariş (input) */}
                             <TableCell>
                               {noListPrice ? (
                                 <span
