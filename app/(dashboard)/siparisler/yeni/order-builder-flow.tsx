@@ -1033,22 +1033,13 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                                 "—"
                               )}
                             </TableCell>
-                            {/* Not — değerlendirme */}
-                            <TableCell className="text-[11px] leading-snug">
+                            {/* Not — kompakt değerlendirme (tek rozet + tooltip detay) */}
+                            <TableCell className="text-[11px] leading-tight">
                               {(() => {
-                                const notes: React.ReactNode[] = []
-                                // Trendyol kayıtlı satış kıyası
-                                if (item.ourSalePrice !== null) {
-                                  const low =
-                                    internetSale != null && item.ourSalePrice < internetSale * 0.95
-                                  notes.push(
-                                    <div key="ty" className={low ? "text-red-600" : "text-muted-foreground"}>
-                                      {low ? "⚠ " : ""}TY kayıtlı: {fmt(item.ourSalePrice)}
-                                      {low && " (formülün altında, fiyat artır)"}
-                                    </div>,
-                                  )
-                                }
-                                // BuyBox konumu
+                                const priceLow =
+                                  internetSale != null &&
+                                  item.ourSalePrice != null &&
+                                  item.ourSalePrice < internetSale * 0.95
                                 const pos = calculateBuyboxPosition({
                                   ourSalePrice: item.ourSalePrice,
                                   buyboxPrice: item.buyboxPrice,
@@ -1056,30 +1047,61 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                                   commissionPct: item.commissionPct ?? 19,
                                   withholdingPct: item.withholdingPct ?? 1,
                                 })
-                                if (pos.status !== "no_data") {
-                                  notes.push(
-                                    <div
-                                      key="bb"
-                                      style={{ color: BUYBOX_POSITION_COLORS[pos.status] }}
-                                    >
-                                      {pos.label}
-                                    </div>,
-                                  )
-                                }
-                                // Yeni alış pahalı uyarısı
-                                if (
+                                const expensive =
                                   liveNet != null &&
                                   item.mainPurchasePrice !== null &&
                                   liveNet > item.mainPurchasePrice * 1.15
-                                ) {
-                                  const diff = ((liveNet / item.mainPurchasePrice - 1) * 100).toFixed(0)
-                                  notes.push(
-                                    <div key="exp" className="text-amber-600">
-                                      Yeni alış %{diff} pahalı
-                                    </div>,
-                                  )
+                                const expDiff = expensive
+                                  ? ((liveNet! / item.mainPurchasePrice! - 1) * 100).toFixed(0)
+                                  : null
+
+                                // Ana rozet (en önemli aksiyon)
+                                const bbShort: Record<string, string> = {
+                                  profitable: "🟢 BB bizde",
+                                  opportunity: "🔵 Kârlı",
+                                  tight: "🟡 BB sınırda",
+                                  sacrifice: "🔴 BB feda",
                                 }
-                                return notes.length > 0 ? notes : <span className="text-muted-foreground">—</span>
+                                const primary = priceLow
+                                  ? { text: "🔴 Fiyat artır", color: "#DC2626" }
+                                  : pos.status !== "no_data"
+                                    ? { text: bbShort[pos.status], color: BUYBOX_POSITION_COLORS[pos.status] }
+                                    : null
+                                if (!primary) return <span className="text-muted-foreground">—</span>
+
+                                // Tooltip içeriği (tüm detay)
+                                const detail: string[] = []
+                                if (item.ourSalePrice != null)
+                                  detail.push(`TY kayıtlı satış: ${fmt(item.ourSalePrice)}`)
+                                if (internetSale != null)
+                                  detail.push(`Formül (internet) satış: ${fmt(internetSale)}`)
+                                if (pos.status !== "no_data") detail.push(pos.label)
+                                if (expDiff) detail.push(`Yeni alış öncekinden %${expDiff} pahalı`)
+
+                                return (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="cursor-help space-y-0.5">
+                                        <div className="font-semibold" style={{ color: primary.color }}>
+                                          {primary.text}
+                                          {pos.marginNow != null && pos.status !== "no_data" && (
+                                            <span className="font-normal"> ·%{pos.marginNow}m</span>
+                                          )}
+                                        </div>
+                                        {expDiff && (
+                                          <div className="text-[9px] text-amber-600">
+                                            alış +%{expDiff}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="left" className="max-w-[280px] text-xs space-y-1">
+                                      {detail.map((d, i) => (
+                                        <div key={i}>{d}</div>
+                                      ))}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )
                               })()}
                             </TableCell>
                             {/* Öneri */}

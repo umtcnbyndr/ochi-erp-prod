@@ -1,7 +1,8 @@
 /**
  * Satış Analizi Servisi
  *
- * StockMovement (type=OUT) verilerinden satış hızı + sipariş önerisi hesaplar.
+ * Dopigo net satış (online pazaryeri, iptal/iade hariç) verilerinden satış hızı +
+ * sipariş önerisi hesaplar. (Eskiden StockMovement OUT idi — 2026-06-24 değişti.)
  *
  * Mantık:
  *   - Belirtilen periyotta OUT movement'ları topla
@@ -180,25 +181,32 @@ export async function getSalesAnalysis(
 
   if (products.length === 0) return []
 
-  // 3. Satış verilerini topla (StockMovement type=OUT)
+  // 3. Satış verilerini topla — DOPIGO NET SATIŞ (online pazaryeri, iptal/iade hariç)
+  // Mantık: ana depodan online satıyoruz → satış hızı da online (Dopigo) olmalı.
+  // StockMovement OUT yerine Dopigo siparişleri: gerçek pazaryeri satışı, manuel
+  // stok düzeltmesi / cadde fiziksel satışı / takas çıkışı karışmaz.
+  // itemStatus 'cancelled'/'returned' hariç = net satış adedi.
   const since = new Date()
   since.setDate(since.getDate() - analysisDays)
 
   const productIds = products.map((p) => p.id)
 
-  const sales = await prisma.stockMovement.groupBy({
+  const sales = await prisma.dopigoOrderItem.groupBy({
     by: ["productId"],
     where: {
       productId: { in: productIds },
-      type: "OUT",
-      createdAt: { gte: since },
+      order: { serviceCreatedAt: { gte: since } },
+      OR: [
+        { itemStatus: null },
+        { itemStatus: { notIn: ["cancelled", "returned"] } },
+      ],
     },
-    _sum: { quantity: true },
+    _sum: { amount: true },
   })
 
   const salesMap = new Map<number, number>()
   for (const s of sales) {
-    salesMap.set(s.productId, s._sum.quantity ?? 0)
+    if (s.productId != null) salesMap.set(s.productId, s._sum.amount ?? 0)
   }
 
   // 4. BuyBox observation'ları (son gözlem)
