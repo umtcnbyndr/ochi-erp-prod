@@ -479,6 +479,7 @@ export async function getOrderExportData(orderId: number) {
         select: {
           orderedQty: true,
           listPrice: true,
+          isVatIncluded: true,
           netPurchasePrice: true,
           discountOverridePct: true,
           effectiveDiscountPct: true,
@@ -498,7 +499,19 @@ export async function getOrderExportData(orderId: number) {
               psf: true,
               streetStock: true,
               mainPurchasePrice: true,
-              brand: { select: { name: true } },
+              vatRate: true,
+              brand: {
+                select: {
+                  name: true,
+                  invoiceDiscount1: true,
+                  invoiceDiscount2: true,
+                  invoiceDiscount3: true,
+                  yearEndDiscount1: true,
+                  yearEndDiscount2: true,
+                  yearEndDiscount3: true,
+                  pharmacyMargin: true,
+                },
+              },
             },
           },
         },

@@ -1,23 +1,19 @@
 /**
- * Sipariş Excel — exceljs ile görsel şablon.
+ * Sipariş Excel — SADE şablon (exceljs, minimal stil).
  *
- * İyileştirmeler (eski `order-export.ts`'e göre):
- *   - Renkli başlık satırı + freeze pane (üst satır sabit)
- *   - Zebra çizgili satırlar
- *   - Koşullu renk: ana stok 0 → kırmızı; bitme < 30g → turuncu
- *   - "Konum" kolonu (BuyBox vs Bizim Satış öneri rozet) — 4 renk
- *   - Para birimi formatı ("₺#,##0.00") ve adet binlik ayırıcı
- *   - TOPLAM satırı kalın + üst çizgi
- *   - Sheet "Özet": marka kartı + sipariş meta-bilgileri
+ * Görünüm: düz/sade (kalın başlık + donmuş üst satır + ₺ format). Renkli zebra /
+ * koşullu dolgu YOK — kullanıcı talebi 2026-06-24.
  *
- * Server-only (exceljs server bundle). Action içinde Buffer döndürür, client indirir.
+ * Kolonlar builder tablosuyla aynı (net alış zinciri):
+ *   Barkod · Ürün · Marka · Stok · Ecz.Stok · Satış(Ng) · Liste(KDV'siz) · Ek İsk% ·
+ *   Fatura Altı · Yıl Sonu · Eczane Kâr · Net Alış · Önceki Alış · İnternet Satış ·
+ *   BuyBox · Not · Öneri · Sipariş · Satır Toplam
+ *
+ * Server-only (exceljs). Buffer döner, client base64 indirir.
  */
 
 import ExcelJS from "exceljs"
-import {
-  calculateBuyboxPosition,
-  BUYBOX_POSITION_COLORS,
-} from "@/lib/pricing/buybox-position"
+import { calculateBuyboxPosition } from "@/lib/pricing/buybox-position"
 
 export interface StyledOrderExportData {
   id: number
@@ -46,94 +42,86 @@ export interface StyledOrderExportData {
     suggestedQty: number
     qty: number
     listPrice: number
-    /** Net alış — kampanya indirimi UYGULANMIŞ hali (gerçek alış maliyetimiz) */
     netPrice: number
-    /** Net alış — brüt (kampanya öncesi). İndirim yoksa netPrice ile aynı. */
     grossNetPrice: number
-    /** DB'deki mevcut alış (Product.mainPurchasePrice) — kıyas için */
     mainPurchasePrice: number | null
-    /** Net alıştan formülle hesaplanmış optimal satış (komisyon+kâr) */
     formulaSalePrice: number | null
-    /** Trendyol etkin komisyon (% — Konum hesabı için) */
     commissionPct: number | null
-    /** Trendyol stopaj (% — Konum hesabı için) */
     withholdingPct: number | null
     discountOverridePct: number | null
     effectiveDiscountPct: number | null
+    listVatExcluded: number
+    afterInvoice: number
+    afterYearEnd: number
+    afterPharmacy: number
+    invoicePctLabel: string
+    yearEndPctLabel: string
+    pharmacyMarginPct: number
     lineTotal: number
   }[]
 }
 
-const FMT_CURRENCY = '"₺"#,##0.00;[Red]"₺"-#,##0.00'
+const FMT_CURRENCY = '"₺"#,##0.00'
 const FMT_INTEGER = "#,##0"
 const FMT_DECIMAL1 = "0.00"
+const FMT_PERCENT = '0.0"%"'
 
-const COLOR_HEADER_BG = "FF1E40AF"
-const COLOR_HEADER_FG = "FFFFFFFF"
-const COLOR_ZEBRA = "FFF8FAFC"
-const COLOR_TOTAL_BG = "FFE5E7EB"
-const COLOR_STOCK_ZERO = "FFFEE2E2"
-const COLOR_BITME_LOW = "FFFED7AA"
-
-interface ColumnDef {
+interface ColDef {
   header: string
   key: string
   width: number
   numFmt?: string
-  align?: "left" | "right" | "center"
 }
 
-/**
- * Kolonları şartlı oluştur:
- *   - Brüt Net + Kamp. İnd. %: sadece siparişte ek iskonto VARSA görünür
- *   - Önceki Alış: her zaman görünür (kıyas için)
- *   - Formül Satış: her zaman (öneri için)
- *   - Notlar: her zaman (boş veya değerlendirme metni)
- */
-function buildColumns(analysisDays: number, hasDiscount: boolean): ColumnDef[] {
-  const cols: ColumnDef[] = [
-    { header: "Barkod", key: "barcode", width: 16, align: "left" },
-    { header: "Ürün Adı", key: "name", width: 42, align: "left" },
-    { header: "Marka", key: "brand", width: 16, align: "left" },
-    { header: "Ana Stok", key: "mainStock", width: 10, numFmt: FMT_INTEGER, align: "right" },
-    { header: "Ecz. Stok", key: "streetStock", width: 10, numFmt: FMT_INTEGER, align: "right" },
-    { header: `Son ${analysisDays}g Satış`, key: "totalSold", width: 14, numFmt: FMT_INTEGER, align: "right" },
-    { header: "Günlük Satış", key: "dailySalesAvg", width: 12, numFmt: FMT_DECIMAL1, align: "right" },
-    { header: "Bitme (Gün)", key: "daysUntilStockout", width: 12, numFmt: FMT_INTEGER, align: "right" },
-    { header: "PSF", key: "psf", width: 12, numFmt: FMT_CURRENCY, align: "right" },
-    { header: "Liste Fiyat", key: "listPrice", width: 14, numFmt: FMT_CURRENCY, align: "right" },
+function buildColumns(analysisDays: number): ColDef[] {
+  return [
+    { header: "Barkod", key: "barcode", width: 16 },
+    { header: "Ürün Adı", key: "name", width: 42 },
+    { header: "Marka", key: "brand", width: 15 },
+    { header: "Stok", key: "stok", width: 8, numFmt: FMT_INTEGER },
+    { header: "Ecz. Stok", key: "ecz", width: 9, numFmt: FMT_INTEGER },
+    { header: `Satış (${analysisDays}g)`, key: "satis", width: 11, numFmt: FMT_INTEGER },
+    { header: "Liste (KDV'siz)", key: "liste", width: 13, numFmt: FMT_CURRENCY },
+    { header: "Ek İsk. %", key: "ekisk", width: 9, numFmt: FMT_PERCENT },
+    { header: "Fatura Altı", key: "faturaalti", width: 13, numFmt: FMT_CURRENCY },
+    { header: "Yıl Sonu", key: "yilsonu", width: 13, numFmt: FMT_CURRENCY },
+    { header: "Eczane Kâr", key: "eczanekar", width: 13, numFmt: FMT_CURRENCY },
+    { header: "Net Alış", key: "net", width: 14, numFmt: FMT_CURRENCY },
+    { header: "Önceki Alış", key: "onceki", width: 13, numFmt: FMT_CURRENCY },
+    { header: "İnternet Satış", key: "internet", width: 14, numFmt: FMT_CURRENCY },
+    { header: "BuyBox", key: "buybox", width: 13, numFmt: FMT_CURRENCY },
+    { header: "Not", key: "not", width: 30 },
+    { header: "Öneri", key: "oneri", width: 8, numFmt: FMT_INTEGER },
+    { header: "Sipariş", key: "siparis", width: 9, numFmt: FMT_INTEGER },
+    { header: "Satır Toplam", key: "toplam", width: 15, numFmt: FMT_CURRENCY },
   ]
-  if (hasDiscount) {
-    cols.push(
-      { header: "Brüt Net", key: "grossNetPrice", width: 13, numFmt: FMT_CURRENCY, align: "right" },
-      { header: "Kamp. İnd. %", key: "effectiveDiscountPct", width: 12, numFmt: '0.00"%"', align: "right" },
-    )
+}
+
+function buildNote(i: StyledOrderExportData["items"][0]): string {
+  const parts: string[] = []
+  if (
+    i.formulaSalePrice != null &&
+    i.ourSalePrice != null &&
+    i.ourSalePrice < i.formulaSalePrice * 0.95
+  ) {
+    parts.push(`Fiyat artır (formül ${i.formulaSalePrice.toFixed(0)})`)
+  } else {
+    const pos = calculateBuyboxPosition({
+      ourSalePrice: i.ourSalePrice,
+      buyboxPrice: i.buyboxPrice,
+      netPurchasePrice: i.netPrice,
+      commissionPct: i.commissionPct ?? 19,
+      withholdingPct: i.withholdingPct ?? 1,
+    })
+    if (pos.status !== "no_data") parts.push(pos.label)
   }
-  cols.push(
-    { header: "Net Alış", key: "netPrice", width: 14, numFmt: FMT_CURRENCY, align: "right" },
-    { header: "Önceki Alış", key: "mainPurchasePrice", width: 13, numFmt: FMT_CURRENCY, align: "right" },
-    { header: "Formül Satış", key: "formulaSalePrice", width: 14, numFmt: FMT_CURRENCY, align: "right" },
-    { header: "Trendyol Kayıtlı", key: "ourSalePrice", width: 14, numFmt: FMT_CURRENCY, align: "right" },
-    { header: "BuyBox", key: "buyboxPrice", width: 13, numFmt: FMT_CURRENCY, align: "right" },
-    { header: "Konum", key: "position", width: 22, align: "left" },
-    { header: "Notlar", key: "notes", width: 26, align: "left" },
-    { header: "Öneri", key: "suggestedQty", width: 8, numFmt: FMT_INTEGER, align: "right" },
-    { header: "Sipariş Adet", key: "qty", width: 12, numFmt: FMT_INTEGER, align: "right" },
-    { header: "Satır Toplam", key: "lineTotal", width: 16, numFmt: FMT_CURRENCY, align: "right" },
-  )
-  return cols
+  if (i.mainPurchasePrice != null && i.netPrice > i.mainPurchasePrice * 1.15) {
+    const diff = ((i.netPrice / i.mainPurchasePrice - 1) * 100).toFixed(0)
+    parts.push(`yeni alış +%${diff}`)
+  }
+  return parts.join(" · ")
 }
 
-function hexToArgb(hex: string): string {
-  // exceljs ARGB ister. # ile gelirse, FF ile başlat.
-  const clean = hex.replace("#", "").toUpperCase()
-  return clean.length === 6 ? `FF${clean}` : clean
-}
-
-/**
- * Sipariş kalemlerini styled Excel buffer'a çevirir.
- * Server-only — Node.js Buffer döner.
- */
 export async function buildStyledOrderWorkbook(
   data: StyledOrderExportData,
 ): Promise<Buffer> {
@@ -141,240 +129,85 @@ export async function buildStyledOrderWorkbook(
   wb.creator = "Ochi ERP"
   wb.created = new Date()
 
-  // ─── Sheet 1: Sipariş ─────────────────────────────────────────
+  // ── Sheet 1: Sipariş ──────────────────────────────────────
   const ws = wb.addWorksheet("Sipariş", {
     views: [{ state: "frozen", ySplit: 1 }],
   })
+  const cols = buildColumns(data.analysisDays)
+  ws.columns = cols.map((c) => ({ header: c.header, key: c.key, width: c.width }))
 
-  // Şartlı kolon: ek iskonto varsa Brüt Net + Kamp. İnd. % kolonları görünür
-  const hasDiscount = data.items.some(
-    (i) => i.effectiveDiscountPct != null && i.effectiveDiscountPct > 0,
-  )
-  const cols = buildColumns(data.analysisDays, hasDiscount)
-  ws.columns = cols.map((c) => ({
-    header: c.header,
-    key: c.key,
-    width: c.width,
-  }))
-
-  // Başlık stil
-  const headerRow = ws.getRow(1)
-  headerRow.height = 28
-  headerRow.eachCell((cell) => {
+  // Başlık — sade: kalın + açık gri arka plan
+  const header = ws.getRow(1)
+  header.font = { bold: true }
+  header.alignment = { vertical: "middle", wrapText: true }
+  header.eachCell((cell) => {
     cell.fill = {
       type: "pattern",
       pattern: "solid",
-      fgColor: { argb: COLOR_HEADER_BG },
+      fgColor: { argb: "FFF1F5F9" },
     }
-    cell.font = { color: { argb: COLOR_HEADER_FG }, bold: true, size: 11 }
-    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true }
-    cell.border = {
-      bottom: { style: "thin", color: { argb: "FF1E3A8A" } },
-    }
+    cell.border = { bottom: { style: "thin", color: { argb: "FFCBD5E1" } } }
   })
 
-  // Satırlar
-  data.items.forEach((i, idx) => {
-    // "Son 90g Satış" snapshot null ise dailySalesAvg ile yaklaşık üret (eski sipariş fallback)
-    const totalSoldComputed =
+  for (const i of data.items) {
+    const totalSold =
       i.totalSoldInPeriod ??
-      (i.dailySalesAvg > 0
-        ? Math.round(i.dailySalesAvg * data.analysisDays)
-        : null)
+      (i.dailySalesAvg > 0 ? Math.round(i.dailySalesAvg * data.analysisDays) : null)
 
-    // BuyBox konumu — gerçek Trendyol komisyon (dinamik, snapshot)
-    const position = calculateBuyboxPosition({
-      ourSalePrice: i.ourSalePrice,
-      buyboxPrice: i.buyboxPrice,
-      netPurchasePrice: i.netPrice,
-      commissionPct: i.commissionPct ?? 19,
-      withholdingPct: i.withholdingPct ?? 1,
-    })
-
-    // Kompakt Konum etiketi (uzun açıklama → cell.note ile tooltip)
-    const compactPositionLabel = (() => {
-      if (position.status === "no_data") return ""
-      const m = position.marginNow != null ? `${position.marginNow}m` : ""
-      const bb =
-        position.diffPctVsBB != null
-          ? `BB${position.diffPctVsBB >= 0 ? "+" : ""}${position.diffPctVsBB}%`
-          : ""
-      const emoji =
-        position.status === "profitable"
-          ? "🟢"
-          : position.status === "opportunity"
-            ? "🔵"
-            : position.status === "tight"
-              ? "🟡"
-              : "🔴"
-      return [emoji, bb, m].filter(Boolean).join(" · ")
-    })()
-
-    // Notlar — Formül satıştan düşükse uyarı
-    const notes: string[] = []
-    if (
-      i.formulaSalePrice != null &&
-      i.ourSalePrice != null &&
-      i.ourSalePrice < i.formulaSalePrice * 0.95
-    ) {
-      notes.push(`⚠ Fiyat artır — formül ₺${i.formulaSalePrice.toFixed(0)}`)
-    }
-    if (
-      i.mainPurchasePrice != null &&
-      i.netPrice > i.mainPurchasePrice * 1.15
-    ) {
-      const diff = ((i.netPrice / i.mainPurchasePrice - 1) * 100).toFixed(0)
-      notes.push(`Yeni alış %${diff} pahalı`)
-    }
-
-    const rowData: Record<string, string | number | null> = {
+    ws.addRow({
       barcode: i.barcode,
       name: i.name,
       brand: i.brand,
-      mainStock: i.mainStockSnapshot ?? (i.currentStock - i.streetStock),
-      streetStock: i.streetStock,
-      totalSold: totalSoldComputed,
-      dailySalesAvg: i.dailySalesAvg,
-      daysUntilStockout: i.daysUntilStockout,
-      psf: i.psf,
-      listPrice: i.listPrice,
-      grossNetPrice: i.grossNetPrice,
-      effectiveDiscountPct: i.effectiveDiscountPct, // 0 / null → numFmt boş gösterir
-      netPrice: i.netPrice,
-      mainPurchasePrice: i.mainPurchasePrice,
-      formulaSalePrice: i.formulaSalePrice,
-      buyboxPrice: i.buyboxPrice,
-      ourSalePrice: i.ourSalePrice,
-      position: compactPositionLabel,
-      notes: notes.join(" · "),
-      suggestedQty: i.suggestedQty,
-      qty: i.qty,
-      lineTotal: i.lineTotal,
-    }
-    const row = ws.addRow(rowData)
-    row.height = 22
-
-    // Konum hücresine tam açıklamayı yorum olarak ekle (kullanıcı tıklayınca görür)
-    if (position.status !== "no_data") {
-      const colIdx = cols.findIndex((c) => c.key === "position")
-      if (colIdx >= 0) {
-        const cell = row.getCell(colIdx + 1)
-        cell.note = position.label
-      }
-    }
-
-    // Hücre stilleri
-    cols.forEach((c, colIdx) => {
-      const cell = row.getCell(colIdx + 1)
-      if (c.numFmt) cell.numFmt = c.numFmt
-      cell.alignment = {
-        vertical: "middle",
-        horizontal: c.align ?? "left",
-        wrapText: c.key === "name",
-      }
-      cell.border = {
-        bottom: { style: "hair", color: { argb: "FFE5E7EB" } },
-      }
-      // Zebra: çift indeks
-      if (idx % 2 === 1) {
-        cell.fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: COLOR_ZEBRA },
-        }
-      }
+      stok: i.mainStockSnapshot ?? i.currentStock - i.streetStock,
+      ecz: i.streetStock,
+      satis: totalSold,
+      liste: i.listVatExcluded || null,
+      ekisk: i.effectiveDiscountPct && i.effectiveDiscountPct > 0 ? i.effectiveDiscountPct : null,
+      faturaalti: i.afterInvoice || null,
+      yilsonu: i.afterYearEnd || null,
+      eczanekar: i.afterPharmacy || null,
+      net: i.netPrice || null,
+      onceki: i.mainPurchasePrice,
+      internet: i.formulaSalePrice,
+      buybox: i.buyboxPrice,
+      not: buildNote(i),
+      oneri: i.suggestedQty,
+      siparis: i.qty,
+      toplam: i.lineTotal,
     })
-
-    // Koşullu renkler: ana stok 0
-    const mainStockCell = row.getCell(cols.findIndex((c) => c.key === "mainStock") + 1)
-    if (rowData.mainStock === 0) {
-      mainStockCell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: COLOR_STOCK_ZERO },
-      }
-      mainStockCell.font = { color: { argb: "FFB91C1C" }, bold: true }
-    }
-    // bitme < 30g
-    const bitmeCell = row.getCell(cols.findIndex((c) => c.key === "daysUntilStockout") + 1)
-    if (
-      typeof i.daysUntilStockout === "number" &&
-      i.daysUntilStockout < 30 &&
-      i.daysUntilStockout >= 0
-    ) {
-      bitmeCell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: COLOR_BITME_LOW },
-      }
-      bitmeCell.font = { color: { argb: "FF9A3412" }, bold: true }
-    }
-    // Konum hücresi — statüye göre arka plan
-    const positionCell = row.getCell(cols.findIndex((c) => c.key === "position") + 1)
-    const positionColor = hexToArgb(BUYBOX_POSITION_COLORS[position.status])
-    positionCell.font = { color: { argb: positionColor }, bold: true, size: 10 }
-  })
-
-  // TOPLAM satırı
-  const totalRow = ws.addRow({
-    barcode: "",
-    name: "TOPLAM",
-    brand: "",
-    qty: data.totalQuantity,
-    lineTotal: data.totalNetAmount,
-  })
-  totalRow.height = 26
-  totalRow.eachCell((cell, colNumber) => {
-    cell.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: COLOR_TOTAL_BG },
-    }
-    cell.font = { bold: true, size: 11 }
-    cell.border = {
-      top: { style: "thin", color: { argb: "FF6B7280" } },
-      bottom: { style: "thin", color: { argb: "FF6B7280" } },
-    }
-    const colDef = cols[colNumber - 1]
-    if (colDef?.numFmt) cell.numFmt = colDef.numFmt
-    cell.alignment = {
-      vertical: "middle",
-      horizontal: colDef?.align ?? "left",
-    }
-  })
-
-  // AutoFilter — başlık satırına
-  ws.autoFilter = {
-    from: { row: 1, column: 1 },
-    to: { row: 1, column: cols.length },
   }
 
-  // ─── Sheet 2: Özet ─────────────────────────────────────────
+  // Sayı formatları (kolon bazlı)
+  cols.forEach((c, idx) => {
+    if (c.numFmt) ws.getColumn(idx + 1).numFmt = c.numFmt
+  })
+
+  // TOPLAM satırı — sade kalın
+  const totalRow = ws.addRow({
+    name: "TOPLAM",
+    siparis: data.totalQuantity,
+    toplam: data.totalNetAmount,
+  })
+  totalRow.font = { bold: true }
+  totalRow.getCell("siparis").numFmt = FMT_INTEGER
+  totalRow.getCell("toplam").numFmt = FMT_CURRENCY
+  totalRow.eachCell((cell) => {
+    cell.border = { top: { style: "thin", color: { argb: "FF94A3B8" } } }
+  })
+
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } }
+
+  // ── Sheet 2: Özet ─────────────────────────────────────────
   const ws2 = wb.addWorksheet("Özet")
   ws2.columns = [
     { header: "Marka", key: "brand", width: 22 },
-    { header: "Ürün Çeşidi", key: "products", width: 14 },
-    { header: "Toplam Adet", key: "qty", width: 14 },
-    { header: "Toplam Tutar", key: "amount", width: 18 },
+    { header: "Ürün Çeşidi", key: "products", width: 13 },
+    { header: "Toplam Adet", key: "qty", width: 13 },
+    { header: "Toplam Tutar", key: "amount", width: 16 },
   ]
+  ws2.getRow(1).font = { bold: true }
 
-  // Başlık stil
-  const h2 = ws2.getRow(1)
-  h2.height = 28
-  h2.eachCell((cell) => {
-    cell.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: COLOR_HEADER_BG },
-    }
-    cell.font = { color: { argb: COLOR_HEADER_FG }, bold: true, size: 11 }
-    cell.alignment = { vertical: "middle", horizontal: "center" }
-  })
-
-  const brandSummary = new Map<
-    string,
-    { products: number; qty: number; amount: number }
-  >()
+  const brandSummary = new Map<string, { products: number; qty: number; amount: number }>()
   for (const item of data.items) {
     const e = brandSummary.get(item.brand) ?? { products: 0, qty: 0, amount: 0 }
     e.products += 1
@@ -382,42 +215,19 @@ export async function buildStyledOrderWorkbook(
     e.amount += item.lineTotal
     brandSummary.set(item.brand, e)
   }
-
   for (const [brand, s] of brandSummary.entries()) {
-    const r = ws2.addRow({
-      brand,
-      products: s.products,
-      qty: s.qty,
-      amount: s.amount,
-    })
+    const r = ws2.addRow({ brand, products: s.products, qty: s.qty, amount: s.amount })
     r.getCell("amount").numFmt = FMT_CURRENCY
-    r.getCell("qty").numFmt = FMT_INTEGER
-    r.getCell("products").numFmt = FMT_INTEGER
   }
-
-  // GENEL TOPLAM
   const gt = ws2.addRow({
     brand: "GENEL TOPLAM",
     products: data.items.length,
     qty: data.totalQuantity,
     amount: data.totalNetAmount,
   })
-  gt.eachCell((cell) => {
-    cell.font = { bold: true }
-    cell.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: COLOR_TOTAL_BG },
-    }
-    cell.border = {
-      top: { style: "thin", color: { argb: "FF6B7280" } },
-    }
-  })
+  gt.font = { bold: true }
   gt.getCell("amount").numFmt = FMT_CURRENCY
-  gt.getCell("qty").numFmt = FMT_INTEGER
-  gt.getCell("products").numFmt = FMT_INTEGER
 
-  // Sipariş bilgileri kutusu
   ws2.addRow([])
   ws2.addRow([])
   const infoRows: [string, string][] = [
@@ -430,26 +240,16 @@ export async function buildStyledOrderWorkbook(
     infoRows.push(["Kampanya İndirimi", `%${data.brandDiscountPct.toFixed(2)}`])
   }
   if (data.note) infoRows.push(["Not", data.note])
-
   for (const [label, value] of infoRows) {
     const r = ws2.addRow([label, value])
     r.getCell(1).font = { bold: true }
-    r.getCell(1).alignment = { horizontal: "right" }
   }
 
-  // Buffer döndür (Node.js Buffer)
   const arrayBuffer = await wb.xlsx.writeBuffer()
   return Buffer.from(arrayBuffer)
 }
 
-/** Standart dosya adı — eski helper'la aynı format. */
-export function buildStyledOrderFilename(data: {
-  id: number
-  brandNames: string
-}): string {
-  const safeBrands = data.brandNames.replace(
-    /[^a-zA-ZığüşöçİĞÜŞÖÇ0-9]/g,
-    "_",
-  )
+export function buildStyledOrderFilename(data: { id: number; brandNames: string }): string {
+  const safeBrands = data.brandNames.replace(/[^a-zA-ZığüşöçİĞÜŞÖÇ0-9]/g, "_")
   return `siparis-${data.id}-${safeBrands}.xlsx`
 }

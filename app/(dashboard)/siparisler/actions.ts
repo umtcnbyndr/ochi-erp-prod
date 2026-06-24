@@ -20,6 +20,7 @@ import {
   type SalesAnalysisItem,
   type BuyboxGapSummary,
 } from "@/lib/services/sales-analysis"
+import { calculateNetPriceSteps } from "@/lib/pricing/purchase-net-price"
 
 export type ActionResult<T = unknown> =
   | { success: true; data?: T }
@@ -193,6 +194,14 @@ export async function getOrderExportDataAction(
     grossNetPrice: number
     discountOverridePct: number | null
     effectiveDiscountPct: number | null
+    /** Net alış zinciri ara adımları (Excel kolonları) */
+    listVatExcluded: number
+    afterInvoice: number
+    afterYearEnd: number
+    afterPharmacy: number
+    invoicePctLabel: string
+    yearEndPctLabel: string
+    pharmacyMarginPct: number
     lineTotal: number
   }[]
 }>> {
@@ -220,6 +229,15 @@ export async function getOrderExportDataAction(
           // yoksa netPrice ile eşit kalır.
           const grossNetPrice =
             effDisc && effDisc > 0 ? netPrice * (1 + effDisc / 100) : netPrice
+
+          // Net alış zinciri ara adımları (Fatura Altı / Yıl Sonu / Eczane Kâr kolonları)
+          const steps = calculateNetPriceSteps({
+            listPrice: i.listPrice,
+            isVatIncluded: i.isVatIncluded,
+            vatRate: i.product.vatRate,
+            brand: i.product.brand,
+            extraDiscountPct: effDisc,
+          })
 
           // Formül satış — net alıştan komisyon+kâr formülüyle optimal satış
           let formulaSalePrice: number | null = null
@@ -263,6 +281,13 @@ export async function getOrderExportDataAction(
             grossNetPrice: Math.round(grossNetPrice * 10000) / 10000,
             discountOverridePct: i.discountOverridePct ? Number(i.discountOverridePct) : null,
             effectiveDiscountPct: effDisc,
+            listVatExcluded: steps.listVatExcluded,
+            afterInvoice: steps.afterInvoice,
+            afterYearEnd: steps.afterYearEnd,
+            afterPharmacy: steps.afterPharmacy,
+            invoicePctLabel: steps.invoicePctLabel.join("+"),
+            yearEndPctLabel: steps.yearEndPctLabel.join("+"),
+            pharmacyMarginPct: steps.pharmacyMarginPct,
             lineTotal: netPrice * i.orderedQty,
           }
         }),
