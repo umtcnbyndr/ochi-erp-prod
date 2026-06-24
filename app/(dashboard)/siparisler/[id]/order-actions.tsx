@@ -14,18 +14,16 @@ import {
   Info,
 } from "lucide-react"
 import { toast } from "sonner"
-import * as XLSX from "xlsx"
 import { useConfirm } from "@/components/common/confirm-provider"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
-import { buildOrderWorkbook, buildOrderFilename } from "@/lib/excel/order-export"
 import {
   confirmOrderAction,
   cancelOrderAction,
   closeOrderAction,
   deleteOrderAction,
   forceDeleteOrderAction,
-  getOrderExportDataAction,
+  exportStyledOrderExcelAction,
 } from "../actions"
 
 interface Props {
@@ -135,17 +133,29 @@ export function OrderActions({ orderId, status, isAdmin }: Props) {
 
   function handleExportExcel() {
     startTransition(async () => {
-      const result = await getOrderExportDataAction(orderId)
+      const result = await exportStyledOrderExcelAction(orderId)
       if (!result.success) {
         toast.error(result.error)
         return
       }
 
-      const data = result.data!
+      const { filename, base64 } = result.data!
 
-      const wb = buildOrderWorkbook(data)
-      const filename = buildOrderFilename(data)
-      XLSX.writeFile(wb, filename)
+      // base64 → Blob → indir
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      const blob = new Blob([bytes], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
       toast.success("Excel indirildi")
     })
   }

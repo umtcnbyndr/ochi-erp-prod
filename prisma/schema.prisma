@@ -1198,6 +1198,10 @@ model PurchaseOrder {
   analysisDays    Int      @default(90)  // satış analizi için bakılan gün
   targetStockDays Int      @default(60)  // hedef stok günü
 
+  /// Marka kampanya alım indirimi (% — örn 8.50 = %8.5). Boş = yok.
+  /// Tüm kalemlere uygulanır; her satırda discountOverridePct ile override edilebilir.
+  brandDiscountPct Decimal? @db.Decimal(5, 2)
+
   /// Notlar
   note            String?
 
@@ -1230,7 +1234,11 @@ model PurchaseOrderItem {
   /// Snapshot fiyatlar (sipariş anında dondurulur)
   listPrice       Decimal  @db.Decimal(14, 4)  // marka liste fiyatı
   isVatIncluded   Boolean  @default(false)
-  netPurchasePrice Decimal @db.Decimal(14, 4)  // hesaplanmış net alış (KDV dahil, tüm iskontolar)
+  netPurchasePrice Decimal @db.Decimal(14, 4)  // hesaplanmış net alış (KDV dahil, tüm iskontolar; KAMPANYA İNDİRİMİ DAHİL DEĞİL — sipariş başında uygulanır)
+  /// Bu kalem için kampanya indirimi override (% — marka oranını ezer). Boş = order.brandDiscountPct kullan.
+  discountOverridePct Decimal? @db.Decimal(5, 2)
+  /// Kalem oluşturulurken etkin olan toplam indirim (% — snapshot, brand veya override hangisi etkindiyse)
+  effectiveDiscountPct Decimal? @db.Decimal(5, 2)
 
   /// Snapshot satış verileri
   currentStock    Int      // (LEGACY) sipariş anındaki ana+cadde stok toplam — geriye uyumluluk için tutuluyor

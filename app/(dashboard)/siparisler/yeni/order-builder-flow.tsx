@@ -26,6 +26,10 @@ import type { SalesAnalysisItem, BuyboxGapSummary } from "@/lib/services/sales-a
 import type { OpenOrderBacklog } from "@/lib/services/purchase-order"
 import { LifetimeBadge } from "@/components/products/lifetime-badge"
 import { PRIORITY_LABELS as ORDER_PRIORITY_LABELS } from "@/lib/pricing/order-priority-score"
+import {
+  calculateBuyboxPosition,
+  BUYBOX_POSITION_COLORS,
+} from "@/lib/pricing/buybox-position"
 
 interface BrandOption {
   id: number
@@ -76,6 +80,15 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
   const [quantities, setQuantities] = useState<Map<number, number>>(new Map())
   const [search, setSearch] = useState("")
   const [note, setNote] = useState("")
+  // Marka kampanya indirimi (% — boş string = uygulanmaz)
+  const [brandDiscountInput, setBrandDiscountInput] = useState<string>("")
+  // Per-item override (productId → %)
+  const [itemDiscounts, setItemDiscounts] = useState<Map<number, number>>(new Map())
+
+  const brandDiscountPct = useMemo(() => {
+    const v = parseFloat(brandDiscountInput.replace(",", "."))
+    return Number.isFinite(v) && v > 0 ? v : null
+  }, [brandDiscountInput])
 
   // ─── Step 1 actions ─────────────────────────────────────────
 
@@ -326,12 +339,17 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
         isVatIncluded: i.isVatIncluded,
         netPurchasePrice: i.netPurchasePrice!,
         currentStock: i.totalStock,
+        // Snapshot: sipariş anındaki gerçek değerler — Excel raporu ve geçmiş analiz için
+        mainStockSnapshot: i.mainStock,
+        streetStockSnapshot: i.streetStock,
+        totalSoldInPeriod: i.totalSold,
         dailySalesAvg: i.dailySalesAvg,
         daysUntilStockout: i.daysUntilStockout,
         suggestedQty: i.suggestedQty,
         orderedQty: quantities.get(i.productId)!,
         buyboxPrice: i.buyboxPrice,
         ourSalePrice: i.ourSalePrice,
+        discountOverridePct: itemDiscounts.get(i.productId) ?? null,
       }))
 
     startTransition(async () => {
@@ -340,6 +358,7 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
         analysisDays,
         targetStockDays,
         note: note || undefined,
+        brandDiscountPct,
         items: orderItems,
       })
 
@@ -949,6 +968,37 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                               ) : (
                                 "—"
                               )}
+                              {(() => {
+                                const pos = calculateBuyboxPosition({
+                                  ourSalePrice: item.ourSalePrice,
+                                  buyboxPrice: item.buyboxPrice,
+                                  netPurchasePrice: item.netPurchasePrice,
+                                  commissionPct: 18,
+                                  withholdingPct: 1,
+                                })
+                                if (pos.status === "no_data") return null
+                                return (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        className="mt-0.5 text-[9px] font-semibold cursor-help truncate"
+                                        style={{ color: BUYBOX_POSITION_COLORS[pos.status] }}
+                                      >
+                                        {pos.status === "profitable"
+                                          ? "🟢 BB Bizde"
+                                          : pos.status === "opportunity"
+                                            ? "🔵 Mevcut Kârlı"
+                                            : pos.status === "tight"
+                                              ? "🟡 Eşitle"
+                                              : "🔴 Feda"}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="left" className="max-w-[260px] text-xs">
+                                      {pos.label}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )
+                              })()}
                             </TableCell>
                             <TableCell className="text-center tabular-nums">
                               {item.suggestedQty > 0 ? (
@@ -1028,16 +1078,42 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
 
               <Separator />
 
-              <div className="space-y-2">
-                <Label htmlFor="note" className="text-sm">
-                  Sipariş Notu (opsiyonel)
-                </Label>
-                <Input
-                  id="note"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Örn. Acil — Pazartesi'ye kadar"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="brandDiscount" className="text-sm">
+                    Kampanya Alım İndirimi (%)
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="brandDiscount"
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="100"
+                      value={brandDiscountInput}
+                      onChange={(e) => setBrandDiscountInput(e.target.value)}
+                      placeholder="Örn. 8.5 (boş = yok)"
+                      className="pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                  {brandDiscountPct != null && brandDiscountPct > 0 && (
+                    <p className="text-xs text-emerald-600">
+                      Tüm kalemlere %{brandDiscountPct.toFixed(2)} indirim uygulanacak (satır bazında override edilebilir).
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="note" className="text-sm">
+                    Sipariş Notu (opsiyonel)
+                  </Label>
+                  <Input
+                    id="note"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Örn. Acil — Pazartesi'ye kadar"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end">

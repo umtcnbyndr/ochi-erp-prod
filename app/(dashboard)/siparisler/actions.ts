@@ -159,6 +159,7 @@ export async function getOrderExportDataAction(
   date: string
   analysisDays: number
   targetStockDays: number
+  brandDiscountPct: number | null
   note: string | null
   totalQuantity: number
   totalListAmount: number
@@ -180,6 +181,10 @@ export async function getOrderExportDataAction(
     qty: number
     listPrice: number
     netPrice: number
+    /** Brüt (kampanya öncesi) net alış. Eğer indirim yoksa netPrice ile aynı. */
+    grossNetPrice: number
+    discountOverridePct: number | null
+    effectiveDiscountPct: number | null
     lineTotal: number
   }[]
 }>> {
@@ -194,35 +199,76 @@ export async function getOrderExportDataAction(
         date: new Date(order.createdAt).toLocaleDateString("tr-TR"),
         analysisDays: order.analysisDays,
         targetStockDays: order.targetStockDays,
+        brandDiscountPct: order.brandDiscountPct ? Number(order.brandDiscountPct) : null,
         note: order.note,
         totalQuantity: order.totalQuantity,
         totalListAmount: Number(order.totalListAmount),
         totalNetAmount: Number(order.totalNetAmount),
-        items: order.items.map((i) => ({
-          barcode: i.product.primaryBarcode,
-          name: i.product.name,
-          brand: i.product.brand.name,
-          currentStock: i.currentStock,
-          mainStockSnapshot: i.mainStockSnapshot,
-          streetStock: i.streetStockSnapshot ?? i.product.streetStock,
-          totalSoldInPeriod: i.totalSoldInPeriod,
-          dailySalesAvg: Number(i.dailySalesAvg),
-          daysUntilStockout: i.daysUntilStockout,
-          psf: i.product.psf ? Number(i.product.psf) : null,
-          buyboxPrice: i.buyboxPrice ? Number(i.buyboxPrice) : null,
-          ourSalePrice: i.ourSalePrice ? Number(i.ourSalePrice) : null,
-          suggestedQty: i.suggestedQty,
-          qty: i.orderedQty,
-          listPrice: Number(i.listPrice),
-          netPrice: Number(i.netPurchasePrice),
-          lineTotal: Number(i.netPurchasePrice) * i.orderedQty,
-        })),
+        items: order.items.map((i) => {
+          const netPrice = Number(i.netPurchasePrice)
+          const effDisc = i.effectiveDiscountPct ? Number(i.effectiveDiscountPct) : null
+          // grossNetPrice: brüt (kampanya öncesi) net. Eski siparişlerde indirim yoksa eşit.
+          const grossNetPrice = effDisc && effDisc > 0 ? netPrice / (1 - effDisc / 100) : netPrice
+          return {
+            barcode: i.product.primaryBarcode,
+            name: i.product.name,
+            brand: i.product.brand.name,
+            currentStock: i.currentStock,
+            mainStockSnapshot: i.mainStockSnapshot,
+            streetStock: i.streetStockSnapshot ?? i.product.streetStock,
+            totalSoldInPeriod: i.totalSoldInPeriod,
+            dailySalesAvg: Number(i.dailySalesAvg),
+            daysUntilStockout: i.daysUntilStockout,
+            psf: i.product.psf ? Number(i.product.psf) : null,
+            buyboxPrice: i.buyboxPrice ? Number(i.buyboxPrice) : null,
+            ourSalePrice: i.ourSalePrice ? Number(i.ourSalePrice) : null,
+            suggestedQty: i.suggestedQty,
+            qty: i.orderedQty,
+            listPrice: Number(i.listPrice),
+            netPrice,
+            grossNetPrice: Math.round(grossNetPrice * 10000) / 10000,
+            discountOverridePct: i.discountOverridePct ? Number(i.discountOverridePct) : null,
+            effectiveDiscountPct: effDisc,
+            lineTotal: netPrice * i.orderedQty,
+          }
+        }),
       },
     }
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Export başarısız",
+    }
+  }
+}
+
+// ─── Styled Excel (exceljs ile renkli şablon) ────────────────
+
+export async function exportStyledOrderExcelAction(
+  orderId: number,
+): Promise<ActionResult<{ filename: string; base64: string }>> {
+  try {
+    await requirePermission("siparisler", "view")
+    const dataResult = await getOrderExportDataAction(orderId)
+    if (!dataResult.success) return dataResult
+    const data = dataResult.data!
+
+    const { buildStyledOrderWorkbook, buildStyledOrderFilename } = await import(
+      "@/lib/excel/order-export-styled"
+    )
+    const buffer = await buildStyledOrderWorkbook(data)
+    const filename = buildStyledOrderFilename({
+      id: data.id,
+      brandNames: data.brandNames,
+    })
+    return {
+      success: true,
+      data: { filename, base64: buffer.toString("base64") },
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Excel oluşturulamadı",
     }
   }
 }

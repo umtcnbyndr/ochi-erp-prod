@@ -14,10 +14,13 @@ export interface CreateOrderInput {
   analysisDays: number
   targetStockDays: number
   note?: string
+  /** Marka kampanya alım indirimi (%). Tüm kalemlere uygulanır. */
+  brandDiscountPct?: number | null
   items: {
     productId: number
     listPrice: number
     isVatIncluded: boolean
+    /** Hesaplanmış net alış (KAMPANYA İNDİRİMİ HARİÇ — service indirim uygular ve snapshot'a indirilmiş halini yazar) */
     netPurchasePrice: number
     currentStock: number          // legacy: mainStock + streetStock toplam
     mainStockSnapshot?: number    // sipariş anındaki ana stok
@@ -29,7 +32,27 @@ export interface CreateOrderInput {
     orderedQty: number
     buyboxPrice?: number | null
     ourSalePrice?: number | null
+    /** Bu kalem için kampanya indirimi override (% — marka oranını ezer). */
+    discountOverridePct?: number | null
   }[]
+}
+
+/** Etkin indirim oranı: override varsa onu, yoksa marka oranını kullan. */
+function pickEffectiveDiscountPct(
+  brandDiscountPct: number | null | undefined,
+  overridePct: number | null | undefined,
+): number | null {
+  if (overridePct != null && Number.isFinite(overridePct)) return overridePct
+  if (brandDiscountPct != null && Number.isFinite(brandDiscountPct))
+    return brandDiscountPct
+  return null
+}
+
+/** İndirim uygulanmış net alış. discountPct null/0 ise olduğu gibi. */
+function applyDiscount(price: number, discountPct: number | null): number {
+  if (discountPct == null || discountPct <= 0) return price
+  const factor = 1 - discountPct / 100
+  return Math.round(price * factor * 10000) / 10000
 }
 
 // ─── Create order ────────────────────────────────────────────
@@ -45,16 +68,26 @@ export async function createPurchaseOrder(input: CreateOrderInput) {
     throw new Error("En az bir ürün için sipariş miktarı girilmeli")
   }
 
-  // Toplamlar
-  const totalListAmount = validItems.reduce(
+  // Her kalem için etkin indirim ve indirilmiş net alış hesabı
+  const itemRows = validItems.map((i) => {
+    const effDisc = pickEffectiveDiscountPct(
+      input.brandDiscountPct ?? null,
+      i.discountOverridePct ?? null,
+    )
+    const discountedNet = applyDiscount(i.netPurchasePrice, effDisc)
+    return { ...i, effDisc, discountedNet }
+  })
+
+  // Toplamlar — listPrice ham; netNet indirim uygulanmış
+  const totalListAmount = itemRows.reduce(
     (sum, i) => sum + i.listPrice * i.orderedQty,
-    0
+    0,
   )
-  const totalNetAmount = validItems.reduce(
-    (sum, i) => sum + i.netPurchasePrice * i.orderedQty,
-    0
+  const totalNetAmount = itemRows.reduce(
+    (sum, i) => sum + i.discountedNet * i.orderedQty,
+    0,
   )
-  const totalQuantity = validItems.reduce((sum, i) => sum + i.orderedQty, 0)
+  const totalQuantity = itemRows.reduce((sum, i) => sum + i.orderedQty, 0)
 
   return prisma.purchaseOrder.create({
     data: {
@@ -62,16 +95,19 @@ export async function createPurchaseOrder(input: CreateOrderInput) {
       analysisDays: input.analysisDays,
       targetStockDays: input.targetStockDays,
       note: input.note,
+      brandDiscountPct: input.brandDiscountPct ?? null,
       totalListAmount,
       totalNetAmount,
       totalQuantity,
       status: "DRAFT",
       items: {
-        create: validItems.map((i) => ({
+        create: itemRows.map((i) => ({
           productId: i.productId,
           listPrice: i.listPrice,
           isVatIncluded: i.isVatIncluded,
-          netPurchasePrice: i.netPurchasePrice,
+          netPurchasePrice: i.discountedNet, // indirim uygulanmış net (mevcut akışla uyumlu)
+          discountOverridePct: i.discountOverridePct ?? null,
+          effectiveDiscountPct: i.effDisc,
           currentStock: i.currentStock,
           mainStockSnapshot: i.mainStockSnapshot ?? null,
           streetStockSnapshot: i.streetStockSnapshot ?? null,
@@ -316,6 +352,7 @@ export async function getOrderExportData(orderId: number) {
       brandIds: true,
       analysisDays: true,
       targetStockDays: true,
+      brandDiscountPct: true,
       createdAt: true,
       note: true,
       totalQuantity: true,
@@ -326,6 +363,8 @@ export async function getOrderExportData(orderId: number) {
           orderedQty: true,
           listPrice: true,
           netPurchasePrice: true,
+          discountOverridePct: true,
+          effectiveDiscountPct: true,
           currentStock: true,
           mainStockSnapshot: true,
           streetStockSnapshot: true,
