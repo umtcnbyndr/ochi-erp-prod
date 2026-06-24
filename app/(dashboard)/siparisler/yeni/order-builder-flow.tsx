@@ -19,6 +19,13 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { Separator } from "@/components/ui/separator"
 import { runSalesAnalysisAction, createOrderAction, getOpenOrderBacklogAction } from "../actions"
@@ -185,8 +192,41 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
     | "carts"
     | "trend"
     | "conversion"
+    | "suggested"
+    | "ordered"
   >("priority")
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc")
+
+  // ─── Marka / Kategori / Alt Kategori filtreleri ────────────────
+  const [filterBrandId, setFilterBrandId] = useState<string>("all")
+  const [filterCategoryId, setFilterCategoryId] = useState<string>("all")
+  const [filterSubcategoryId, setFilterSubcategoryId] = useState<string>("all")
+
+  // Analiz sonucundaki ürünlerden mevcut marka/kategori/alt kategori seçenekleri
+  const filterOptions = useMemo(() => {
+    const brandMap = new Map<number, string>()
+    const catMap = new Map<number, string>()
+    const subMap = new Map<number, { name: string; categoryId: number }>()
+    for (const i of items ?? []) {
+      brandMap.set(i.brandId, i.brandName)
+      catMap.set(i.categoryId, i.categoryName)
+      if (i.subcategoryId != null && i.subcategoryName)
+        subMap.set(i.subcategoryId, { name: i.subcategoryName, categoryId: i.categoryId })
+    }
+    const collator = new Intl.Collator("tr")
+    return {
+      brands: [...brandMap.entries()].sort((a, b) => collator.compare(a[1], b[1])),
+      categories: [...catMap.entries()].sort((a, b) => collator.compare(a[1], b[1])),
+      subcategories: [...subMap.entries()].sort((a, b) => collator.compare(a[1].name, b[1].name)),
+    }
+  }, [items])
+
+  // Seçili kategoriye göre alt kategori seçeneklerini daralt
+  const visibleSubcategories = useMemo(() => {
+    if (filterCategoryId === "all") return filterOptions.subcategories
+    const cid = Number(filterCategoryId)
+    return filterOptions.subcategories.filter(([, v]) => v.categoryId === cid)
+  }, [filterOptions.subcategories, filterCategoryId])
 
   // ─── Hızlı filtre chip'leri ────────────────────────────────────
   type FilterKey =
@@ -230,6 +270,19 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
           i.brandName.toLowerCase().includes(q),
       )
     }
+    // Marka / Kategori / Alt Kategori dropdown filtreleri
+    if (filterBrandId !== "all") {
+      const bid = Number(filterBrandId)
+      result = result.filter((i) => i.brandId === bid)
+    }
+    if (filterCategoryId !== "all") {
+      const cid = Number(filterCategoryId)
+      result = result.filter((i) => i.categoryId === cid)
+    }
+    if (filterSubcategoryId !== "all") {
+      const sid = Number(filterSubcategoryId)
+      result = result.filter((i) => i.subcategoryId === sid)
+    }
     // Hızlı filtre chip'leri (AND mantığıyla birleşir)
     if (activeFilters.size > 0) {
       result = result.filter((i) => {
@@ -270,6 +323,10 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
           return i.trendScore ?? -999
         case "conversion":
           return i.conversionRate ?? -1
+        case "suggested":
+          return i.suggestedQty
+        case "ordered":
+          return quantities.get(i.productId) ?? 0
       }
     }
     return [...result].sort((a, b) => {
@@ -277,7 +334,17 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
       if (diff !== 0) return diff
       return a.productName.localeCompare(b.productName, "tr")
     })
-  }, [items, search, sortBy, sortDir, activeFilters])
+  }, [
+    items,
+    search,
+    sortBy,
+    sortDir,
+    activeFilters,
+    quantities,
+    filterBrandId,
+    filterCategoryId,
+    filterSubcategoryId,
+  ])
 
   /** Sıralanabilir kolon başlığı */
   function SortableHead({
@@ -644,6 +711,73 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                   size="sm"
                 />
               </div>
+              {/* Marka / Kategori / Alt Kategori dropdown filtreleri */}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Select value={filterBrandId} onValueChange={setFilterBrandId}>
+                  <SelectTrigger className="h-8 w-[150px] text-xs">
+                    <SelectValue placeholder="Marka" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tüm markalar</SelectItem>
+                    {filterOptions.brands.map(([id, name]) => (
+                      <SelectItem key={id} value={String(id)}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={filterCategoryId}
+                  onValueChange={(v) => {
+                    setFilterCategoryId(v)
+                    setFilterSubcategoryId("all")
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[160px] text-xs">
+                    <SelectValue placeholder="Kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tüm kategoriler</SelectItem>
+                    {filterOptions.categories.map(([id, name]) => (
+                      <SelectItem key={id} value={String(id)}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={filterSubcategoryId}
+                  onValueChange={setFilterSubcategoryId}
+                  disabled={visibleSubcategories.length === 0}
+                >
+                  <SelectTrigger className="h-8 w-[160px] text-xs">
+                    <SelectValue placeholder="Alt kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tüm alt kategoriler</SelectItem>
+                    {visibleSubcategories.map(([id, v]) => (
+                      <SelectItem key={id} value={String(id)}>
+                        {v.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(filterBrandId !== "all" ||
+                  filterCategoryId !== "all" ||
+                  filterSubcategoryId !== "all") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterBrandId("all")
+                      setFilterCategoryId("all")
+                      setFilterSubcategoryId("all")
+                    }}
+                    className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                  >
+                    Filtreleri temizle
+                  </button>
+                )}
+              </div>
               {/* Hızlı filtre chip'leri */}
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <FilterChip
@@ -706,9 +840,8 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table className="text-[12px]">
-                  <TableHeader>
+              <Table className="text-[12px]" containerClassName="max-h-[70vh]">
+                  <TableHeader className="bg-background">
                     <TableRow>
                       <TableHead className="min-w-[200px]">Ürün</TableHead>
                       <TableHead className="text-center">
@@ -811,8 +944,12 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                       </TableHead>
                       <TableHead className="text-right">BuyBox</TableHead>
                       <TableHead className="min-w-[150px]">Not</TableHead>
-                      <TableHead className="text-center">Öneri</TableHead>
-                      <TableHead className="text-center w-24">Sipariş</TableHead>
+                      <TableHead className="text-center">
+                        <SortableHead col="suggested">Öneri</SortableHead>
+                      </TableHead>
+                      <TableHead className="text-center w-24">
+                        <SortableHead col="ordered">Sipariş</SortableHead>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1137,8 +1274,7 @@ export function OrderBuilderFlow({ brands, preselectedBrandIds = [] }: Props) {
                       })
                     )}
                   </TableBody>
-                </Table>
-              </div>
+              </Table>
             </CardContent>
           </Card>
 

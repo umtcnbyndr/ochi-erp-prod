@@ -69,6 +69,8 @@ interface Order {
   id: number
   status: string
   brandIds: number[]
+  categoryIds: number[]
+  subcategoryIds: number[]
   totalListAmount: number
   totalNetAmount: number
   totalQuantity: number
@@ -86,17 +88,39 @@ interface BrandOption {
   name: string
 }
 
+interface CategoryOption {
+  id: number
+  name: string
+}
+
+interface SubcategoryOption {
+  id: number
+  name: string
+  categoryId: number
+}
+
 interface Props {
   orders: Order[]
   brandMap: Record<number, string>
   brands: BrandOption[]
+  categories: CategoryOption[]
+  subcategories: SubcategoryOption[]
   stockAlerts: StockAlertResult
 }
 
-export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
+export function OrderList({
+  orders,
+  brandMap,
+  brands,
+  categories,
+  subcategories,
+  stockAlerts,
+}: Props) {
   const router = useRouter()
   const [filter, setFilter] = useState<ListFilter>("all")
   const [brandFilter, setBrandFilter] = useState<string>("all")
+  const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [subcategoryFilter, setSubcategoryFilter] = useState<string>("all")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [exportingId, setExportingId] = useState<number | null>(null)
@@ -126,13 +150,35 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
           o.brandIds.includes(Number(brandFilter))
         )
 
+  // Kategori / Alt kategori filtresi (sipariş, o kategoriden ürün içeriyorsa geçer)
+  const categoryFiltered =
+    categoryFilter === "all"
+      ? brandFiltered
+      : brandFiltered.filter((o) => o.categoryIds.includes(Number(categoryFilter)))
+  const subcategoryFiltered =
+    subcategoryFilter === "all"
+      ? categoryFiltered
+      : categoryFiltered.filter((o) =>
+          o.subcategoryIds.includes(Number(subcategoryFilter)),
+        )
+
   // Date filter
-  const filtered = brandFiltered.filter((o) => {
+  const filtered = subcategoryFiltered.filter((o) => {
     const orderDate = o.createdAt.slice(0, 10)
     if (startDate && orderDate < startDate) return false
     if (endDate && orderDate > endDate) return false
     return true
   })
+
+  // Sadece mevcut siparişlerde kullanılan kategori/alt kategori seçenekleri
+  const usedCategoryIds = new Set(orders.flatMap((o) => o.categoryIds))
+  const usedSubcategoryIds = new Set(orders.flatMap((o) => o.subcategoryIds))
+  const availableCategories = categories.filter((c) => usedCategoryIds.has(c.id))
+  const availableSubcategories = subcategories.filter(
+    (s) =>
+      usedSubcategoryIds.has(s.id) &&
+      (categoryFilter === "all" || s.categoryId === Number(categoryFilter)),
+  )
 
   const handleExcelDownload = useCallback(
     (e: React.MouseEvent, orderId: number) => {
@@ -230,7 +276,7 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
           {/* Normal sipariş filtre + tablo */}
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
             <Select value={brandFilter} onValueChange={setBrandFilter}>
-              <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">
+              <SelectTrigger className="w-full sm:w-[170px] h-9 text-sm">
                 <SelectValue placeholder="Tüm Markalar" />
               </SelectTrigger>
               <SelectContent>
@@ -238,6 +284,44 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
                 {availableBrands.map((b) => (
                   <SelectItem key={b.id} value={String(b.id)}>
                     {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={categoryFilter}
+              onValueChange={(v) => {
+                setCategoryFilter(v)
+                setSubcategoryFilter("all")
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[170px] h-9 text-sm">
+                <SelectValue placeholder="Tüm Kategoriler" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tüm Kategoriler</SelectItem>
+                {availableCategories.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={subcategoryFilter}
+              onValueChange={setSubcategoryFilter}
+              disabled={availableSubcategories.length === 0}
+            >
+              <SelectTrigger className="w-full sm:w-[170px] h-9 text-sm">
+                <SelectValue placeholder="Tüm Alt Kategoriler" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tüm Alt Kategoriler</SelectItem>
+                {availableSubcategories.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -261,13 +345,19 @@ export function OrderList({ orders, brandMap, brands, stockAlerts }: Props) {
               />
             </div>
 
-            {(brandFilter !== "all" || startDate || endDate) && (
+            {(brandFilter !== "all" ||
+              categoryFilter !== "all" ||
+              subcategoryFilter !== "all" ||
+              startDate ||
+              endDate) && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-9 text-xs text-muted-foreground self-start"
                 onClick={() => {
                   setBrandFilter("all")
+                  setCategoryFilter("all")
+                  setSubcategoryFilter("all")
                   setStartDate("")
                   setEndDate("")
                 }}

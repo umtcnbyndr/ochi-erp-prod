@@ -3,9 +3,11 @@ import { cn } from "@/lib/utils"
 
 const Table = React.forwardRef<
   HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto scrollbar-thin">
+  React.HTMLAttributes<HTMLTableElement> & { containerClassName?: string }
+>(({ className, containerClassName, ...props }, ref) => (
+  // containerClassName ile max-h verilirse: tablo kendi içinde dikey kayar ve
+  // sticky TableHeader üstte sabit kalır (aşağı indikçe başlık devam eder).
+  <div className={cn("relative w-full overflow-auto scrollbar-thin", containerClassName)}>
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}

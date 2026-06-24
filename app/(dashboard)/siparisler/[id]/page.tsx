@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { OrderActions } from "./order-actions"
 import { OrderItems } from "./order-items"
+import { OrderNote } from "./order-note"
 
 export const dynamic = "force-dynamic"
 
@@ -157,15 +158,8 @@ export default async function OrderDetailPage({
       {/* Aksiyon butonları */}
       <OrderActions orderId={order.id} status={order.status} isAdmin={isAdmin} />
 
-      {/* Not */}
-      {order.note && (
-        <Card>
-          <CardContent className="py-3 text-sm">
-            <span className="text-muted-foreground">Not: </span>
-            {order.note}
-          </CardContent>
-        </Card>
-      )}
+      {/* Not — düzenlenebilir */}
+      <OrderNote orderId={order.id} note={order.note} />
 
       {/* Kalemler + Mal Kabul */}
       <OrderItems

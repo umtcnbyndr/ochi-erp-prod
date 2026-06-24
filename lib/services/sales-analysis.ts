@@ -31,6 +31,10 @@ export interface SalesAnalysisItem {
   primaryBarcode: string
   brandId: number
   brandName: string
+  categoryId: number
+  categoryName: string
+  subcategoryId: number | null
+  subcategoryName: string | null
   vatRate: number
 
   // Stok
@@ -133,6 +137,10 @@ export async function getSalesAnalysis(
       name: true,
       primaryBarcode: true,
       brandId: true,
+      categoryId: true,
+      subcategoryId: true,
+      category: { select: { name: true } },
+      subcategory: { select: { name: true } },
       vatRate: true,
       mainStock: true,
       streetStock: true,
@@ -180,6 +188,20 @@ export async function getSalesAnalysis(
   })
 
   if (products.length === 0) return []
+
+  // Trendyol default marketplace — ürünün kendi marketplacePrice satırı yoksa
+  // komisyon/stopaj/kâr/internet satış buradan hesaplanır (her ürün için fallback).
+  const trendyolDefault = await prisma.marketplace.findFirst({
+    where: { name: "Trendyol" },
+    select: {
+      name: true,
+      commissionRate: true,
+      shippingCost: true,
+      extraCost: true,
+      withholdingTax: true,
+      targetProfit: true,
+    },
+  })
 
   // 3. Satış verilerini topla — DOPIGO NET SATIŞ (online pazaryeri, iptal/iade hariç)
   // Mantık: ana depodan online satıyoruz → satış hızı da online (Dopigo) olmalı.
@@ -371,35 +393,34 @@ export async function getSalesAnalysis(
     const buyboxPrice = buyboxData?.price ?? null
     const buyboxRanking = buyboxData?.ranking ?? null
 
-    // Marketplace (Trendyol) komisyon + stopaj — UI/Excel Konum hesabı için
-    const commissionPct = tyMp?.marketplace
-      ? toNumber(tyMp.marketplace.commissionRate)
-      : null
-    const withholdingPct = tyMp?.marketplace
-      ? toNumber(tyMp.marketplace.withholdingTax)
-      : null
+    // Marketplace (Trendyol) komisyon + stopaj — UI/Excel Konum hesabı için.
+    // Ürünün kendi marketplacePrice satırı yoksa default Trendyol'a düş → internet
+    // satış (formulaSalePrice) her ürün için hesaplanır, "—" boş kalmaz.
+    const mp = tyMp?.marketplace ?? trendyolDefault
+    const commissionPct = mp ? toNumber(mp.commissionRate) : null
+    const withholdingPct = mp ? toNumber(mp.withholdingTax) : null
     // Hedef kâr (brand override > marketplace) + ek maliyet — İnternet satış canlı hesabı
-    const targetProfitPct = tyMp?.marketplace
+    const targetProfitPct = mp
       ? p.brand?.targetProfit && Number(p.brand.targetProfit) > 0
         ? Number(p.brand.targetProfit)
-        : toNumber(tyMp.marketplace.targetProfit)
+        : toNumber(mp.targetProfit)
       : null
-    const marketplaceAddCost = tyMp?.marketplace
-      ? toNumber(tyMp.marketplace.shippingCost) + toNumber(tyMp.marketplace.extraCost)
+    const marketplaceAddCost = mp
+      ? toNumber(mp.shippingCost) + toNumber(mp.extraCost)
       : null
 
     // Formül satış — net alıştan optimal satış (komisyon + kâr formülü)
     let formulaSalePrice: number | null = null
-    if (netPurchasePrice !== null && tyMp?.marketplace) {
+    if (netPurchasePrice !== null && mp) {
       try {
         formulaSalePrice = calculateSalePrice({
           netPurchasePrice,
           marketplace: {
-            commissionRate: toNumber(tyMp.marketplace.commissionRate),
-            shippingCost: toNumber(tyMp.marketplace.shippingCost),
-            withholdingTax: toNumber(tyMp.marketplace.withholdingTax),
-            targetProfit: toNumber(tyMp.marketplace.targetProfit),
-            extraCost: toNumber(tyMp.marketplace.extraCost),
+            commissionRate: toNumber(mp.commissionRate),
+            shippingCost: toNumber(mp.shippingCost),
+            withholdingTax: toNumber(mp.withholdingTax),
+            targetProfit: toNumber(mp.targetProfit),
+            extraCost: toNumber(mp.extraCost),
           },
           brandTargetProfit: p.brand?.targetProfit
             ? toNumber(p.brand.targetProfit)
@@ -500,6 +521,10 @@ export async function getSalesAnalysis(
       primaryBarcode: p.primaryBarcode,
       brandId: p.brandId,
       brandName: p.brand.name,
+      categoryId: p.categoryId,
+      categoryName: p.category?.name ?? "—",
+      subcategoryId: p.subcategoryId ?? null,
+      subcategoryName: p.subcategory?.name ?? null,
       vatRate: Number(p.vatRate),
 
       mainStock: p.mainStock,

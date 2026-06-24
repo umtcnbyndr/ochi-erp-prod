@@ -187,10 +187,29 @@ export async function listPurchaseOrders(filters: ListOrdersFilters = {}) {
       cancelledAt: true,
       _count: { select: { items: true } },
       items: {
-        select: { orderedQty: true, receivedQty: true },
+        select: {
+          orderedQty: true,
+          receivedQty: true,
+          product: { select: { categoryId: true, subcategoryId: true } },
+        },
       },
     },
     orderBy: { createdAt: "desc" },
+  })
+}
+
+// ─── Not güncelle (sipariş oluşturulduktan sonra) ─────────────
+
+export async function updateOrderNote(id: number, note: string | null) {
+  const order = await prisma.purchaseOrder.findUnique({
+    where: { id },
+    select: { id: true },
+  })
+  if (!order) throw new Error("Sipariş bulunamadı")
+  const trimmed = note?.trim()
+  return prisma.purchaseOrder.update({
+    where: { id },
+    data: { note: trimmed ? trimmed : null },
   })
 }
 

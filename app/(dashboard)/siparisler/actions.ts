@@ -10,6 +10,7 @@ import {
   deleteOrder,
   getOrderExportData,
   getOpenOrderBacklog,
+  updateOrderNote,
   type CreateOrderInput,
   type OpenOrderBacklog,
 } from "@/lib/services/purchase-order"
@@ -132,6 +133,24 @@ export async function closeOrderAction(id: number): Promise<ActionResult> {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Kapatılamadı",
+    }
+  }
+}
+
+export async function updateOrderNoteAction(
+  id: number,
+  note: string | null,
+): Promise<ActionResult> {
+  try {
+    await requirePermission("siparisler", "edit")
+    await updateOrderNote(id, note)
+    revalidatePath(`/siparisler/${id}`)
+    revalidatePath("/siparisler")
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Not güncellenemedi",
     }
   }
 }
