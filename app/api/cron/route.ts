@@ -5,16 +5,21 @@
  * CRON_SECRET env tanımlı değilse her istek 401 (yanlışlıkla açık kalmasın).
  *
  * İşler (?job=):
- *   dopigo  → son 2 günün Dopigo siparişlerini çek (önerilen her 20 dk)
- *   buybox  → aktif TY ürünleri için BuyBox çek (önerilen saatte 1)
+ *   dopigo   → son 2 günün Dopigo siparişlerini çek (önerilen her 20 dk)
+ *   buybox   → aktif TY ürünleri için BuyBox çek (önerilen saatte 1)
+ *   rematch  → eşleşmeyen DopigoOrderItem'lar için match'i yeniden dene (önerilen günde 1)
  *
  * Coolify Scheduled Task örneği (container içinde, wget ile):
  *   her 20 dk → /api/cron?secret=XXX&job=dopigo
  *   saatte 1  → /api/cron?secret=XXX&job=buybox
+ *   gece 3'te → /api/cron?secret=XXX&job=rematch
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
-import { syncDopigoOrders } from "@/lib/services/dopigo-orders"
+import {
+  syncDopigoOrders,
+  rematchUnmatchedItems,
+} from "@/lib/services/dopigo-orders"
 import { refreshBuyboxForProducts } from "@/lib/services/price-recommendation"
 
 export const dynamic = "force-dynamic"
@@ -55,8 +60,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, job, startedAt, productCount: ids.length, result })
     }
 
+    if (job === "rematch") {
+      const result = await rematchUnmatchedItems()
+      return NextResponse.json({ ok: true, job, startedAt, result })
+    }
+
     return NextResponse.json(
-      { error: "unknown job", validJobs: ["dopigo", "buybox"] },
+      { error: "unknown job", validJobs: ["dopigo", "buybox", "rematch"] },
       { status: 400 },
     )
   } catch (err) {

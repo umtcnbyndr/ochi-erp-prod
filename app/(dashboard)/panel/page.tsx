@@ -28,6 +28,7 @@ import {
 } from "@/components/panel/info-widgets"
 import { NotesWidget } from "@/components/panel/notes-widget"
 import { InvoiceAlertsWidget } from "@/components/panel/invoice-alerts-widget"
+import { PendingPurchaseOrdersWidget } from "@/components/panel/pending-purchase-orders-widget"
 
 export const dynamic = "force-dynamic"
 
@@ -172,11 +173,15 @@ export default async function PanelPage() {
 
       {/* SECTION 3: Acil Eylem — detaylı widget'lar */}
       <Section title="Detay">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4 xl:grid-cols-5">
           <CriticalStockWidget data={data.criticalStock} />
           <BuyboxLostWidget data={data.buyboxLost} />
           <PendingCampaignsWidget campaigns={data.pendingCampaigns} />
           <InvoiceAlertsWidget alerts={data.invoiceAlerts} />
+          <PendingPurchaseOrdersWidget
+            orders={data.pendingPurchaseOrders}
+            brandNames={data.brandNames}
+          />
         </div>
       </Section>
 

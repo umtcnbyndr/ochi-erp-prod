@@ -49,8 +49,8 @@ export async function createOrderAction(
   input: CreateOrderInput
 ): Promise<ActionResult<{ id: number }>> {
   try {
-    await requirePermission("siparisler", "edit")
-    const result = await createPurchaseOrder(input)
+    const user = await requirePermission("siparisler", "edit")
+    const result = await createPurchaseOrder({ ...input, createdBy: user.id })
     revalidatePath("/siparisler")
     return { success: true, data: result }
   } catch (err) {

@@ -1253,6 +1253,12 @@ model PurchaseOrderItem {
   orderedQty      Int      // gerçek sipariş miktarı (kullanıcı override edebilir)
   receivedQty     Int      @default(0)  // mal kabul edilen toplam
 
+  /// "Eksik kapatıldı" bayrağı — closeOrder çağrıldığında receivedQty < orderedQty ise true.
+  /// Eksik bakiye buharlaşmasın diye: yeni sipariş builder'ında kullanıcıya uyarı için saklanır.
+  closedShort     Boolean   @default(false)
+  closedShortAt   DateTime?
+  closedShortQty  Int?      // ne kadar eksik kapatıldı (orderedQty - receivedQty)
+
   /// BuyBox bilgileri (snapshot)
   buyboxPrice     Decimal? @db.Decimal(14, 4)
   ourSalePrice    Decimal? @db.Decimal(14, 4)  // mevcut satış fiyatımız (recommendedPrice veya formula)

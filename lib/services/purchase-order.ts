@@ -16,6 +16,8 @@ export interface CreateOrderInput {
   note?: string
   /** Marka kampanya alım indirimi (%). Tüm kalemlere uygulanır. */
   brandDiscountPct?: number | null
+  /** Siparişi oluşturan kullanıcı (snapshot — audit için). */
+  createdBy?: string | null
   items: {
     productId: number
     listPrice: number
@@ -96,6 +98,7 @@ export async function createPurchaseOrder(input: CreateOrderInput) {
       targetStockDays: input.targetStockDays,
       note: input.note,
       brandDiscountPct: input.brandDiscountPct ?? null,
+      createdBy: input.createdBy ?? null,
       totalListAmount,
       totalNetAmount,
       totalQuantity,
@@ -255,15 +258,42 @@ export async function deleteOrder(id: number, force = false) {
 // ─── Close order (manual completion) ─────────────────────────
 
 export async function closeOrder(id: number) {
-  const order = await prisma.purchaseOrder.findUnique({ where: { id } })
+  const order = await prisma.purchaseOrder.findUnique({
+    where: { id },
+    include: {
+      items: {
+        select: { id: true, orderedQty: true, receivedQty: true },
+      },
+    },
+  })
   if (!order) throw new Error("Sipariş bulunamadı")
   if (order.status !== "PARTIAL" && order.status !== "CONFIRMED") {
     throw new Error("Sadece bekleyen veya kısmen gelmiş siparişler kapatılabilir")
   }
 
-  return prisma.purchaseOrder.update({
-    where: { id },
-    data: { status: "COMPLETED", completedAt: new Date() },
+  // Eksik kalan kalemleri "closedShort" olarak işaretle — bakiye buharlaşmasın.
+  const now = new Date()
+  const shortItems = order.items.filter((i) => i.receivedQty < i.orderedQty)
+
+  return prisma.$transaction(async (tx) => {
+    if (shortItems.length > 0) {
+      await Promise.all(
+        shortItems.map((it) =>
+          tx.purchaseOrderItem.update({
+            where: { id: it.id },
+            data: {
+              closedShort: true,
+              closedShortAt: now,
+              closedShortQty: it.orderedQty - it.receivedQty,
+            },
+          }),
+        ),
+      )
+    }
+    return tx.purchaseOrder.update({
+      where: { id },
+      data: { status: "COMPLETED", completedAt: now },
+    })
   })
 }
 
@@ -307,6 +337,13 @@ export interface OpenOrderBacklog {
   orderedQty: number
   receivedQty: number
   remainingQty: number
+  /**
+   * "Geçen siparişte eksik kapatıldı" bayrağı — closeOrder ile COMPLETED yapılan ama
+   * receivedQty < orderedQty olan kalemler. Yeni siparişte bakiye uyarısı.
+   */
+  closedShort: boolean
+  /** Eksik kapatıldıysa kaç adet eksik kaldı (closedShortQty ?? remainingQty) */
+  shortQty: number
 }
 
 export async function getOpenOrderBacklog(
@@ -317,15 +354,20 @@ export async function getOpenOrderBacklog(
   const items = await prisma.purchaseOrderItem.findMany({
     where: {
       productId: { in: productIds },
-      order: {
-        status: { in: ["CONFIRMED", "PARTIAL"] },
-      },
+      OR: [
+        // Hâlâ açık sipariş (CONFIRMED / PARTIAL)
+        { order: { status: { in: ["CONFIRMED", "PARTIAL"] } } },
+        // veya kapatılmış ama eksik bakiyesi olan kalem
+        { closedShort: true },
+      ],
     },
     select: {
       productId: true,
       orderedQty: true,
       receivedQty: true,
-      order: { select: { id: true, createdAt: true } },
+      closedShort: true,
+      closedShortQty: true,
+      order: { select: { id: true, createdAt: true, status: true } },
     },
   })
 
@@ -338,7 +380,54 @@ export async function getOpenOrderBacklog(
       orderedQty: i.orderedQty,
       receivedQty: i.receivedQty,
       remainingQty: i.orderedQty - i.receivedQty,
+      closedShort: i.closedShort,
+      shortQty: i.closedShortQty ?? i.orderedQty - i.receivedQty,
     }))
+}
+
+// ─── Aging (bekleyen siparişler — kıdem) ──────────────────────
+
+export interface OpenOrderAging {
+  id: number
+  status: "CONFIRMED" | "PARTIAL"
+  brandIds: number[]
+  totalNetAmount: number
+  daysSinceConfirmed: number
+  /** ≤7g normal, 8-21g warning, >21g critical */
+  severity: "normal" | "warning" | "critical"
+  confirmedAt: string
+}
+
+export async function getOpenPurchaseOrdersAging(): Promise<OpenOrderAging[]> {
+  const rows = await prisma.purchaseOrder.findMany({
+    where: { status: { in: ["CONFIRMED", "PARTIAL"] } },
+    select: {
+      id: true,
+      status: true,
+      brandIds: true,
+      totalNetAmount: true,
+      confirmedAt: true,
+    },
+    orderBy: { confirmedAt: "asc" },
+  })
+
+  const now = Date.now()
+  return rows
+    .filter((r) => r.confirmedAt != null)
+    .map((r) => {
+      const days = Math.floor((now - r.confirmedAt!.getTime()) / 86_400_000)
+      const severity: OpenOrderAging["severity"] =
+        days > 21 ? "critical" : days > 7 ? "warning" : "normal"
+      return {
+        id: r.id,
+        status: r.status as "CONFIRMED" | "PARTIAL",
+        brandIds: r.brandIds,
+        totalNetAmount: Number(r.totalNetAmount),
+        daysSinceConfirmed: days,
+        severity,
+        confirmedAt: r.confirmedAt!.toISOString(),
+      }
+    })
 }
 
 // ─── Excel Export ────────────────────────────────────────────

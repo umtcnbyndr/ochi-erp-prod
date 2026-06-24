@@ -470,6 +470,9 @@ export async function getUserNotes(userId: string) {
 
 /** Tüm dashboard verilerini paralel topla */
 export async function getDashboardSnapshot(userId: string) {
+  const { getOpenPurchaseOrdersAging } = await import("./purchase-order")
+  const { prisma } = await import("@/lib/db")
+
   const [
     freshness,
     criticalStock,
@@ -480,6 +483,7 @@ export async function getDashboardSnapshot(userId: string) {
     passiveCandidates,
     notes,
     invoiceAlerts,
+    pendingPurchaseOrders,
   ] = await Promise.all([
     getDataFreshness(),
     getCriticalStock(8),
@@ -490,7 +494,22 @@ export async function getDashboardSnapshot(userId: string) {
     getPassiveCandidates(5),
     getUserNotes(userId),
     getInvoiceAlerts(),
+    getOpenPurchaseOrdersAging(),
   ])
+
+  // Bekleyen siparişlerde geçen markaların isim eşlemesi (widget'ta gösterim için)
+  const brandIds = Array.from(
+    new Set(pendingPurchaseOrders.flatMap((o) => o.brandIds)),
+  )
+  const brands =
+    brandIds.length > 0
+      ? await prisma.brand.findMany({
+          where: { id: { in: brandIds } },
+          select: { id: true, name: true },
+        })
+      : []
+  const brandNames: Record<number, string> = {}
+  for (const b of brands) brandNames[b.id] = b.name
 
   return {
     freshness,
@@ -502,6 +521,8 @@ export async function getDashboardSnapshot(userId: string) {
     passiveCandidates,
     notes,
     invoiceAlerts,
+    pendingPurchaseOrders,
+    brandNames,
   }
 }
 
