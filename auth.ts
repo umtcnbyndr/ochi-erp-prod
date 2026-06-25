@@ -84,12 +84,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Başarılı login → counter sıfırla
         resetLoginAttempts(username)
 
+        // Görebileceği modülleri token'a göm (middleware Edge'de DB'ye bakamaz).
+        // ADMIN → "ALL". Diğerleri → canView=true olan modül key'leri.
+        let perms: string[] | "ALL"
+        if (user.role === "ADMIN") {
+          perms = "ALL"
+        } else {
+          const permRows = await prisma.userPermission.findMany({
+            where: { userId: user.id, canView: true },
+            select: { module: true },
+          })
+          perms = permRows.map((r) => r.module)
+        }
+
         return {
           id: user.id,
           email: user.email,
           name: user.name ?? user.username,
           role: user.role,
           pharmacyId: user.pharmacyId,
+          perms,
         }
       },
     }),

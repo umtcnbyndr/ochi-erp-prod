@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth"
+import { getModuleKeyForRoute } from "@/lib/route-permissions"
 
 /**
  * Middleware-safe auth config (no Prisma here — edge runtime).
@@ -19,11 +20,26 @@ export const authConfig = {
         return true
       }
 
-      // protected routes
+      // protected routes — önce giriş
       if (!isLoggedIn) {
         const loginUrl = new URL("/login", nextUrl)
         loginUrl.searchParams.set("from", nextUrl.pathname)
         return Response.redirect(loginUrl)
+      }
+
+      // MERKEZİ YETKİ GATE: route'un modülü varsa, kullanıcının o modüle izni
+      // olmalı. Token'a gömülü perms ile Edge'de DB'siz kontrol. İzin yoksa
+      // /yetkisiz'e yönlendir (sayfa hiç render olmaz → URL açığı kapanır).
+      const moduleKey = getModuleKeyForRoute(nextUrl.pathname)
+      if (moduleKey) {
+        const u = auth!.user as { role?: string; perms?: string[] | "ALL" }
+        const allowed =
+          u.role === "ADMIN" ||
+          u.perms === "ALL" ||
+          (Array.isArray(u.perms) && u.perms.includes(moduleKey))
+        if (!allowed) {
+          return Response.redirect(new URL("/yetkisiz", nextUrl))
+        }
       }
       return true
     },
@@ -40,6 +56,10 @@ export const authConfig = {
       if (token.username && session.user) {
         ;(session.user as { username?: string }).username = token.username as string
       }
+      if (token.perms !== undefined && session.user) {
+        ;(session.user as { perms?: string[] | "ALL" }).perms =
+          token.perms as string[] | "ALL"
+      }
       return session
     },
     jwt({ token, user }) {
@@ -47,6 +67,7 @@ export const authConfig = {
         token.role = (user as { role?: string }).role
         token.pharmacyId = (user as { pharmacyId?: number }).pharmacyId
         token.username = (user as { username?: string }).username
+        token.perms = (user as { perms?: string[] | "ALL" }).perms
       }
       return token
     },

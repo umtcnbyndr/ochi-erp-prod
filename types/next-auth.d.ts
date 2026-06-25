@@ -2,6 +2,9 @@ import type { DefaultSession } from "next-auth"
 
 type AppUserRole = "ADMIN" | "MANAGER" | "STAFF" | "SALES"
 
+// Görebileceği modül key'leri; ADMIN için "ALL".
+type AppPerms = string[] | "ALL"
+
 declare module "next-auth" {
   interface Session {
     user: {
@@ -9,6 +12,7 @@ declare module "next-auth" {
       role?: AppUserRole
       pharmacyId?: number
       username?: string
+      perms?: AppPerms
     } & DefaultSession["user"]
   }
 
@@ -16,6 +20,7 @@ declare module "next-auth" {
     role?: AppUserRole
     pharmacyId?: number
     username?: string
+    perms?: AppPerms
   }
 }
 
@@ -24,5 +29,6 @@ declare module "next-auth/jwt" {
     role?: AppUserRole
     pharmacyId?: number
     username?: string
+    perms?: AppPerms
   }
 }
