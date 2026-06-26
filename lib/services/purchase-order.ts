@@ -213,6 +213,69 @@ export async function updateOrderNote(id: number, note: string | null) {
   })
 }
 
+// ─── Taslak kalem düzenleme (onay öncesi) ─────────────────────
+
+/**
+ * DRAFT siparişte kalem adetlerini günceller. qty ≤ 0 → kalem silinir.
+ * Sadece DRAFT'ta izinli (onaylanmış siparişin snapshot'ı dokunulmaz).
+ * Totaller yeniden hesaplanır.
+ */
+export async function updateDraftOrderItems(
+  orderId: number,
+  updates: { itemId: number; orderedQty: number }[],
+) {
+  const order = await prisma.purchaseOrder.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      status: true,
+      items: { select: { id: true, orderedQty: true } },
+    },
+  })
+  if (!order) throw new Error("Sipariş bulunamadı")
+  if (order.status !== "DRAFT") {
+    throw new Error("Sadece taslak siparişler düzenlenebilir")
+  }
+
+  const updateMap = new Map(updates.map((u) => [u.itemId, u.orderedQty]))
+
+  await prisma.$transaction(async (tx) => {
+    for (const item of order.items) {
+      const newQty = updateMap.get(item.id)
+      if (newQty === undefined || newQty === item.orderedQty) continue
+      if (newQty <= 0) {
+        await tx.purchaseOrderItem.delete({ where: { id: item.id } })
+      } else {
+        await tx.purchaseOrderItem.update({
+          where: { id: item.id },
+          data: { orderedQty: newQty },
+        })
+      }
+    }
+
+    const remaining = await tx.purchaseOrderItem.findMany({
+      where: { orderId },
+      select: { orderedQty: true, listPrice: true, netPurchasePrice: true },
+    })
+    if (remaining.length === 0) {
+      throw new Error("Siparişte en az bir kalem kalmalı")
+    }
+    const totalQuantity = remaining.reduce((s, i) => s + i.orderedQty, 0)
+    const totalListAmount = remaining.reduce(
+      (s, i) => s + Number(i.listPrice) * i.orderedQty,
+      0,
+    )
+    const totalNetAmount = remaining.reduce(
+      (s, i) => s + Number(i.netPurchasePrice) * i.orderedQty,
+      0,
+    )
+    await tx.purchaseOrder.update({
+      where: { id: orderId },
+      data: { totalQuantity, totalListAmount, totalNetAmount },
+    })
+  })
+}
+
 // ─── Get order detail ─────────────────────────────────────────
 
 export async function getPurchaseOrder(id: number) {

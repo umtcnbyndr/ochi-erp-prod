@@ -1,8 +1,13 @@
 "use client"
 
+import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { CheckCircle2, Package } from "lucide-react"
+import { CheckCircle2, Package, Pencil, Check, X, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -12,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { updateDraftOrderItemsAction } from "../actions"
 
 interface OrderItemData {
   id: number
@@ -49,17 +55,90 @@ interface Props {
 
 export function OrderItems({ orderId, items, canReceive, orderStatus, analysisDays }: Props) {
   const showReceiveColumns = orderStatus !== "DRAFT"
+  const isDraft = orderStatus === "DRAFT"
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const [editing, setEditing] = useState(false)
+  const [qtyMap, setQtyMap] = useState<Map<number, number>>(new Map())
+
+  function startEdit() {
+    setQtyMap(new Map(items.map((i) => [i.id, i.orderedQty])))
+    setEditing(true)
+  }
+
+  function setQty(itemId: number, qty: number) {
+    setQtyMap((prev) => {
+      const next = new Map(prev)
+      next.set(itemId, Number.isFinite(qty) && qty >= 0 ? qty : 0)
+      return next
+    })
+  }
+
+  function save() {
+    const updates = items.map((i) => ({
+      itemId: i.id,
+      orderedQty: qtyMap.get(i.id) ?? i.orderedQty,
+    }))
+    if (updates.every((u) => u.orderedQty <= 0)) {
+      toast.error("Siparişte en az bir kalem kalmalı")
+      return
+    }
+    startTransition(async () => {
+      const result = await updateDraftOrderItemsAction(orderId, updates)
+      if (result.success) {
+        toast.success("Sipariş güncellendi")
+        setEditing(false)
+        router.refresh()
+      } else {
+        toast.error(result.error)
+      }
+    })
+  }
 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Package className="h-4 w-4" />
-          Sipariş Kalemleri ({items.length})
-          <Badge variant="outline" className="text-[10px] font-normal">
-            Son {analysisDays} gün analizi
-          </Badge>
-        </CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            Sipariş Kalemleri ({items.length})
+            <Badge variant="outline" className="text-[10px] font-normal">
+              Son {analysisDays} gün analizi
+            </Badge>
+          </CardTitle>
+          {isDraft &&
+            (editing ? (
+              <div className="flex gap-2">
+                <Button size="sm" onClick={save} disabled={pending}>
+                  {pending ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Check className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Kaydet
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEditing(false)}
+                  disabled={pending}
+                >
+                  <X className="mr-1.5 h-3.5 w-3.5" />
+                  Vazgeç
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" onClick={startEdit}>
+                <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                Adet Düzenle
+              </Button>
+            ))}
+        </div>
+        {isDraft && editing && (
+          <p className="text-[11px] text-muted-foreground mt-1">
+            Adedi 0 yapıp kaydedersen o kalem siparişten çıkarılır.
+          </p>
+        )}
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
@@ -128,7 +207,17 @@ export function OrderItems({ orderId, items, canReceive, orderStatus, analysisDa
                       {item.netPurchasePrice.toFixed(2)}
                     </TableCell>
                     <TableCell className="text-center tabular-nums font-bold">
-                      {item.orderedQty}
+                      {isDraft && editing ? (
+                        <Input
+                          type="number"
+                          min="0"
+                          value={qtyMap.get(item.id) ?? item.orderedQty}
+                          onChange={(e) => setQty(item.id, Number(e.target.value))}
+                          className="h-7 w-16 text-center text-[12px] tabular-nums mx-auto"
+                        />
+                      ) : (
+                        item.orderedQty
+                      )}
                     </TableCell>
                     {showReceiveColumns && (
                       <>

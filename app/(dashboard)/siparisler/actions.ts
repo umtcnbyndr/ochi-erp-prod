@@ -11,6 +11,7 @@ import {
   getOrderExportData,
   getOpenOrderBacklog,
   updateOrderNote,
+  updateDraftOrderItems,
   type CreateOrderInput,
   type OpenOrderBacklog,
 } from "@/lib/services/purchase-order"
@@ -151,6 +152,24 @@ export async function updateOrderNoteAction(
     return {
       success: false,
       error: err instanceof Error ? err.message : "Not güncellenemedi",
+    }
+  }
+}
+
+export async function updateDraftOrderItemsAction(
+  orderId: number,
+  updates: { itemId: number; orderedQty: number }[],
+): Promise<ActionResult> {
+  try {
+    await requirePermission("siparisler", "edit")
+    await updateDraftOrderItems(orderId, updates)
+    revalidatePath(`/siparisler/${orderId}`)
+    revalidatePath("/siparisler")
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Kalemler güncellenemedi",
     }
   }
 }
