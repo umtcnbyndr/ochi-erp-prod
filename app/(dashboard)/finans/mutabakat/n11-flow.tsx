@@ -80,6 +80,17 @@ export function N11ReconciliationFlow() {
           <CardTitle className="text-base">N11 raporu yükle (2 dosya)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-3 space-y-1.5">
+            <span className="block">
+              <strong>Sipariş Detay Excel:</strong> N11 panel → Sipariş Yönetimi → Sipariş
+              Listesi → sipariş durumu "Tümü" seç, tarih aralığı gir → indir.
+            </span>
+            <span className="block">
+              <strong>Settlement Summary:</strong> N11 panel → Ödeme ve Fatura Yönetimi →
+              Sipariş Kayıtları → en fazla 15 gün seçilebiliyor, önce ayın 1-15'ini indir,
+              sonra 16-son gününü ayrıca indir → ikisini birden seç.
+            </span>
+          </p>
           <form action={handlePreview} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">

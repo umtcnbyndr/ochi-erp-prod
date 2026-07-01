@@ -53,12 +53,23 @@ export default async function MutabakatPage() {
 
         <TabsContent value="farmazon" className="space-y-4 pt-4">
           <MonthSummary rows={monthsFor("Farmazon")} />
-          <MarketplaceReconciliationFlow marketplace="Farmazon" />
+          <MarketplaceReconciliationFlow
+            marketplace="Farmazon"
+            downloadInstructions={
+              'Farmazon panel → sağ üstte "Satış Panelim" yanındaki kullanıcı menüsü → Hesap Hareketlerim → sol menüden Raporlar → tarih aralığı seç → Sipariş Raporu indir → burada yükle.'
+            }
+          />
         </TabsContent>
 
         <TabsContent value="hepsiburada" className="space-y-4 pt-4">
           <MonthSummary rows={monthsFor("Hepsiburada")} />
-          <MarketplaceReconciliationFlow marketplace="Hepsiburada" hasOwnShipping />
+          <MarketplaceReconciliationFlow
+            marketplace="Hepsiburada"
+            hasOwnShipping
+            downloadInstructions={
+              'Hepsiburada panel → Muhasebe → Sipariş Kayıtları → tarih aralığı seç → indir → burada yükle. Dikkat: bazı siparişler henüz tamamlanmadıysa "giderler" (komisyon/kargo/stopaj) kolonları boş gelebilir — indirmeden önce dolu olduklarını kontrol et.'
+            }
+          />
         </TabsContent>
 
         <TabsContent value="n11" className="space-y-4 pt-4">

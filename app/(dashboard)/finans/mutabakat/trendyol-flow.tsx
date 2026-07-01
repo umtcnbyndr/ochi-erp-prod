@@ -97,7 +97,8 @@ export function TrendyolReconciliationFlow() {
           <div>
             <p className="text-sm font-medium">Trendyol Sipariş Kayıtları Excel'i</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Trendyol panel → Finans → Sipariş Kayıtları → bir aylık dönem seç → indir.
+              Trendyol Satıcı Paneli → Finans → Sipariş Kayıtları → tarih aralığını bir
+              önceki ayın başı-sonu olacak şekilde değiştir → Excel indir → burada yükle.
               <br />
               Sipariş No ile eşleştirme yapılır, sadece "name" alanı dokunulmaz.
             </p>

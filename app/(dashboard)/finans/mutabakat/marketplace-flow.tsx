@@ -21,6 +21,8 @@ interface Props {
   marketplace: string
   /** Rapor kendi gerçek kargo tutarını veriyorsa true — sipariş başı kargo inputu gizlenir */
   hasOwnShipping?: boolean
+  /** Panelden rapor nereden/nasıl indirilir (kullanıcıya adım adım gösterilir) */
+  downloadInstructions?: string
 }
 
 type Preview = MarketplacePreview & {
@@ -32,7 +34,7 @@ type Preview = MarketplacePreview & {
 const fmt = (n: number) =>
   n.toLocaleString("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 })
 
-export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping }: Props) {
+export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping, downloadInstructions }: Props) {
   const [pending, startTransition] = useTransition()
   const [shipping, setShipping] = useState("")
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -87,6 +89,11 @@ export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping }: P
           <CardTitle className="text-base">{marketplace} raporu yükle</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {downloadInstructions && (
+            <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
+              {downloadInstructions}
+            </p>
+          )}
           <form action={handlePreview} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
