@@ -24,8 +24,16 @@ export interface MarketplaceReconRow {
   saleAmount: number // ciro
   commission: number // komisyon / hizmet bedeli (mutlak)
   withholding: number // stopaj (mutlak)
-  returnAmount: number // iade tutarı (mutlak)
+  returnAmount: number // iade/iptal tutarı (mutlak)
   itemCount: number
+  /** Gerçek kargo (rapordan, mutlak). Yoksa sipariş başı sabit input kullanılır. */
+  shipping?: number
+  /** İndirim (kredi — net'e eklenir). Örn. Hepsiburada "İndirim" kolonu. */
+  discount?: number
+  /** Ceza (mutlak, düşülür). */
+  penalty?: number
+  /** Diğer kesintiler (hizmet/tahsilat bedeli gibi, mutlak, düşülür). */
+  otherDeductions?: number
   rawJson: Record<string, unknown>
 }
 
@@ -34,8 +42,10 @@ export interface MarketplaceParser {
   salesChannel: string
   /** Excel → normalize satırlar (aynı sipariş no'lu satırlar toplanır) */
   parse: (buffer: Buffer) => MarketplaceReconRow[]
-  /** DopigoOrder.serviceValue'dan eşleşme anahtarı (Farmazon: birebir) */
+  /** DopigoOrder.serviceValue'dan eşleşme anahtarı (Farmazon: birebir, Hepsiburada: '-' öncesi) */
   matchKey: (serviceValue: string) => string
+  /** Rapor kendi gerçek kargo tutarını veriyorsa true — UI'da "sipariş başı kargo" inputu gizlenir */
+  hasOwnShipping: boolean
 }
 
 // ─── Yardımcılar ──────────────────────────────────────────────
@@ -103,6 +113,60 @@ function parseFarmazon(buffer: Buffer): MarketplaceReconRow[] {
   return [...byOrder.values()]
 }
 
+// ─── Hepsiburada parser ─────────────────────────────────────────
+// Kolonlar: Sipariş no | Sipariş durumu | Sipariş tutarı, TL | Komisyon (KDV dahil) |
+//           Hizmet bedeli | Kargo kesintisi, TL | Tahsilat bedeli | Stopaj |
+//           İptal / İade | İndirim | Ceza | Net tutar, TL | (ham komisyon sayısı)
+// Tarih kolonu YOK — orderDate null döner, eşleşen Dopigo siparişinin
+// serviceCreatedAt'i buildMarketplaceReconPreview/saveMarketplaceReconciliation'da doldurulur.
+// Her sipariş zaten tek satır (çoklu ürün toplama gerekmiyor).
+function parseHepsiburada(buffer: Buffer): MarketplaceReconRow[] {
+  const wb = XLSX.read(buffer)
+  const sheet = wb.Sheets[wb.SheetNames[0]]
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" })
+
+  const out: MarketplaceReconRow[] = []
+  for (let i = 1; i < raw.length; i++) {
+    const row = raw[i]
+    const id = row[0]
+    if (!id || String(id).trim() === "" || String(id).trim() === "Toplam") continue
+    const serviceOrderId = String(id).trim()
+
+    const hizmetBedeli = abs(row[4])
+    const tahsilatBedeli = abs(row[6])
+    const ceza = abs(row[10])
+    const indirim = num(row[9])
+
+    out.push({
+      serviceOrderId,
+      orderDate: null,
+      saleAmount: num(row[2]),
+      commission: abs(row[12]), // ham komisyon sayısı (yüzdeli string yerine)
+      withholding: abs(row[7]),
+      returnAmount: abs(row[8]),
+      itemCount: 1,
+      shipping: abs(row[5]),
+      discount: indirim,
+      penalty: ceza,
+      otherDeductions: hizmetBedeli + tahsilatBedeli,
+      rawJson: {
+        "Sipariş no": row[0],
+        "Sipariş durumu": row[1],
+        "Sipariş tutarı, TL": row[2],
+        "Hizmet bedeli": row[4],
+        "Kargo kesintisi, TL": row[5],
+        "Tahsilat bedeli": row[6],
+        Stopaj: row[7],
+        "İptal / İade": row[8],
+        İndirim: row[9],
+        Ceza: row[10],
+        "Net tutar, TL": row[11],
+      },
+    })
+  }
+  return out
+}
+
 // ─── Registry ─────────────────────────────────────────────────
 
 export const MARKETPLACE_PARSERS: Record<string, MarketplaceParser> = {
@@ -110,6 +174,13 @@ export const MARKETPLACE_PARSERS: Record<string, MarketplaceParser> = {
     salesChannel: "farmazon",
     parse: parseFarmazon,
     matchKey: (sv) => sv.trim(),
+    hasOwnShipping: false,
+  },
+  Hepsiburada: {
+    salesChannel: "hepsiburada",
+    parse: parseHepsiburada,
+    matchKey: (sv) => sv.split("-")[0]!.trim(),
+    hasOwnShipping: true,
   },
 }
 
@@ -120,6 +191,7 @@ export const SUPPORTED_MARKETPLACES = Object.keys(MARKETPLACE_PARSERS)
 type DbOrder = {
   id: number
   serviceValue: string | null
+  serviceCreatedAt: Date
   total: Prisma.Decimal
   items: {
     amount: number
@@ -191,6 +263,26 @@ export interface MarketplacePreview {
   missingPriceItems: { sku: string | null; barcode: string | null; name: string; qty: number }[]
 }
 
+/** Rapor kendi kargosunu vermezse sipariş başı sabit input kullan; verirse onu kullan. */
+function resolveShipping(r: MarketplaceReconRow, isMatched: boolean, shippingPerOrder: number): number {
+  if (r.shipping != null) return r.shipping
+  return isMatched ? shippingPerOrder : 0
+}
+
+/** ciro - komisyon - stopaj - kargo - iade/iptal - ceza - diğer kesinti + indirim(kredi) */
+function resolveNetReceived(r: MarketplaceReconRow, shipping: number): number {
+  return (
+    r.saleAmount -
+    r.commission -
+    r.withholding -
+    shipping -
+    r.returnAmount -
+    (r.penalty ?? 0) -
+    (r.otherDeductions ?? 0) +
+    (r.discount ?? 0)
+  )
+}
+
 /** Rapor satırlarını Dopigo ile eşleştir, kargoyu (sipariş başı sabit) uygula, net hesapla. */
 export async function buildMarketplaceReconPreview(
   marketplace: string,
@@ -206,6 +298,7 @@ export async function buildMarketplaceReconPreview(
     select: {
       id: true,
       serviceValue: true,
+      serviceCreatedAt: true,
       total: true,
       items: {
         select: {
@@ -245,8 +338,9 @@ export async function buildMarketplaceReconPreview(
   for (const r of rows) {
     const packets = dbMap.get(r.serviceOrderId)
     const isMatched = !!packets && packets.length > 0
-    const shipping = isMatched ? shippingPerOrder : 0
-    const netReceived = r.saleAmount - r.commission - r.withholding - shipping - r.returnAmount
+    const shipping = resolveShipping(r, isMatched, shippingPerOrder)
+    const netReceived = resolveNetReceived(r, shipping)
+    const orderDate = r.orderDate ?? (isMatched ? packets![0].serviceCreatedAt : null)
 
     let cogs = 0
     let cogsKnown = false
@@ -269,7 +363,7 @@ export async function buildMarketplaceReconPreview(
 
     previewRows.push({
       serviceOrderId: r.serviceOrderId,
-      orderDate: r.orderDate,
+      orderDate,
       saleAmount: r.saleAmount,
       commission: r.commission,
       withholding: r.withholding,
@@ -326,14 +420,14 @@ export async function saveMarketplaceReconciliation(input: {
   const orderNos = new Set(input.rows.map((r) => r.serviceOrderId))
   const dbOrders = await prisma.dopigoOrder.findMany({
     where: { salesChannel: parser.salesChannel, serviceValue: { not: null } },
-    select: { id: true, serviceValue: true },
+    select: { id: true, serviceValue: true, serviceCreatedAt: true },
   })
-  const dbMap = new Map<string, number>()
+  const dbMap = new Map<string, { id: number; serviceCreatedAt: Date }>()
   for (const o of dbOrders) {
     if (!o.serviceValue) continue
     const key = parser.matchKey(o.serviceValue)
     if (!orderNos.has(key)) continue
-    if (!dbMap.has(key)) dbMap.set(key, o.id)
+    if (!dbMap.has(key)) dbMap.set(key, { id: o.id, serviceCreatedAt: o.serviceCreatedAt })
   }
 
   const incomingIds = input.rows.map((r) => r.serviceOrderId)
@@ -349,14 +443,15 @@ export async function saveMarketplaceReconciliation(input: {
   let created = 0
   let updated = 0
   for (const r of input.rows) {
-    const dopigoOrderId = dbMap.get(r.serviceOrderId) ?? null
-    const shipping = dopigoOrderId != null ? input.shippingPerOrder : 0
-    const netReceived = r.saleAmount - r.commission - r.withholding - shipping - r.returnAmount
+    const match = dbMap.get(r.serviceOrderId)
+    const dopigoOrderId = match?.id ?? null
+    const shipping = resolveShipping(r, dopigoOrderId != null, input.shippingPerOrder)
+    const netReceived = resolveNetReceived(r, shipping)
     const data = {
       marketplace: input.marketplace,
       serviceOrderId: r.serviceOrderId,
       dopigoOrderId,
-      orderDate: r.orderDate ?? new Date(),
+      orderDate: r.orderDate ?? match?.serviceCreatedAt ?? new Date(),
       month: input.month,
       orderStatus: null,
       itemCount: r.itemCount,
@@ -364,6 +459,9 @@ export async function saveMarketplaceReconciliation(input: {
       commission: r.commission,
       withholding: r.withholding,
       shipping,
+      discount: r.discount ?? 0,
+      penalty: r.penalty ?? 0,
+      otherDeductions: r.otherDeductions ?? 0,
       refunded: r.returnAmount,
       netReceived,
       importedBy: input.userId,

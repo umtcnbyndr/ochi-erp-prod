@@ -77,22 +77,27 @@ export async function previewMarketplaceReconciliationAction(
     const rows = parser.parse(buf)
     if (rows.length === 0) return { success: false, error: "Excel'de geçerli satır yok" }
 
+    const preview = await buildMarketplaceReconPreview(marketplace, rows, shippingPerOrder)
+
+    // Ay tespiti: önce Excel'deki tarih, yoksa (Hepsiburada gibi) eşleşen
+    // Dopigo siparişinin gerçek tarihi preview.rows'ta zaten çözülmüş olur.
     const monthCounts = new Map<string, number>()
-    for (const r of rows) {
+    for (const r of preview.rows) {
       if (!r.orderDate) continue
-      const m = `${r.orderDate.getFullYear()}-${String(r.orderDate.getMonth() + 1).padStart(2, "0")}`
+      const d = new Date(r.orderDate)
+      const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
       monthCounts.set(m, (monthCounts.get(m) ?? 0) + 1)
-    }
-    if (monthCounts.size === 0) {
-      return { success: false, error: "Sipariş tarihi okunamadı (DD.MM.YYYY bekleniyor)" }
     }
     const detectedMonths = Array.from(monthCounts.entries())
       .map(([month, count]) => ({ month, count }))
       .sort((a, b) => b.count - a.count)
     const fileNameMonth = file.name.match(/(\d{4})-(\d{2})-\d{2}/)
-    const month = fileNameMonth ? `${fileNameMonth[1]}-${fileNameMonth[2]}` : detectedMonths[0].month
+    const now = new Date()
+    const month =
+      fileNameMonth
+        ? `${fileNameMonth[1]}-${fileNameMonth[2]}`
+        : (detectedMonths[0]?.month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`)
 
-    const preview = await buildMarketplaceReconPreview(marketplace, rows, shippingPerOrder)
     return { success: true, data: { ...preview, _rows: rows, month, detectedMonths } }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Hata" }

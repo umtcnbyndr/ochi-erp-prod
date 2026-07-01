@@ -19,6 +19,8 @@ import {
 
 interface Props {
   marketplace: string
+  /** Rapor kendi gerçek kargo tutarını veriyorsa true — sipariş başı kargo inputu gizlenir */
+  hasOwnShipping?: boolean
 }
 
 type Preview = MarketplacePreview & {
@@ -30,7 +32,7 @@ type Preview = MarketplacePreview & {
 const fmt = (n: number) =>
   n.toLocaleString("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 })
 
-export function MarketplaceReconciliationFlow({ marketplace }: Props) {
+export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping }: Props) {
   const [pending, startTransition] = useTransition()
   const [shipping, setShipping] = useState("")
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -91,21 +93,24 @@ export function MarketplaceReconciliationFlow({ marketplace }: Props) {
                 <Label className="text-sm">Sipariş/Mutabakat Excel</Label>
                 <Input type="file" name="file" accept=".xlsx,.xls" required />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm">Sipariş başı kargo (₺)</Label>
-                <Input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  value={shipping}
-                  onChange={(e) => setShipping(e.target.value)}
-                  placeholder="Örn. 27.6 (boş = 0)"
-                />
-              </div>
+              {!hasOwnShipping && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Sipariş başı kargo (₺)</Label>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={shipping}
+                    onChange={(e) => setShipping(e.target.value)}
+                    placeholder="Örn. 27.6 (boş = 0)"
+                  />
+                </div>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Komisyon (Hizmet Bedeli) ve stopaj rapordan per-order okunur. Kargo bu
-              alandan her siparişe eşit uygulanır.
+              {hasOwnShipping
+                ? "Komisyon, stopaj ve kargo rapordan per-order (gerçek değerlerle) okunur."
+                : "Komisyon (Hizmet Bedeli) ve stopaj rapordan per-order okunur. Kargo bu alandan her siparişe eşit uygulanır."}
             </p>
             <Button type="submit" disabled={pending}>
               {pending ? (
@@ -149,6 +154,16 @@ export function MarketplaceReconciliationFlow({ marketplace }: Props) {
                 <span>
                   {preview.unmatched} satır Dopigo siparişiyle eşleşmedi (bu satırların
                   net kârı hesaplanmaz). Sipariş no farkı veya Dopigo'da eksik olabilir.
+                </span>
+              </div>
+            )}
+
+            {preview.detectedMonths.length === 0 && (
+              <div className="rounded-md bg-amber-50 dark:bg-amber-950/20 p-3 text-xs flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                <span>
+                  Rapor/eşleşme tarih içermiyor — ay otomatik tespit edilemedi, aşağıdaki
+                  "Ay" alanını elle kontrol et.
                 </span>
               </div>
             )}

@@ -38,9 +38,7 @@ export default async function MutabakatPage() {
         <TabsList>
           <TabsTrigger value="trendyol">Trendyol</TabsTrigger>
           <TabsTrigger value="farmazon">Farmazon</TabsTrigger>
-          <TabsTrigger value="hepsiburada" disabled>
-            Hepsiburada <Badge variant="outline" className="ml-1 text-[9px]">Yakında</Badge>
-          </TabsTrigger>
+          <TabsTrigger value="hepsiburada">Hepsiburada</TabsTrigger>
           <TabsTrigger value="n11" disabled>
             N11 <Badge variant="outline" className="ml-1 text-[9px]">Yakında</Badge>
           </TabsTrigger>
@@ -57,6 +55,11 @@ export default async function MutabakatPage() {
         <TabsContent value="farmazon" className="space-y-4 pt-4">
           <MonthSummary rows={monthsFor("Farmazon")} />
           <MarketplaceReconciliationFlow marketplace="Farmazon" />
+        </TabsContent>
+
+        <TabsContent value="hepsiburada" className="space-y-4 pt-4">
+          <MonthSummary rows={monthsFor("Hepsiburada")} />
+          <MarketplaceReconciliationFlow marketplace="Hepsiburada" hasOwnShipping />
         </TabsContent>
       </Tabs>
     </div>
