@@ -9,13 +9,15 @@
  *
  * Eksik Alış (ManualPurchasePrice) entegrasyonu: alış maliyeti hesabı için
  *   1. product.mainPurchasePrice (eşleşmiş ürün varsa)
- *   2. ManualPurchasePrice (manuel girilmiş varsa)
- *   3. null + "Eksik Alış" uyarısı (kullanıcıya yönlendir)
+ *   2. eczane alışından çevrilmiş (mainPurchasePrice boşsa, streetPurchasePrice formülüyle)
+ *   3. ManualPurchasePrice (manuel girilmiş varsa)
+ *   4. null + "Eksik Alış" uyarısı (kullanıcıya yönlendir)
  */
 import * as XLSX from "xlsx"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { buildManualPriceMap } from "./manual-purchase-price"
+import { resolveProductUnitCost } from "@/lib/pricing"
 
 // ─── Excel parse ─────────────────────────────────────────────
 
@@ -211,7 +213,21 @@ export async function buildReconciliationPreview(
           barcode: true,
           productName: true,
           itemStatus: true,
-          product: { select: { mainPurchasePrice: true } },
+          product: {
+            select: {
+              mainPurchasePrice: true,
+              streetPurchasePrice: true,
+              vatRate: true,
+              brand: {
+                select: {
+                  yearEndDiscount1: true,
+                  yearEndDiscount2: true,
+                  yearEndDiscount3: true,
+                  pharmacyMargin: true,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -254,7 +270,14 @@ export async function buildReconciliationPreview(
           if (item.itemStatus === "cancelled" || item.itemStatus === "returned") continue
           const sku = item.foreignSku?.trim() || null
           const bc = item.barcode?.trim() || null
-          const productPrice = item.product?.mainPurchasePrice ? Number(item.product.mainPurchasePrice) : null
+          const productPrice = item.product
+            ? resolveProductUnitCost({
+                mainPurchasePrice: item.product.mainPurchasePrice,
+                streetPurchasePrice: item.product.streetPurchasePrice,
+                vatRate: item.product.vatRate,
+                brand: item.product.brand,
+              })
+            : null
           const manualPrice =
             (sku && manual.bySku.get(sku)) ||
             (bc && manual.byBarcode.get(bc)) ||

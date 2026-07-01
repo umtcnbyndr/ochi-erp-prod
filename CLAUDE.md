@@ -18,7 +18,7 @@
 - **Stopaj:** Trendyol kesmez (Net Tutar'da yok) ama senin **vergi maliyetin** → mutabakatlı olsun olmasın `ciro × withholdingTax/100` düşülür (mağaza hariç).
 - **"Diğer" gider** = platform fee + ceza + diğer kesintiler (mutabakattan gerçek kalemler), iade/iptal tutarı DEĞİL.
 - **Komisyon tarifesi geçmişi KORUNUR.** Yeni tarife yüklenince eskiyi SİLME — sadece dönemi çakışan upload silinir. Geçmiş siparişler kendi haftasının tarifesini bulur (yoksa marketplace default'a düşüp kâr yanlış çıkardı). Tarife haftalık (Salı-Salı).
-- **Eksik Alış:** Eşleşmemiş Dopigo satışları için `ManualPurchasePrice` (SKU/barkod bazlı, bir kez gir → ileride geçerli). COGS: product.mainPurchasePrice > ManualPurchasePrice > 0.
+- **Eksik Alış:** Eşleşmemiş Dopigo satışları için `ManualPurchasePrice` (SKU/barkod bazlı, bir kez gir → ileride geçerli). COGS önceliği: `mainPurchasePrice` (ana depo) > `streetPurchasePrice` (eczane alışı, `calculatePharmacyStockPrice` formülüyle ana depo eşdeğerine çevrilir — yend1-3 böl, KDV+pharmacyMargin çarp) > `ManualPurchasePrice` > 0. Neden: listede olan ürünlerin çoğunda ana depo alışı hiç girilmemiş (500 SKU listede, ana depoda ~250 SKU) — eczane alışı varsa tahmin yerine gerçek (fatura) değer kullanılır. Tek kaynak: `lib/pricing/effective-purchase-price.ts` (`resolveProductUnitCost`).
 - **Net Kâr formülü:** `ciro - alış - komisyon - kargo - stopaj - diğer`. Tüm breakdown'lar (KPI, marka, kategori, alt kategori, top ürün, sipariş tablosu/detay) `buildPnlCTE` ortak mantığından besleniyor.
 
 ## Ürün Tipleri

@@ -24,12 +24,12 @@ import * as XLSX from "xlsx"
 import { prisma } from "@/lib/db"
 import {
   calculateSalePrice,
-  calculatePharmacyStockPrice,
   InvalidPricingError,
   applyTrendyolFloor,
   calculateWithEffectiveCommission,
   loadCommissionTariffsForProducts,
   isRecommendationStale,
+  resolveProductUnitCost,
   type TariffMap,
 } from "@/lib/pricing"
 import { TRENDYOL_NAME } from "@/lib/services/brand-marketplace-floor"
@@ -362,22 +362,17 @@ export function calculateEffectivePurchasePrice(p: ProductForCalc): number | nul
     const discount = p.setExtraDiscount ? Number(p.setExtraDiscount) : 0
     return Math.max(0, sum - discount)
   }
-  if (p.mainPurchasePrice != null && Number(p.mainPurchasePrice) > 0) {
-    return Number(p.mainPurchasePrice)
-  }
-  if (p.streetPurchasePrice != null && Number(p.streetPurchasePrice) > 0) {
-    return calculatePharmacyStockPrice({
-      streetPurchasePrice: p.streetPurchasePrice,
-      vatRate: p.vatRate,
-      brand: {
-        yearEndDiscount1: p.brand.yearEndDiscount1,
-        yearEndDiscount2: p.brand.yearEndDiscount2,
-        yearEndDiscount3: p.brand.yearEndDiscount3,
-        pharmacyMargin: p.brand.pharmacyMargin,
-      },
-    })
-  }
-  return null
+  return resolveProductUnitCost({
+    mainPurchasePrice: p.mainPurchasePrice,
+    streetPurchasePrice: p.streetPurchasePrice,
+    vatRate: p.vatRate,
+    brand: {
+      yearEndDiscount1: p.brand.yearEndDiscount1,
+      yearEndDiscount2: p.brand.yearEndDiscount2,
+      yearEndDiscount3: p.brand.yearEndDiscount3,
+      pharmacyMargin: p.brand.pharmacyMargin,
+    },
+  })
 }
 
 /**

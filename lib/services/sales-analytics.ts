@@ -18,6 +18,19 @@ import {
   EFFECTIVE_COMMISSION_PCT_SQL,
 } from "@/lib/pricing/effective-commission"
 
+/**
+ * Ana depo alışı boşsa eczane alışından çevrim (calculatePharmacyStockPrice ile aynı formül).
+ * "p" (Product) ve "b" (Brand) alias'ları çağıran sorguda LEFT JOIN ile mevcut olmalı.
+ */
+const STREET_FALLBACK_SQL = `
+  p."streetPurchasePrice"
+    / (1 + COALESCE(b."yearEndDiscount1", 0) / 100)
+    / (1 + COALESCE(b."yearEndDiscount2", 0) / 100)
+    / (1 + COALESCE(b."yearEndDiscount3", 0) / 100)
+    * (1 + COALESCE(p."vatRate", 20) / 100)
+    * (1 + COALESCE(b."pharmacyMargin", 0) / 100)
+`
+
 // ===== Tipler =====
 
 export interface DateRangeFilter {
@@ -149,8 +162,10 @@ export async function getTopLineKPIs(filter: SalesFilter): Promise<TopLineKPIs> 
       COUNT(i.id) FILTER (WHERE i."productId" IS NOT NULL)::int           AS matched_count,
       COALESCE(SUM(
         CASE
-          WHEN i."productId" IS NOT NULL AND p."mainPurchasePrice" IS NOT NULL
+          WHEN i."productId" IS NOT NULL AND p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0
             THEN p."mainPurchasePrice" * i.amount
+          WHEN i."productId" IS NOT NULL AND p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0
+            THEN (${STREET_FALLBACK_SQL}) * i.amount
           WHEN mpp."purchasePrice" IS NOT NULL
             THEN mpp."purchasePrice" * i.amount
           ELSE 0
@@ -216,7 +231,7 @@ export async function getTopLineKPIs(filter: SalesFilter): Promise<TopLineKPIs> 
 
 /**
  * Tüm breakdown sorguları için ortak CTE. Her item için:
- *   - cost (alış): mainPurchasePrice > ManualPurchasePrice > 0
+ *   - cost (alış): mainPurchasePrice > streetPurchasePrice (eczane, formülle çevrilmiş) > ManualPurchasePrice > 0
  *   - komisyon/kargo/diğer: mutabakat varsa GERÇEK (recon), yoksa TAHMİN (tarife+marketplace)
  *   - kargo orantısal: sipariş içindeki cironun payına göre (order_total window)
  *
@@ -243,10 +258,13 @@ function buildPnlCTE(whereSql: string): string {
       o."salesChannel" AS sales_channel,
       o."marketplaceId" AS marketplace_id,
       m.name AS marketplace_name,
-      -- Alış maliyeti
+      -- Alış maliyeti: ana depo > eczane alışından çevrilmiş (STREET_FALLBACK_SQL) > manuel (Eksik Alış) > 0
       COALESCE(
         CASE
-          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
+          WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0
+            THEN p."mainPurchasePrice" * i.amount
+          WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0
+            THEN (${STREET_FALLBACK_SQL}) * i.amount
           WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
           ELSE 0
         END, 0)::float8 AS cost,
@@ -468,7 +486,10 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
       COALESCE(SUM(i.price), 0)::float8                                    AS revenue,
       COALESCE(SUM(
         CASE
-          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
+          WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0
+            THEN p."mainPurchasePrice" * i.amount
+          WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0
+            THEN (${STREET_FALLBACK_SQL}) * i.amount
           WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
           ELSE 0
         END
@@ -479,6 +500,7 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
+    LEFT JOIN "Brand" b ON b.id = p."brandId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
     LEFT JOIN LATERAL (
       SELECT "purchasePrice"
@@ -934,17 +956,20 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       i.amount::int                       AS amount,
       i."unitPrice"::float8               AS unit_price,
       i.price::float8                     AS line_total,
-      -- Alış maliyeti: 1) mainPurchasePrice (KDV dahil ana stok)
-      --                2) streetPurchasePrice × (1 + KDV) — eczane alış fallback
+      -- Alış maliyeti: 1) mainPurchasePrice (ana depo, gerçek)
+      --                2) streetPurchasePrice → calculatePharmacyStockPrice formülüyle çevrilmiş (STREET_FALLBACK_SQL)
       --                3) NULL (göstergede "—")
-      COALESCE(
-        p."mainPurchasePrice",
-        p."streetPurchasePrice" * (1 + COALESCE(p."vatRate", 20) / 100)
-      )::float8                           AS cost_per_unit,
+      CASE
+        WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0
+          THEN p."mainPurchasePrice"
+        WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0
+          THEN (${STREET_FALLBACK_SQL})
+        ELSE NULL
+      END::float8                         AS cost_per_unit,
       -- Hangi kaynak kullanıldı? UI'da rozet gösterilebilir
       CASE
-        WHEN p."mainPurchasePrice" IS NOT NULL THEN 'MAIN'
-        WHEN p."streetPurchasePrice" IS NOT NULL THEN 'STREET_FALLBACK'
+        WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0 THEN 'MAIN'
+        WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0 THEN 'STREET_FALLBACK'
         ELSE 'NONE'
       END                                 AS cost_source,
       p."psf"::float8                     AS psf,
@@ -1167,7 +1192,17 @@ export async function getMonthlyAggregates(year: number): Promise<MonthlySalesRo
       COALESCE(SUM(i.amount), 0)::int AS units,
       COALESCE(SUM(
         CASE
-          WHEN p."mainPurchasePrice" IS NOT NULL THEN p."mainPurchasePrice" * i.amount
+          WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0
+            THEN p."mainPurchasePrice" * i.amount
+          WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0
+            THEN (
+              p."streetPurchasePrice"
+                / (1 + COALESCE(b."yearEndDiscount1", 0) / 100)
+                / (1 + COALESCE(b."yearEndDiscount2", 0) / 100)
+                / (1 + COALESCE(b."yearEndDiscount3", 0) / 100)
+                * (1 + COALESCE(p."vatRate", 20) / 100)
+                * (1 + COALESCE(b."pharmacyMargin", 0) / 100)
+            ) * i.amount
           WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
           ELSE 0
         END
@@ -1178,6 +1213,7 @@ export async function getMonthlyAggregates(year: number): Promise<MonthlySalesRo
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
+    LEFT JOIN "Brand" b ON b.id = p."brandId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
     LEFT JOIN LATERAL (
       SELECT "purchasePrice"
