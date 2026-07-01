@@ -361,7 +361,7 @@ export async function saveReconciliation(input: {
   const existingSet = new Set(
     (
       await prisma.trendyolOrderReconciliation.findMany({
-        where: { serviceOrderId: { in: incomingIds } },
+        where: { marketplace: "Trendyol", serviceOrderId: { in: incomingIds } },
         select: { serviceOrderId: true },
       })
     ).map((x) => x.serviceOrderId),
@@ -372,6 +372,7 @@ export async function saveReconciliation(input: {
   for (const r of input.rows) {
     const dopigoOrderId = dbMap.get(r.serviceOrderId) ?? null
     const data = {
+      marketplace: "Trendyol",
       serviceOrderId: r.serviceOrderId,
       dopigoOrderId,
       orderDate: r.orderDate ?? new Date(),
@@ -397,7 +398,12 @@ export async function saveReconciliation(input: {
     // serviceOrderId @unique → upsert ile tek sorgu (idempotent; yarım kalırsa
     // aynı Excel tekrar yüklenince tutarlı olur).
     await prisma.trendyolOrderReconciliation.upsert({
-      where: { serviceOrderId: r.serviceOrderId },
+      where: {
+        marketplace_serviceOrderId: {
+          marketplace: "Trendyol",
+          serviceOrderId: r.serviceOrderId,
+        },
+      },
       create: data,
       update: data,
     })

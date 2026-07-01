@@ -1085,11 +1085,16 @@ enum MergeStatus {
 ///
 /// Rapor entegrasyonu: Bir ay için mutabakat verisi varsa, sales-analytics
 /// tahmini değerler yerine bu gerçek değerleri kullanır.
+/// Pazaryeri mutabakat kaydı (per-order gerçek gider). Adı Trendyol'dan gelir ama
+/// artık marketplace kolonuyla TÜM pazaryerlerini tutar (Farmazon, Hepsiburada...).
 model TrendyolOrderReconciliation {
   id Int @id @default(autoincrement())
 
-  /// Trendyol sipariş no — bizim DopigoOrder.serviceOrderId ile eşleşir.
-  serviceOrderId String  @unique
+  /// Hangi pazaryeri? "Trendyol" | "Farmazon" | "Hepsiburada" ... (DopigoOrder.salesChannel eşdeğeri)
+  marketplace String @default("Trendyol")
+
+  /// Pazaryeri sipariş no — DopigoOrder.serviceValue/serviceOrderId ile eşleşir (kural pazaryerine göre).
+  serviceOrderId String
 
   /// Eşleşen DopigoOrder (varsa). Null → Excel'de var bizde yok.
   dopigoOrderId Int? @unique
@@ -1109,7 +1114,8 @@ model TrendyolOrderReconciliation {
 
   /// Excel'deki tüm tutar kalemleri (Decimal, hepsi pozitif tutarlar olarak saklanır)
   saleAmount         Decimal  @db.Decimal(12, 2) // Sipariş Tutarı
-  commission         Decimal  @default(0) @db.Decimal(12, 2) // Komisyon (Excel'de negatif gelir, mutlak değer kaydedilir)
+  commission         Decimal  @default(0) @db.Decimal(12, 2) // Komisyon / Hizmet Bedeli (mutlak değer)
+  withholding        Decimal  @default(0) @db.Decimal(12, 2) // Stopaj (Farmazon vb. raporunda var; Trendyol'da 0)
   discount           Decimal  @default(0) @db.Decimal(12, 2) // İndirim
   shipping           Decimal  @default(0) @db.Decimal(12, 2) // Gönderi Kargo Bedeli
   returnShipping     Decimal  @default(0) @db.Decimal(12, 2) // İade Kargo Bedeli
@@ -1129,7 +1135,9 @@ model TrendyolOrderReconciliation {
   importedBy String?
   rawJson    Json     // Excel satırı (raw)
 
+  @@unique([marketplace, serviceOrderId])
   @@index([month])
+  @@index([marketplace, month])
   @@index([dopigoOrderId])
   @@index([orderDate])
 }

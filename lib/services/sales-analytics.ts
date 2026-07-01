@@ -255,6 +255,7 @@ function buildPnlCTE(whereSql: string): string {
       -- Mutabakat (varsa)
       recon."netReceived"::float8 AS recon_net,
       recon."commission"::float8 AS recon_comm,
+      recon."withholding"::float8 AS recon_wh,
       (recon."shipping" + recon."returnShipping")::float8 AS recon_ship,
       (recon."platformFee" + recon."penalty" + recon."otherDeductions" + recon."internationalFee")::float8 AS recon_other,
       -- Tahmin parametreleri
@@ -278,11 +279,18 @@ function buildPnlCTE(whereSql: string): string {
       LIMIT 1
     ) mpp ON true
     LEFT JOIN LATERAL (
-      SELECT "netReceived", "commission", "shipping", "returnShipping",
+      SELECT "netReceived", "commission", "withholding", "shipping", "returnShipping",
              "platformFee", "penalty", "otherDeductions", "internationalFee"
       FROM "TrendyolOrderReconciliation" tr
       WHERE o."serviceValue" IS NOT NULL
-        AND tr."serviceOrderId" = SPLIT_PART(o."serviceValue", '-', 1)
+        -- Recon o siparişin KENDİ pazaryerinden olmalı (marketplace = salesChannel)
+        AND LOWER(tr."marketplace") = o."salesChannel"
+        -- Eşleşme kuralı pazaryerine göre: Trendyol serviceValue ilk parça (paket),
+        -- diğerleri (Farmazon...) tam serviceValue.
+        AND tr."serviceOrderId" = CASE
+              WHEN LOWER(tr."marketplace") = 'trendyol'
+                THEN SPLIT_PART(o."serviceValue", '-', 1)
+              ELSE o."serviceValue" END
       LIMIT 1
     ) recon ON true
     ${COMMISSION_TARIFF_JOIN_SQL}
@@ -299,9 +307,11 @@ function buildPnlCTE(whereSql: string): string {
       CASE WHEN is_store THEN 0
            WHEN recon_net IS NOT NULL THEN COALESCE(recon_other, 0) * (revenue / NULLIF(order_total, 0))
            ELSE 0 END AS line_other,
-      -- Stopaj: Trendyol kesmez (Net Tutar'da yok) ama senin vergi maliyetin.
-      -- Mutabakatlı olsun olmasın ciro × oran (mağaza hariç).
+      -- Stopaj: Farmazon vb. raporunda GERÇEK stopaj var → onu kullan (orantısal).
+      -- Trendyol kesmez (recon_wh=0) → senin vergi maliyetin, ciro × oran (tahmin).
       CASE WHEN is_store THEN 0
+           WHEN recon_net IS NOT NULL AND recon_wh > 0
+             THEN recon_wh * (revenue / NULLIF(order_total, 0))
            ELSE revenue * mp_withholding / 100 END AS line_withholding
     FROM base
   )
@@ -886,6 +896,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       // Mutabakat (varsa) — sipariş bazlı gerçek değerler
       recon_net: number | null
       recon_commission: number | null
+      recon_withholding: number | null
       recon_shipping: number | null
       recon_other: number | null
     }>
@@ -940,6 +951,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       -- Mutabakat: serviceValue ilk parça (siparişNo) = recon.serviceOrderId
       recon."netReceived"::float8 AS recon_net,
       recon."commission"::float8  AS recon_commission,
+      recon."withholding"::float8 AS recon_withholding,
       (recon."shipping" + recon."returnShipping")::float8 AS recon_shipping,
       -- "Diğer" = gerçek ek gider kalemleri (platform + ceza + diğer), iade/iptal HARİÇ
       (recon."platformFee" + recon."penalty" + recon."otherDeductions" + recon."internationalFee")::float8 AS recon_other
@@ -951,11 +963,18 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
     LEFT JOIN "Subcategory" s ON s.id = p."subcategoryId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
     LEFT JOIN LATERAL (
-      SELECT "netReceived", "commission", "shipping", "returnShipping",
+      SELECT "netReceived", "commission", "withholding", "shipping", "returnShipping",
              "platformFee", "penalty", "otherDeductions", "internationalFee"
       FROM "TrendyolOrderReconciliation" tr
       WHERE o."serviceValue" IS NOT NULL
-        AND tr."serviceOrderId" = SPLIT_PART(o."serviceValue", '-', 1)
+        -- Recon o siparişin KENDİ pazaryerinden olmalı (marketplace = salesChannel)
+        AND LOWER(tr."marketplace") = o."salesChannel"
+        -- Eşleşme kuralı pazaryerine göre: Trendyol serviceValue ilk parça (paket),
+        -- diğerleri (Farmazon...) tam serviceValue.
+        AND tr."serviceOrderId" = CASE
+              WHEN LOWER(tr."marketplace") = 'trendyol'
+                THEN SPLIT_PART(o."serviceValue", '-', 1)
+              ELSE o."serviceValue" END
       LIMIT 1
     ) recon ON true
     ${COMMISSION_TARIFF_JOIN_SQL}
@@ -995,8 +1014,12 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       shipping = Number(r.recon_shipping ?? 0) * lineShare
       // Diğer = gerçek ek gider kalemleri (platform fee + ceza + diğer), iade/iptal HARİÇ
       other = Number(r.recon_other ?? 0) * lineShare
-      // Stopaj: Trendyol kesmez ama senin vergi maliyetin → ciro × oran (mutabakatta da)
-      withholding = (lineTotal * Number(r.withholding_rate ?? 0)) / 100
+      // Stopaj: Farmazon vb. raporunda gerçek stopaj var → orantısal. Trendyol'da
+      // yok (recon_withholding=0) → senin vergi maliyetin, ciro × oran (tahmin).
+      withholding =
+        Number(r.recon_withholding ?? 0) > 0
+          ? Number(r.recon_withholding) * lineShare
+          : (lineTotal * Number(r.withholding_rate ?? 0)) / 100
     } else {
       // TAHMİN — tarife komisyon + marketplace kargo/stopaj
       commission = (lineTotal * Number(r.commission_rate ?? 0)) / 100

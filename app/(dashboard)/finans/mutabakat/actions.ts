@@ -9,6 +9,13 @@ import {
   type TrendyolRow,
   type ReconciliationPreview,
 } from "@/lib/services/trendyol-reconciliation"
+import {
+  MARKETPLACE_PARSERS,
+  buildMarketplaceReconPreview,
+  saveMarketplaceReconciliation,
+  type MarketplaceReconRow,
+  type MarketplacePreview,
+} from "@/lib/services/marketplace-reconciliation"
 import { writeAuditLog } from "@/lib/services/audit-log"
 
 type Result<T> = { success: true; data: T } | { success: false; error: string }
@@ -47,6 +54,82 @@ export async function previewTrendyolReconciliationAction(
 
     const preview = await buildReconciliationPreview(rows)
     return { success: true, data: { ...preview, _rows: rows, month, detectedMonths } }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Hata" }
+  }
+}
+
+// ─── Genel pazaryeri mutabakatı (Farmazon, ...) ──────────────
+
+export async function previewMarketplaceReconciliationAction(
+  marketplace: string,
+  shippingPerOrder: number,
+  formData: FormData,
+): Promise<Result<MarketplacePreview & { _rows: MarketplaceReconRow[]; month: string; detectedMonths: { month: string; count: number }[] }>> {
+  try {
+    await requireAdmin()
+    const parser = MARKETPLACE_PARSERS[marketplace]
+    if (!parser) return { success: false, error: `Desteklenmeyen pazaryeri: ${marketplace}` }
+    const file = formData.get("file") as File | null
+    if (!file) return { success: false, error: "Dosya yok" }
+
+    const buf = Buffer.from(await file.arrayBuffer())
+    const rows = parser.parse(buf)
+    if (rows.length === 0) return { success: false, error: "Excel'de geçerli satır yok" }
+
+    const monthCounts = new Map<string, number>()
+    for (const r of rows) {
+      if (!r.orderDate) continue
+      const m = `${r.orderDate.getFullYear()}-${String(r.orderDate.getMonth() + 1).padStart(2, "0")}`
+      monthCounts.set(m, (monthCounts.get(m) ?? 0) + 1)
+    }
+    if (monthCounts.size === 0) {
+      return { success: false, error: "Sipariş tarihi okunamadı (DD.MM.YYYY bekleniyor)" }
+    }
+    const detectedMonths = Array.from(monthCounts.entries())
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => b.count - a.count)
+    const fileNameMonth = file.name.match(/(\d{4})-(\d{2})-\d{2}/)
+    const month = fileNameMonth ? `${fileNameMonth[1]}-${fileNameMonth[2]}` : detectedMonths[0].month
+
+    const preview = await buildMarketplaceReconPreview(marketplace, rows, shippingPerOrder)
+    return { success: true, data: { ...preview, _rows: rows, month, detectedMonths } }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Hata" }
+  }
+}
+
+export async function saveMarketplaceReconciliationAction(input: {
+  marketplace: string
+  rows: MarketplaceReconRow[]
+  month: string
+  shippingPerOrder: number
+}): Promise<Result<{ created: number; updated: number }>> {
+  try {
+    const actor = await requireAdmin()
+    if (input.rows.length === 0) return { success: false, error: "Boş gönderim" }
+    // Date wire üzerinden string gelebilir → normalize
+    const rows = input.rows.map((r) => ({
+      ...r,
+      orderDate: r.orderDate ? new Date(r.orderDate) : null,
+    }))
+    const r = await saveMarketplaceReconciliation({
+      marketplace: input.marketplace,
+      rows,
+      month: input.month,
+      shippingPerOrder: input.shippingPerOrder,
+      userId: actor.id,
+    })
+    await writeAuditLog({
+      userId: actor.id,
+      action: "MARKETPLACE_RECONCILIATION_SAVE",
+      entityType: "TrendyolOrderReconciliation",
+      after: { marketplace: input.marketplace, month: input.month, count: input.rows.length, ...r },
+    })
+    revalidatePath("/finans/mutabakat")
+    revalidatePath("/finans/gelir-gider")
+    revalidatePath("/dopigo-siparisler")
+    return { success: true, data: r }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Hata" }
   }
