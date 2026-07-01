@@ -497,8 +497,9 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
     ...params,
   )
 
-  // Ay seçimi varsa actual gider yükle
+  // Ay seçimi varsa actual gider + pazaryeri mutabakatı yükle
   const monthlyExpenses = await loadMonthlyExpensesIfApplicable(filter)
+  const reconByMp = await loadReconciliationByMarketplace(filter)
 
   return rows.map((r) => {
     const revenue = Number(r.revenue ?? 0)
@@ -506,15 +507,21 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
     const orders = Number(r.order_count ?? 0)
     const isStore = r.sales_channel === "store" || r.sales_channel === "store"
 
-    // Actual mode (monthly expense varsa)
+    // Öncelik: per-order mutabakat (recon) > aylık gider (actual) > tahmin
+    const recon = isStore ? undefined : reconByMp.get(r.sales_channel)
     const actual = r.marketplace_id != null ? monthlyExpenses.get(r.marketplace_id) : undefined
-    const isActual = actual !== undefined
+    const isActual = recon !== undefined || actual !== undefined
 
     let estCommission: number
     let estShipping: number
     let estWithholding: number
 
-    if (isActual && actual) {
+    if (recon) {
+      estCommission = recon.commission
+      estShipping = recon.shipping
+      estWithholding =
+        recon.withholding > 0 ? recon.withholding : (revenue * Number(r.withholding ?? 0)) / 100
+    } else if (actual) {
       estCommission = Number(actual.commissionPaid ?? 0)
       estShipping = Number(actual.shippingPaid ?? 0)
       estWithholding = Number(actual.withholdingPaid ?? 0)
@@ -1342,8 +1349,8 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
   )
 
   const monthlyExpenses = await loadMonthlyExpensesIfApplicable(filter)
-  // Trendyol mutabakatı (en yüksek öncelik — gerçek panel verisi)
-  const trendyolRecon = await loadTrendyolReconciliationIfApplicable(filter)
+  // Pazaryeri mutabakatı (en yüksek öncelik — gerçek panel verisi). Per-marketplace.
+  const reconByMp = await loadReconciliationByMarketplace(filter)
 
   let totalCommission = 0
   let totalShipping = 0
@@ -1357,15 +1364,17 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
     const revenue = Number(r.revenue ?? 0)
     const orders = Number(r.orders ?? 0)
     const isStore = r.sales_channel === "store"
-    const isTrendyol = r.sales_channel === "trendyol"
 
-    // Öncelik 1: Trendyol mutabakatı (gerçek panel verisi)
-    if (isTrendyol && trendyolRecon) {
-      totalCommission += trendyolRecon.commission
-      totalShipping += trendyolRecon.shipping
-      totalOther += trendyolRecon.other
-      // Stopaj: Trendyol kesmez (Net Tutar'da yok) ama senin vergi maliyetin → ciro × oran
-      totalWithholding += (revenue * Number(r.withholding ?? 0)) / 100
+    // Öncelik 1: Pazaryeri mutabakatı (gerçek panel verisi — Trendyol, Farmazon...)
+    const recon = isStore ? undefined : reconByMp.get(r.sales_channel)
+    if (recon) {
+      totalCommission += recon.commission
+      totalShipping += recon.shipping
+      totalOther += recon.other
+      // Stopaj: rapor gerçek stopaj veriyorsa (Farmazon) onu kullan; yoksa (Trendyol
+      // kesmez, recon.withholding=0) senin vergi maliyetin → ciro × oran.
+      totalWithholding +=
+        recon.withholding > 0 ? recon.withholding : (revenue * Number(r.withholding ?? 0)) / 100
       reconciledUsed = true
       continue
     }
@@ -1401,42 +1410,56 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
  * gider toplamlarını yükler. Toplam kesinti = Σ(saleAmount - netReceived).
  * Komisyon ve kargo ayrı, kalan her şey "other" (platform fee + ceza + iptal/iade).
  */
-async function loadTrendyolReconciliationIfApplicable(
-  filter: DateRangeFilter,
-): Promise<{ commission: number; shipping: number; other: number } | null> {
-  if (!isFullMonth(filter.fromDate, filter.toDate)) return null
+interface ReconTotals {
+  commission: number
+  shipping: number
+  withholding: number // Farmazon vb. gerçek stopaj (Trendyol'da 0)
+  other: number
+}
 
-  // Ay anahtarı "YYYY-MM" — TR offset ekleyerek doğru ayı bul
+/**
+ * Tam ay filtresinde, o ayın mutabakatını PAZARYERI BAZLI toplar.
+ * Key = LOWER(marketplace) → DopigoOrder.salesChannel ile eşleşir.
+ * Trendyol + Farmazon + gelecekteki tüm pazaryerleri.
+ */
+async function loadReconciliationByMarketplace(
+  filter: DateRangeFilter,
+): Promise<Map<string, ReconTotals>> {
+  const map = new Map<string, ReconTotals>()
+  if (!isFullMonth(filter.fromDate, filter.toDate)) return map
+
   const tr = new Date(filter.fromDate.getTime() + 3 * 60 * 60 * 1000)
   const month = `${tr.getUTCFullYear()}-${String(tr.getUTCMonth() + 1).padStart(2, "0")}`
 
-  // İade edilmemiş siparişler (netReceived > 0) — tam iade hesaba katılmaz
-  const agg = await prisma.trendyolOrderReconciliation.aggregate({
+  // İade edilmemiş (netReceived > 0), pazaryeri bazlı grupla
+  const grouped = await prisma.trendyolOrderReconciliation.groupBy({
+    by: ["marketplace"],
     where: { month, netReceived: { gt: 0 } },
     _sum: {
       commission: true,
+      withholding: true,
       shipping: true,
       returnShipping: true,
-      // "Diğer" = gerçek ek gider kalemleri (iade/iptal DEĞİL)
       platformFee: true,
       penalty: true,
       otherDeductions: true,
       internationalFee: true,
     },
-    _count: { _all: true },
   })
 
-  if (agg._count._all === 0) return null
-
-  const commission = Number(agg._sum.commission ?? 0)
-  const shipping = Number(agg._sum.shipping ?? 0) + Number(agg._sum.returnShipping ?? 0)
-  const other =
-    Number(agg._sum.platformFee ?? 0) +
-    Number(agg._sum.penalty ?? 0) +
-    Number(agg._sum.otherDeductions ?? 0) +
-    Number(agg._sum.internationalFee ?? 0)
-
-  return { commission, shipping, other }
+  for (const g of grouped) {
+    map.set(g.marketplace.toLowerCase(), {
+      commission: Number(g._sum.commission ?? 0),
+      shipping: Number(g._sum.shipping ?? 0) + Number(g._sum.returnShipping ?? 0),
+      withholding: Number(g._sum.withholding ?? 0),
+      other:
+        Number(g._sum.platformFee ?? 0) +
+        Number(g._sum.penalty ?? 0) +
+        Number(g._sum.otherDeductions ?? 0) +
+        Number(g._sum.internationalFee ?? 0),
+    })
+  }
+  return map
 }
 
 /**
