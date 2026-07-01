@@ -1136,6 +1136,7 @@ model TrendyolOrderReconciliation {
   rawJson    Json     // Excel satırı (raw)
 
   @@unique([marketplace, serviceOrderId])
+  @@index([serviceOrderId]) // analytics recon LATERAL join'i serviceOrderId'ye göre arar
   @@index([month])
   @@index([marketplace, month])
   @@index([dopigoOrderId])

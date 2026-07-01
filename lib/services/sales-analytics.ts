@@ -286,9 +286,10 @@ function buildPnlCTE(whereSql: string): string {
         -- Recon o siparişin KENDİ pazaryerinden olmalı (marketplace = salesChannel)
         AND LOWER(tr."marketplace") = o."salesChannel"
         -- Eşleşme kuralı pazaryerine göre: Trendyol serviceValue ilk parça (paket),
-        -- diğerleri (Farmazon...) tam serviceValue.
+        -- diğerleri (Farmazon...) tam serviceValue. DIŞ tablo (o.salesChannel) üzerinden
+        -- dallan → değer sabit → serviceOrderId index'i kullanılabilir (perf kritik).
         AND tr."serviceOrderId" = CASE
-              WHEN LOWER(tr."marketplace") = 'trendyol'
+              WHEN o."salesChannel" = 'trendyol'
                 THEN SPLIT_PART(o."serviceValue", '-', 1)
               ELSE o."serviceValue" END
       LIMIT 1
@@ -977,9 +978,10 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
         -- Recon o siparişin KENDİ pazaryerinden olmalı (marketplace = salesChannel)
         AND LOWER(tr."marketplace") = o."salesChannel"
         -- Eşleşme kuralı pazaryerine göre: Trendyol serviceValue ilk parça (paket),
-        -- diğerleri (Farmazon...) tam serviceValue.
+        -- diğerleri (Farmazon...) tam serviceValue. DIŞ tablo (o.salesChannel) üzerinden
+        -- dallan → değer sabit → serviceOrderId index'i kullanılabilir (perf kritik).
         AND tr."serviceOrderId" = CASE
-              WHEN LOWER(tr."marketplace") = 'trendyol'
+              WHEN o."salesChannel" = 'trendyol'
                 THEN SPLIT_PART(o."serviceValue", '-', 1)
               ELSE o."serviceValue" END
       LIMIT 1
