@@ -32,11 +32,31 @@
 - **5433 firewall** sende kalmıştı (prod DB dış erişim).
 - **Güvenlik denetiminden O1-O5** — AUTH_SECRET ayır, güvenlik header, login rate-limit IP+username, CI, kritik yol testleri.
 
+**💰 Çok-pazaryeri mutabakat (2026-07-01):**
+
+_✅ Faz 1 tamam + canlı (Trendyol + Farmazon):_
+- Genel mutabakat motoru: `TrendyolOrderReconciliation` tablosuna `marketplace` + `withholding` kolonu, unique (marketplace, serviceOrderId). Trendyol satırları 'Trendyol'.
+- **Parser registry** (`lib/services/marketplace-reconciliation.ts`): pazaryeri → kolon eşlemesi + eşleştirme kuralı. Yeni pazaryeri = 1 registry kaydı. Farmazon eklendi (Sipariş Numarası=serviceValue birebir, Hizmet Bedeli=komisyon, Stopaj, İade; kargo sipariş-başı sabit).
+- UI: `/finans/mutabakat` pazaryeri sekmeleri (Trendyol + Farmazon açık) + sipariş-başı kargo input + eşleşme önizleme.
+- Analytics (buildPnlCTE + per-order + KPI `calculateChannelExpenses` + Kanal `getChannelBreakdown`): recon marketplace-scoped (`LOWER(marketplace)=salesChannel`), gerçek stopaj varsa onu kullanır. Öncelik: **per-order recon > aylık gider (Ay Sonu) > tahmin**.
+- Canlı doğrulama: Trendyol May 797 + Haz 1594, Farmazon Haz 12 → %100 eşleşme, gerçek gider hesabı çalışıyor.
+- Latent bug fix: eski recon loader marketplace filtresizdi (Farmazon'u Trendyol'a yazıyordu) → düzeldi.
+
+_⏳ Faz 2 — sırayla eklenecek pazaryerleri (her biri = 1 parser registry kaydı):_
+Hepsiburada · Amazon · n11 · Pazarama · ePttAVM. Her biri için user o pazaryerinin ay sonu raporunu (kolon başlıkları) gösterecek → registry'ye eklenir.
+
+_🗑️ "Ay Sonu" (MarketplaceMonthlyExpense) — kaldırma kararı beklemede:_
+- User bir kez (Mart 2026, 8 kanal) kullanıp bıraktı. Teknik olarak ölü değil: analytics'te fallback (recon yoksa) + 8 Mart kaydı. **Parser'ı olmayan 5 pazaryeri için tek gerçek-maliyet yolu.** Faz 2 bitince kaldırılabilir. Öneri: önce UI sekmesini kaldır (fallback+veri kalsın), Faz 2 sonrası tam sil.
+
+_🗑️ Kesin ölü kod (silinebilir, user onayı bekliyor):_
+- `components/common/coming-soon.tsx` (hiç import yok) · `app/api/admin/debug/cerave/route.ts` (geçici debug).
+- Not: `order-export-styled.ts` ölü DEĞİL (detay Excel dinamik import ile kullanır) · `dopigo-siparisler-export` API kullanılıyor.
+
 **🔍 Kapsamlı denetim bulguları (2026-06-25):**
 
 _P0 — SENİN aksiyonun (kod değil, veri):_
 - **79 üründe alış yok ama satış var** → net kâr şişik. `mainPurchasePrice` NULL 410/565 aktif üründe; 79'u satışlı + ManualPurchasePrice de yok (COGS=0). → Eksik Alış'tan o ürünlere alış gir.
-- **Haziran mutabakatı yüklenmemiş** — `TrendyolOrderReconciliation` sadece 2026-05 var. Haziran kârı tahminle hesaplanıyor. → `/finans/mutabakat`'tan Haziran Excel yükle.
+- ~~**Haziran mutabakatı yüklenmemiş**~~ ✅ ÇÖZÜLDÜ (2026-07-01): Trendyol Haz (1594) + Farmazon Haz (12) yüklendi, gerçek gider hesaplanıyor.
 - **Sipariş #2: 34 gündür CONFIRMED, ₺433K** — geldiyse kapat, gelmediyse beklet (sen kontrol edeceksin).
 - **561 Dopigo satışı eşleşmemiş (~%11)** — ürün-bazlı kâr/hızdan düşüyor (rematch/etiket gerek).
 
