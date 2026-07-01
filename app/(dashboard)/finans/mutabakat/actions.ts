@@ -13,6 +13,8 @@ import {
   MARKETPLACE_PARSERS,
   buildMarketplaceReconPreview,
   saveMarketplaceReconciliation,
+  computeN11SettlementRates,
+  applyN11SettlementRates,
   type MarketplaceReconRow,
   type MarketplacePreview,
 } from "@/lib/services/marketplace-reconciliation"
@@ -99,6 +101,76 @@ export async function previewMarketplaceReconciliationAction(
         : (detectedMonths[0]?.month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`)
 
     return { success: true, data: { ...preview, _rows: rows, month, detectedMonths } }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Hata" }
+  }
+}
+
+// ─── N11 (iki dosya birlikte: sipariş detay + settlement summary) ─
+
+export async function previewN11ReconciliationAction(
+  shippingPerOrder: number,
+  formData: FormData,
+): Promise<
+  Result<
+    MarketplacePreview & {
+      _rows: MarketplaceReconRow[]
+      month: string
+      detectedMonths: { month: string; count: number }[]
+      stopajRate: number
+      marketingRate: number
+      platformFeeRate: number
+      warnings: string[]
+    }
+  >
+> {
+  try {
+    await requireAdmin()
+    const parser = MARKETPLACE_PARSERS.N11
+    const itemFile = formData.get("itemFile") as File | null
+    if (!itemFile) return { success: false, error: "Sipariş detay dosyası yok" }
+    const settlementFiles = formData.getAll("settlementFiles") as File[]
+    if (settlementFiles.length === 0) return { success: false, error: "Settlement summary dosyası yok" }
+
+    const itemBuf = Buffer.from(await itemFile.arrayBuffer())
+    let rows = parser.parse(itemBuf)
+    if (rows.length === 0) return { success: false, error: "Sipariş detay Excel'inde geçerli satır yok" }
+
+    const settlementBufs = await Promise.all(settlementFiles.map((f) => f.arrayBuffer().then(Buffer.from)))
+    const rates = computeN11SettlementRates(settlementBufs)
+    if (rates.totalSaleAmount === 0) {
+      return { success: false, error: "Settlement summary'den ciro okunamadı — dosya formatı beklenenden farklı olabilir" }
+    }
+    rows = applyN11SettlementRates(rows, rates)
+
+    const warnings: string[] = []
+    const orderCount = rows.length
+    if (rates.totalItemCount > 0) {
+      const diff = Math.abs(orderCount - rates.totalItemCount)
+      if (diff > rates.totalItemCount * 0.2) {
+        warnings.push(
+          `Sipariş detay dosyasında ${orderCount} sipariş, settlement summary'de ${rates.totalItemCount} kalem var — dosyalar farklı dönemleri kapsıyor olabilir, "Ay" alanını kontrol et.`,
+        )
+      }
+    }
+
+    const preview = await buildMarketplaceReconPreview("N11", rows, shippingPerOrder)
+
+    const month = rates.month ?? `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`
+
+    return {
+      success: true,
+      data: {
+        ...preview,
+        _rows: rows,
+        month,
+        detectedMonths: rates.detectedMonths,
+        stopajRate: rates.stopajRate,
+        marketingRate: rates.marketingRate,
+        platformFeeRate: rates.platformFeeRate,
+        warnings,
+      },
+    }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Hata" }
   }

@@ -34,16 +34,17 @@
 
 **💰 Çok-pazaryeri mutabakat (2026-07-01):**
 
-_✅ Faz 1 tamam + canlı (Trendyol + Farmazon):_
+_✅ Faz 1 tamam + canlı (Trendyol + Farmazon + Hepsiburada + N11):_
 - Genel mutabakat motoru: `TrendyolOrderReconciliation` tablosuna `marketplace` + `withholding` kolonu, unique (marketplace, serviceOrderId). Trendyol satırları 'Trendyol'.
-- **Parser registry** (`lib/services/marketplace-reconciliation.ts`): pazaryeri → kolon eşlemesi + eşleştirme kuralı. Yeni pazaryeri = 1 registry kaydı. Farmazon eklendi (Sipariş Numarası=serviceValue birebir, Hizmet Bedeli=komisyon, Stopaj, İade; kargo sipariş-başı sabit).
-- UI: `/finans/mutabakat` pazaryeri sekmeleri (Trendyol + Farmazon açık) + sipariş-başı kargo input + eşleşme önizleme.
+- **Parser registry** (`lib/services/marketplace-reconciliation.ts`): pazaryeri → kolon eşlemesi + eşleştirme kuralı. Yeni pazaryeri = 1 registry kaydı. Farmazon (Sipariş Numarası=serviceValue birebir, Hizmet Bedeli=komisyon, Stopaj, İade; kargo sipariş-başı sabit). Hepsiburada (Sipariş no=serviceValue '-' öncesi, gerçek kargo+hizmet+tahsilat+ceza+indirim rapordan — kargo input gerekmiyor, `hasOwnShipping`). N11 (**2 dosya birlikte**: order_item_shipments.xls sipariş-bazlı gerçek komisyon+mağaza indirimi/kupon; settlementSummary.xls günlük stopaj/pazarlama/pazaryeri bedeli → **ay-bazlı ortalama oran** çıkarılıp ciroya uygulanır, çünkü item dosyasında settlement'ın "Sipariş Tarihi"yle eşleşecek alan yok — günlük dağıtım denenirse aylık toplamdan veri kaybı riski var. "n11 Para Puanları" satıcı maliyeti değil, dahil edilmez — magazadestek.n11.com doğrulandı).
+- **COGS fallback** (`lib/pricing/effective-purchase-price.ts`, `resolveProductUnitCost`): mainPurchasePrice > streetPurchasePrice (eczane, calculatePharmacyStockPrice formülüyle) > ManualPurchasePrice > 0. Çoğu üründe ana depo alışı hiç girilmemiş (500 SKU listede, ~250 SKU ana depoda) — Dopigo Aktar'ın `calculateEffectivePurchasePrice`'ı da bu tek kaynağa yönlendirildi. sales-analytics'teki TÜM cost CASE'leri (buildPnlCTE, getTopLineKPIs, getChannelBreakdown, getMonthlyAggregates, listOrdersForTable) aynı formülü kullanıyor.
+- UI: `/finans/mutabakat` pazaryeri sekmeleri (Trendyol/Farmazon/Hepsiburada/N11 açık) + sipariş-başı kargo input (Farmazon/N11) + eşleşme önizleme. N11'in kendi bileşeni (`n11-flow.tsx`) — 2 dosya inputu + oran gösterimi.
 - Analytics (buildPnlCTE + per-order + KPI `calculateChannelExpenses` + Kanal `getChannelBreakdown`): recon marketplace-scoped (`LOWER(marketplace)=salesChannel`), gerçek stopaj varsa onu kullanır. Öncelik: **per-order recon > aylık gider (Ay Sonu) > tahmin**.
-- Canlı doğrulama: Trendyol May 797 + Haz 1594, Farmazon Haz 12 → %100 eşleşme, gerçek gider hesabı çalışıyor.
+- Canlı doğrulama: Trendyol May 797 + Haz 1594, Farmazon Haz 12 → %100 eşleşme, gerçek gider hesabı çalışıyor. Hepsiburada/N11 parser'ları gerçek Haziran dosyalarıyla test edildi (Hepsiburada 56/56 satır dosyanın "Net Tutar"ıyla birebir; N11 37 sipariş/2 settlement dosyası ile uçtan uca doğrulandı) — kullanıcı henüz canlıda kaydetmedi.
 - Latent bug fix: eski recon loader marketplace filtresizdi (Farmazon'u Trendyol'a yazıyordu) → düzeldi.
 
 _⏳ Faz 2 — sırayla eklenecek pazaryerleri (her biri = 1 parser registry kaydı):_
-Hepsiburada · Amazon · n11 · Pazarama · ePttAVM. Her biri için user o pazaryerinin ay sonu raporunu (kolon başlıkları) gösterecek → registry'ye eklenir.
+Amazon · Pazarama · ePttAVM. Her biri için user o pazaryerinin ay sonu raporunu (kolon başlıkları) gösterecek → registry'ye eklenir.
 
 _🗑️ "Ay Sonu" (MarketplaceMonthlyExpense) — kaldırma kararı beklemede:_
 - User bir kez (Mart 2026, 8 kanal) kullanıp bıraktı. Teknik olarak ölü değil: analytics'te fallback (recon yoksa) + 8 Mart kaydı. **Parser'ı olmayan 5 pazaryeri için tek gerçek-maliyet yolu.** Faz 2 bitince kaldırılabilir. Öneri: önce UI sekmesini kaldır (fallback+veri kalsın), Faz 2 sonrası tam sil.
@@ -72,8 +73,8 @@ _⏳ Tasarım gerektiren (sen uyanınca konuşulacak):_
 
 **📝 User'ın işaretledikleri (kapsam sonra detaylandırılacak — 2026-06-11):**
 - **Komisyon tarifeleri eksikleri** — eksik kalan kısımlar var (hangi pazaryeri/kademe/ürün? sonra netleştir).
-- **Hepsiburada** — entegrasyon + komisyon + mutabakat (şu an sadece Trendyol var).
-- **Mutabakat eksikleri** — Trendyol dışı pazaryerleri + olası açıklar (eşleşmeyen kalemler, çoklu paket vb.) sonra masaya yatırılacak.
+- ~~**Hepsiburada** — entegrasyon + komisyon + mutabakat~~ ✅ ÇÖZÜLDÜ (2026-07-01, bkz "Çok-pazaryeri mutabakat" Faz 1).
+- **Mutabakat eksikleri** — Amazon/Pazarama/ePttAVM (Faz 2) + olası açıklar (eşleşmeyen kalemler, çoklu paket vb.) sonra masaya yatırılacak.
 - **Dopigo n11/çok-kanal kod eşleştirme** — user manuel devam edecek; sistemde externalCode boş, feed n11 kodu vermiyor (bkz bugünkü inceleme).
 
 ### ✅ Tamamlanan Büyük Modüller
@@ -88,7 +89,7 @@ _⏳ Tasarım gerektiren (sen uyanınca konuşulacak):_
 - **Eczane:** ham cadde_Veri direkt yükleme + Tria-only eşleştirme
 
 ### ❌ Gerçek Kalanlar (öncelik sırası)
-1. **Diğer pazaryeri mutabakatları** — Hepsiburada/N11/Amazon/Pazarama (tab'lar "Yakında")
+1. **Diğer pazaryeri mutabakatları** — Amazon/Pazarama/ePttAVM (tab'lar "Yakında")
 2. **SALES finans kısıtı** — raporlar/fiyat-kontrol/komisyon-tarifeleri marka filtresi yok (güvenlik)
 3. **Otomatik aylık yedekleme** — cron + Drive
 4. **Email/bildirim** — düşük stok, SKT, BuyBox kaybı

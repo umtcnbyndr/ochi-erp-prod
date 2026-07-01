@@ -168,6 +168,170 @@ function parseHepsiburada(buffer: Buffer): MarketplaceReconRow[] {
   return out
 }
 
+// ─── N11 parser ─────────────────────────────────────────────────
+// N11'de tek dosya yeterli değil, İKİ farklı rapor birlikte kullanılır:
+//   1. order_item_shipments.xls — sipariş bazlı (Sipariş Kodu, gerçek komisyon,
+//      gerçek Mağaza İndirimi/Kupon). Kargo tutarı yok ("Mağaza Öder" yazıyor).
+//   2. settlementSummary.xls (15 günlük limit, 1-2 dosya) — GÜNLÜK toplam
+//      (Vergi Kesintisi/Pazarlama Bedeli/Pazaryeri Bedeli, sipariş no yok).
+// İki dosya tarih bazında eşleştirilemiyor (item dosyasında settlement'ın
+// "Sipariş Tarihi"yle birebir eşleşecek bir alan yok) — yanlış gün eşleşmesi
+// aylık toplamdan bile veri kaybına yol açar. Bunun yerine AY BAZLI ortalama
+// oran çıkarılır (stopaj/pazarlama/pazaryeri toplamı ÷ toplam ciro), her
+// siparişe kendi cirosu × oran uygulanır — CLAUDE.md'deki "ciro × oran"
+// tahmin mantığıyla tutarlı, sadece oran n11'in kendi ay verisinden.
+// "n11 Para Puanları" dahil edilmez — n11 desteğine göre bu n11'in kendi
+// gideri, satıcı maliyetini etkilemiyor (magazadestek.n11.com).
+
+// Türkçe sayı formatı: "1.807,89" (nokta=binlik, virgül=ondalık) → 1807.89
+function parseTrMoney(v: unknown): number {
+  if (v == null || v === "") return 0
+  const s = String(v).trim()
+  if (!s) return 0
+  const n = Number(s.replace(/\./g, "").replace(",", "."))
+  return isFinite(n) ? n : 0
+}
+
+// settlementSummary formatı: "460.83 TL" (nokta=ondalık, TL soneki) → 460.83
+function parseN11SettlementAmount(v: unknown): number {
+  if (v == null || v === "") return 0
+  const s = String(v)
+    .trim()
+    .replace(/\s*TL$/i, "")
+    .replace(/,/g, "")
+  const n = Number(s)
+  return isFinite(n) ? n : 0
+}
+
+// "04/06/2026" DD/MM/YYYY
+function parseN11SettlementDate(v: unknown): Date | null {
+  if (v == null) return null
+  const m = String(v).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!m) return null
+  const [, dd, mm, yyyy] = m
+  return new Date(Number(yyyy), Number(mm) - 1, Number(dd))
+}
+
+// Kolonlar (0-index, header:1): 0 Sipariş Kodu, 11 Sipariş Tutarı, 12 Mağaza
+// İndirimi, 13 Kupon, 51 Sipariş Komisyon Tutarı. İlk 3 satır başlık (grup
+// etiketi + kolon adları + boş ayraç), veri satır 3'ten başlar.
+function parseN11ItemShipments(buffer: Buffer): MarketplaceReconRow[] {
+  const wb = XLSX.read(buffer)
+  const sheet = wb.Sheets[wb.SheetNames[0]]
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" })
+
+  const byOrder = new Map<string, MarketplaceReconRow>()
+  for (let i = 3; i < raw.length; i++) {
+    const row = raw[i]
+    const code = row[0]
+    if (!code || String(code).trim() === "") continue
+    const serviceOrderId = String(code).trim()
+
+    const saleAmount = parseTrMoney(row[11])
+    const magazaIndirimi = parseTrMoney(row[12])
+    const kupon = parseTrMoney(row[13])
+    const commission = parseTrMoney(row[51])
+    const qty = Math.floor(parseTrMoney(row[10]))
+
+    const existing = byOrder.get(serviceOrderId)
+    if (existing) {
+      existing.saleAmount += saleAmount
+      existing.commission += commission
+      existing.otherDeductions = (existing.otherDeductions ?? 0) + magazaIndirimi + kupon
+      existing.itemCount += qty
+    } else {
+      byOrder.set(serviceOrderId, {
+        serviceOrderId,
+        orderDate: null,
+        saleAmount,
+        commission,
+        withholding: 0, // computeN11SettlementRates ile sonradan doldurulur
+        returnAmount: 0,
+        itemCount: qty,
+        otherDeductions: magazaIndirimi + kupon,
+        rawJson: {
+          "Sipariş Kodu": row[0],
+          "Ürün Adı": row[7],
+          "Sipariş Tutarı": row[11],
+          "Mağaza İndirimi": row[12],
+          Kupon: row[13],
+          "Sipariş Komisyon Tutarı": row[51],
+        },
+      })
+    }
+  }
+  return [...byOrder.values()]
+}
+
+export interface N11SettlementRates {
+  stopajRate: number // %
+  marketingRate: number // %
+  platformFeeRate: number // %
+  totalSaleAmount: number
+  totalItemCount: number
+  month: string | null // en yoğun ay (YYYY-MM)
+  detectedMonths: { month: string; count: number }[]
+}
+
+/** settlementSummary.xls (1+ dosya, 15 günlük parçalar) → ay bazlı ortalama oranlar. */
+export function computeN11SettlementRates(buffers: Buffer[]): N11SettlementRates {
+  let totalSaleAmount = 0
+  let totalWithholding = 0
+  let totalMarketing = 0
+  let totalPlatformFee = 0
+  let totalItemCount = 0
+  const monthCounts = new Map<string, number>()
+
+  for (const buffer of buffers) {
+    const wb = XLSX.read(buffer)
+    const sheet = wb.Sheets[wb.SheetNames[0]]
+    const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" })
+    for (let i = 2; i < raw.length; i++) {
+      const row = raw[i]
+      if (!row[0]) continue
+      const date = parseN11SettlementDate(row[0])
+      if (date) {
+        const m = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+        monthCounts.set(m, (monthCounts.get(m) ?? 0) + 1)
+      }
+      totalSaleAmount += parseN11SettlementAmount(row[4])
+      totalMarketing += parseN11SettlementAmount(row[11])
+      totalPlatformFee += parseN11SettlementAmount(row[12])
+      totalWithholding += parseN11SettlementAmount(row[13])
+      totalItemCount += Math.floor(parseN11SettlementAmount(row[1]))
+    }
+  }
+
+  const detectedMonths = [...monthCounts.entries()]
+    .map(([month, count]) => ({ month, count }))
+    .sort((a, b) => b.count - a.count)
+
+  return {
+    stopajRate: totalSaleAmount > 0 ? (totalWithholding / totalSaleAmount) * 100 : 0,
+    marketingRate: totalSaleAmount > 0 ? (totalMarketing / totalSaleAmount) * 100 : 0,
+    platformFeeRate: totalSaleAmount > 0 ? (totalPlatformFee / totalSaleAmount) * 100 : 0,
+    totalSaleAmount,
+    totalItemCount,
+    month: detectedMonths[0]?.month ?? null,
+    detectedMonths,
+  }
+}
+
+/** Ay bazlı oranları her siparişin kendi cirosuna uygular (stopaj + pazarlama + pazaryeri). */
+export function applyN11SettlementRates(
+  rows: MarketplaceReconRow[],
+  rates: N11SettlementRates,
+): MarketplaceReconRow[] {
+  return rows.map((r) => ({
+    ...r,
+    withholding: (r.saleAmount * rates.stopajRate) / 100,
+    otherDeductions:
+      (r.otherDeductions ?? 0) +
+      (r.saleAmount * rates.marketingRate) / 100 +
+      (r.saleAmount * rates.platformFeeRate) / 100,
+  }))
+}
+
 // ─── Registry ─────────────────────────────────────────────────
 
 export const MARKETPLACE_PARSERS: Record<string, MarketplaceParser> = {
@@ -182,6 +346,12 @@ export const MARKETPLACE_PARSERS: Record<string, MarketplaceParser> = {
     parse: parseHepsiburada,
     matchKey: (sv) => sv.split("-")[0]!.trim(),
     hasOwnShipping: true,
+  },
+  N11: {
+    salesChannel: "n11",
+    parse: parseN11ItemShipments,
+    matchKey: (sv) => sv.split("-")[0]!.trim(),
+    hasOwnShipping: false,
   },
 }
 

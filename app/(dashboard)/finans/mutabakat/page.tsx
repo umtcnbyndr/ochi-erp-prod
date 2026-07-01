@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { prisma } from "@/lib/db"
 import { TrendyolReconciliationFlow } from "./trendyol-flow"
 import { MarketplaceReconciliationFlow } from "./marketplace-flow"
+import { N11ReconciliationFlow } from "./n11-flow"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 120
@@ -39,9 +40,7 @@ export default async function MutabakatPage() {
           <TabsTrigger value="trendyol">Trendyol</TabsTrigger>
           <TabsTrigger value="farmazon">Farmazon</TabsTrigger>
           <TabsTrigger value="hepsiburada">Hepsiburada</TabsTrigger>
-          <TabsTrigger value="n11" disabled>
-            N11 <Badge variant="outline" className="ml-1 text-[9px]">Yakında</Badge>
-          </TabsTrigger>
+          <TabsTrigger value="n11">N11</TabsTrigger>
           <TabsTrigger value="amazon" disabled>
             Amazon <Badge variant="outline" className="ml-1 text-[9px]">Yakında</Badge>
           </TabsTrigger>
@@ -60,6 +59,11 @@ export default async function MutabakatPage() {
         <TabsContent value="hepsiburada" className="space-y-4 pt-4">
           <MonthSummary rows={monthsFor("Hepsiburada")} />
           <MarketplaceReconciliationFlow marketplace="Hepsiburada" hasOwnShipping />
+        </TabsContent>
+
+        <TabsContent value="n11" className="space-y-4 pt-4">
+          <MonthSummary rows={monthsFor("N11")} />
+          <N11ReconciliationFlow />
         </TabsContent>
       </Tabs>
     </div>
