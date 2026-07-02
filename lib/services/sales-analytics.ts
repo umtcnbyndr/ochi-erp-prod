@@ -825,6 +825,8 @@ export interface OrderTableRow {
   matchMethod: string | null
   /** Bu siparişin mutabakatı yapıldı mı? (gerçek değerler) */
   isReconciled: boolean
+  /** Trendyol'un kendi "Sipariş Statüsü" (Excel) — null ise (Farmazon/Hepsiburada/N11 veya mutabakat yok) bilinmiyor */
+  reconOrderStatus: string | null
   /** Ürünün PSF değeri (Perakende Satış Fiyatı) — eczanede satılan referans fiyat */
   psf: number | null
 }
@@ -929,6 +931,8 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       recon_withholding: number | null
       recon_shipping: number | null
       recon_other: number | null
+      // Trendyol'un kendi "Sipariş Statüsü" (Excel) — null ise (Farmazon/Hepsiburada/N11) bilinmiyor
+      recon_order_status: string | null
     }>
   >(
     `
@@ -987,7 +991,8 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       recon."withholding"::float8 AS recon_withholding,
       (recon."shipping" + recon."returnShipping")::float8 AS recon_shipping,
       -- "Diğer" = gerçek ek gider kalemleri (platform + ceza + diğer), iade/iptal HARİÇ
-      (recon."platformFee" + recon."penalty" + recon."otherDeductions" + recon."internationalFee")::float8 AS recon_other
+      (recon."platformFee" + recon."penalty" + recon."otherDeductions" + recon."internationalFee")::float8 AS recon_other,
+      recon."orderStatus" AS recon_order_status
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
@@ -997,7 +1002,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
     LEFT JOIN LATERAL (
       SELECT "netReceived", "commission", "withholding", "shipping", "returnShipping",
-             "platformFee", "penalty", "otherDeductions", "internationalFee"
+             "platformFee", "penalty", "otherDeductions", "internationalFee", "orderStatus"
       FROM "TrendyolOrderReconciliation" tr
       WHERE o."serviceValue" IS NOT NULL
         -- Recon o siparişin KENDİ pazaryerinden olmalı (marketplace = salesChannel)
@@ -1098,6 +1103,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       marginPct,
       matchMethod: r.match_method,
       isReconciled,
+      reconOrderStatus: r.recon_order_status ?? null,
       psf: r.psf !== null && r.psf !== undefined ? Number(r.psf) : null,
     }
   })

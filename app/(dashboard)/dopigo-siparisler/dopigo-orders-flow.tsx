@@ -45,7 +45,15 @@ interface TopProductRow { productId: number | null; productName: string; brandNa
 interface UnmatchedItem { itemId: number; orderId: number; salesChannel: string; productName: string; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; price: number; serviceCreatedAt: string }
 interface SyncRun { id: number; startedAt: string; finishedAt: string | null; totalFetched: number; totalCreated: number; totalUpdated: number; totalMatched: number; status: string; errorMessage: string | null; rangeFrom: string | null; rangeTo: string | null }
 interface MonthlyExpense { id: number; marketplaceId: number; commissionPaid: number | null; shippingPaid: number | null; withholdingPaid: number | null; returnCosts: number | null; adSpend: number | null; otherExpenses: number | null; notes: string | null }
-interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; costSource: "MAIN" | "STREET_FALLBACK" | "NONE"; totalCost: number; commission: number; shipping: number; withholding: number; other: number; remaining: number; marginPct: number; matchMethod: string | null; isReconciled: boolean; psf: number | null }
+interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; costSource: "MAIN" | "STREET_FALLBACK" | "NONE"; totalCost: number; commission: number; shipping: number; withholding: number; other: number; remaining: number; marginPct: number; matchMethod: string | null; isReconciled: boolean; reconOrderStatus: string | null; psf: number | null }
+
+// Trendyol "Sipariş Statüsü" değerleri arasında sadece bunlar kesinleşmiş sayılır.
+// Not: lib/services/trendyol-reconciliation.ts'teki FINAL_ORDER_STATUSES ile aynı tut.
+const FINAL_ORDER_STATUSES = new Set(["Teslim Edildi", "İptal Edildi", "İade Edildi"])
+function isUnfinalized(row: { derivedStatus: string; reconOrderStatus: string | null }): boolean {
+  if (row.derivedStatus === "WAITING") return true
+  return row.reconOrderStatus != null && !FINAL_ORDER_STATUSES.has(row.reconOrderStatus)
+}
 
 interface Props {
   period: string; rangeLabel: string; from?: string; to?: string
@@ -588,7 +596,7 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                               +{groupSize - 1}
                             </Badge>
                           )}
-                          {r.isReconciled && r.derivedStatus === "WAITING" && (
+                          {r.isReconciled && isUnfinalized(r) && (
                             <span
                               className="text-amber-500"
                               title="Kesinleşmemiş — henüz teslim edilmedi, kargo/diğer gider kalemleri güncellenebilir"
@@ -889,15 +897,17 @@ function OrderDetailDrawer({ row, siblings, onSwitchItem, onClose }: {
           })()}
         </div>
 
-        {row.isReconciled && row.derivedStatus === "WAITING" && (
+        {row.isReconciled && isUnfinalized(row) && (
           <div className="rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 p-2 text-xs text-amber-700 dark:text-amber-400">
-            ⏳ <strong>Kesinleşmemiş</strong> — bu sipariş henüz teslim edilmedi. Pazaryeri kargo/diğer
-            gider kalemlerini teslimattan önce kesinleştirmiyor, bu yüzden 0 görünebilir. Sipariş
-            teslim edildikten sonra bu ayın mutabakat Excel'ini tekrar yükleyince rakamlar güncellenir.
+            ⏳ <strong>Kesinleşmemiş</strong> — Dopigo'da statü "{STATUS_META[row.derivedStatus]?.label ?? row.derivedStatus}"
+            görünse de pazaryerinin kendi panelinde bu sipariş henüz teslim edilmedi
+            {row.reconOrderStatus ? ` (durum: "${row.reconOrderStatus}")` : ""}. Kargo/diğer gider
+            kalemleri teslimattan önce kesinleşmiyor, bu yüzden 0 görünebilir. Sipariş teslim
+            edildikten sonra bu ayın mutabakat Excel'ini tekrar yükleyince rakamlar güncellenir.
           </div>
         )}
 
-        {row.isReconciled && row.derivedStatus !== "WAITING" && (
+        {row.isReconciled && !isUnfinalized(row) && (
           <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50 p-2 text-xs text-emerald-700 dark:text-emerald-400">
             ✅ <strong>Mutabakatlı</strong> — komisyon/kargo/diğer giderler pazaryeri panelinden gelen
             gerçek değerlerdir. (Çoklu kalemli siparişte cironun payına göre dağıtılmıştır.)
