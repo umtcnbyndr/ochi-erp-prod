@@ -16,6 +16,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { buildManualPriceMap } from "./manual-purchase-price"
 import { resolveProductUnitCost } from "@/lib/pricing"
+import { isReconOrderStatusPending } from "./reconciliation-status"
 
 // ─── Normalize satır ──────────────────────────────────────────
 
@@ -35,6 +36,8 @@ export interface MarketplaceReconRow {
   penalty?: number
   /** Diğer kesintiler (hizmet/tahsilat bedeli gibi, mutlak, düşülür). */
   otherDeductions?: number
+  /** Pazaryerinin kendi "sipariş statüsü" metni (varsa) — bkz. reconciliation-status.ts */
+  orderStatus?: string | null
   rawJson: Record<string, unknown>
 }
 
@@ -150,6 +153,7 @@ function parseHepsiburada(buffer: Buffer): MarketplaceReconRow[] {
       discount: indirim,
       penalty: ceza,
       otherDeductions: hizmetBedeli + tahsilatBedeli,
+      orderStatus: row[1] ? String(row[1]).trim() : null,
       rawJson: {
         "Sipariş no": row[0],
         "Sipariş durumu": row[1],
@@ -249,8 +253,10 @@ function parseN11ItemShipments(buffer: Buffer): MarketplaceReconRow[] {
         returnAmount: 0,
         itemCount: qty,
         otherDeductions: magazaIndirimi + kupon,
+        orderStatus: row[1] ? String(row[1]).trim() : null,
         rawJson: {
           "Sipariş Kodu": row[0],
+          Durum: row[1],
           "Ürün Adı": row[7],
           "Sipariş Tutarı": row[11],
           "Mağaza İndirimi": row[12],
@@ -556,7 +562,9 @@ export async function buildMarketplaceReconPreview(
     const unknownItems: string[] = []
     if (isMatched) {
       matched++
-      if (packets!.some((pkt) => pkt.derivedStatus === "WAITING")) unfinalizedCount++
+      const pendingByDerivedStatus = packets!.some((pkt) => pkt.derivedStatus === "WAITING")
+      const pendingByOwnStatus = isReconOrderStatusPending(parser.salesChannel, r.orderStatus)
+      if (pendingByDerivedStatus || pendingByOwnStatus) unfinalizedCount++
       const c = computeCogs(packets!, manual)
       cogs = c.cogs
       cogsKnown = c.known
@@ -664,7 +672,7 @@ export async function saveMarketplaceReconciliation(input: {
       dopigoOrderId,
       orderDate: r.orderDate ?? match?.serviceCreatedAt ?? new Date(),
       month: input.month,
-      orderStatus: null,
+      orderStatus: r.orderStatus ?? null,
       itemCount: r.itemCount,
       saleAmount: r.saleAmount,
       commission: r.commission,

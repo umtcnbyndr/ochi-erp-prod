@@ -13,6 +13,7 @@
  */
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@prisma/client"
+import { isReconOrderStatusPending } from "./reconciliation-status"
 import {
   COMMISSION_TARIFF_JOIN_SQL,
   EFFECTIVE_COMMISSION_PCT_SQL,
@@ -825,8 +826,10 @@ export interface OrderTableRow {
   matchMethod: string | null
   /** Bu siparişin mutabakatı yapıldı mı? (gerçek değerler) */
   isReconciled: boolean
-  /** Trendyol'un kendi "Sipariş Statüsü" (Excel) — null ise (Farmazon/Hepsiburada/N11 veya mutabakat yok) bilinmiyor */
+  /** Pazaryerinin kendi "Sipariş Statüsü" metni (Excel'den) — null ise (Farmazon veya mutabakat yok) bilinmiyor */
   reconOrderStatus: string | null
+  /** Mutabakatlı ama kargo/diğer henüz kesinleşmemiş olabilir (bkz. reconciliation-status.ts) */
+  isUnfinalized: boolean
   /** Ürünün PSF değeri (Perakende Satış Fiyatı) — eczanede satılan referans fiyat */
   psf: number | null
 }
@@ -1104,6 +1107,8 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       matchMethod: r.match_method,
       isReconciled,
       reconOrderStatus: r.recon_order_status ?? null,
+      isUnfinalized:
+        r.derived_status === "WAITING" || isReconOrderStatusPending(r.sales_channel, r.recon_order_status),
       psf: r.psf !== null && r.psf !== undefined ? Number(r.psf) : null,
     }
   })

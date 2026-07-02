@@ -18,15 +18,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { buildManualPriceMap } from "./manual-purchase-price"
 import { resolveProductUnitCost } from "@/lib/pricing"
-
-/**
- * Trendyol "Sipariş Statüsü" değerleri arasında sadece bunlar kesinleşmiş sayılır —
- * "Yeni Sipariş" gibi diğer statülerde kargo/platform/stopaj Trendyol'un kendi
- * panelinde henüz 0 olabilir (teslimattan önce kesinleşmiyor, bug değil).
- * Not: `app/(dashboard)/dopigo-siparisler/dopigo-orders-flow.tsx`'te aynı liste
- * (client component, bu server-only dosyayı import edemiyor) — ikisini birlikte güncelle.
- */
-const FINAL_ORDER_STATUSES = new Set(["Teslim Edildi", "İptal Edildi", "İade Edildi"])
+import { isReconOrderStatusPending } from "./reconciliation-status"
 
 // ─── Excel parse ─────────────────────────────────────────────
 
@@ -277,7 +269,7 @@ export async function buildReconciliationPreview(
 
     if (dbPackets && dbPackets.length > 0) {
       matched++
-      if (r.orderStatus && !FINAL_ORDER_STATUSES.has(r.orderStatus)) unfinalizedCount++
+      if (isReconOrderStatusPending("trendyol", r.orderStatus)) unfinalizedCount++
       // Tüm paketlerin item'larını topla
       for (const pkt of dbPackets) {
         for (const item of pkt.items) {
