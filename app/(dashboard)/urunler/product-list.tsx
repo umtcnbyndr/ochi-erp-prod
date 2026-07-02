@@ -404,7 +404,18 @@ export function ProductList({
               </Button>
               <Button
                 size="sm"
-                onClick={() => setMergeOpen(true)}
+                onClick={() => {
+                  const nonSingle = products.filter(
+                    (p) => selected.has(p.id) && p.productType !== "SINGLE",
+                  )
+                  if (nonSingle.length > 0) {
+                    toast.error(
+                      `SET/GIFT ürünler birleştirilemez: ${nonSingle.map((p) => p.name).join(", ")}`,
+                    )
+                    return
+                  }
+                  setMergeOpen(true)
+                }}
                 disabled={selected.size < 2 || pending}
               >
                 <GitMerge className="h-4 w-4" />

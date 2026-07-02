@@ -268,6 +268,20 @@ export function PharmacyUploadFlow() {
                     />
                     <StatBox label="Hata" value={loaded.preview.stats.errors} color="destructive" />
                   </div>
+                  {!loaded.preview.mapping.streetStock && (
+                    <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                      <p className="flex items-center gap-1.5 font-medium">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        Stok kolonu bulunamadı
+                      </p>
+                      <p className="mt-1">
+                        Bu dosyada "Bakiye"/eczane stok kolonu tanınamadı. Güvenlik için stok
+                        alanı bu yüklemede hiç değiştirilmeyecek (sadece alış/PSF/kategori
+                        güncellenir) — yanlışlıkla sıfırlanma riski yok. Stok da güncellenmesi
+                        gerekiyorsa yukarıdan doğru kolonu elle eşleştir.
+                      </p>
+                    </div>
+                  )}
                   {loaded.preview.stats.duplicatesInFile > 0 && (
                     <p className="mt-3 text-xs text-warning">
                       <AlertTriangle className="inline h-3 w-3" />{" "}
@@ -546,7 +560,7 @@ export function PharmacyUploadFlow() {
                           <TableCell className="font-mono text-xs">{row.barcode}</TableCell>
                           <TableCell className="text-xs">{row.name}</TableCell>
                           <TableCell className="text-right tabular-nums text-xs">
-                            {row.streetStock}
+                            {row.streetStock ?? "—"}
                           </TableCell>
                           <TableCell className="text-right tabular-nums text-xs">
                             {row.streetPurchasePrice != null ? row.streetPurchasePrice.toFixed(2) : "—"}
@@ -746,7 +760,7 @@ function UnknownRowsCard({
   const sorted = useMemo(() => {
     if (stockSort === null) return filtered
     const dir = stockSort === "desc" ? -1 : 1
-    return [...filtered].sort((a, b) => (a.streetStock - b.streetStock) * dir)
+    return [...filtered].sort((a, b) => ((a.streetStock ?? 0) - (b.streetStock ?? 0)) * dir)
   }, [filtered, stockSort])
 
   const visible = sorted.slice(0, pageSize)

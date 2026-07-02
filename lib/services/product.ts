@@ -798,6 +798,16 @@ export async function mergeProducts(targetId: number, sourceIds: number[]) {
       throw new Error("Ürün bulunamadı")
     }
 
+    // SET/GIFT birleştirilemez: SET'in stok/alış alanları sanal (bileşenlerden hesaplanır),
+    // GIFT'in 1 TL sembolik alışı gerçek ürünün weighted-average COGS'una karışıp
+    // net kâr hesaplarını bozar.
+    const blocked = [target, ...sources].filter((p) => p.productType !== "SINGLE")
+    if (blocked.length > 0) {
+      throw new Error(
+        `SET/GIFT ürünler birleştirilemez: ${blocked.map((p) => p.name).join(", ")}`,
+      )
+    }
+
     // Stokları topla
     const totalMainStock = sources.reduce((s, p) => s + p.mainStock, target.mainStock)
     const totalStreetStock = sources.reduce((s, p) => s + p.streetStock, target.streetStock)
@@ -898,7 +908,38 @@ export async function mergeProducts(targetId: number, sourceIds: number[]) {
       data: { productId: targetId },
     })
 
-    // Kaynakları sil (cascade: barcodes, marketplacePrices otomatik)
+    // Geçmiş Dopigo sipariş eşleşmelerini hedefe bağla — yapılmazsa kaynak silinince
+    // FK SetNull ile bu satışlar sessizce "eşleşmemiş" havuzuna geri düşer.
+    await tx.dopigoOrderItem.updateMany({
+      where: { productId: { in: sourceIds } },
+      data: { productId: targetId },
+    })
+
+    // Pazaryeri listing kayıtlarını (Dopigo SKU/tedarikçi barkod) hedefe taşı — cascade ile
+    // silinirlerse o anahtarlı satışlar bir daha asla eşleşemez. Aynı (marketplace, barkod)
+    // hedefte zaten varsa kaynağınki atlanır (hedefinki geçerli kalır); taşınanlar isPrimary=false
+    // olur (hedefin kendi primary'si — ürün formundan yönetilir — bozulmasın).
+    const targetListings = await tx.productMarketplaceListing.findMany({
+      where: { productId: targetId },
+      select: { marketplaceId: true, barcode: true },
+    })
+    const targetListingKeys = new Set(
+      targetListings.map((l) => `${l.marketplaceId}::${l.barcode ?? ""}`),
+    )
+    const sourceListings = await tx.productMarketplaceListing.findMany({
+      where: { productId: { in: sourceIds } },
+    })
+    for (const listing of sourceListings) {
+      const key = `${listing.marketplaceId}::${listing.barcode ?? ""}`
+      if (targetListingKeys.has(key)) continue // hedefte zaten var, kaynağınki cascade ile silinir
+      await tx.productMarketplaceListing.update({
+        where: { id: listing.id },
+        data: { productId: targetId, isPrimary: false },
+      })
+      targetListingKeys.add(key)
+    }
+
+    // Kaynakları sil (cascade: barcodes, kalan marketplaceListings/marketplacePrices otomatik)
     await tx.product.deleteMany({ where: { id: { in: sourceIds } } })
 
     // Hedefi güncelle (stoklar + weighted average alış fiyatları)
@@ -1001,6 +1042,14 @@ export async function revertMerge(mergeHistoryId: number) {
         status: (snapshot.status as "ACTIVE" | "PASSIVE") ?? "ACTIVE",
         notes: snapshot.notes as string | null ?? undefined,
         giftMinSalePrice: snapshot.giftMinSalePrice as number | null ?? undefined,
+        // Eşleştirme kimlik alanları — bunlar geri yüklenmezse eczane/Dopigo/TY
+        // eşleştirmesi kalıcı kopar (kullanıcı elle yeniden girmek zorunda kalır)
+        pharmacyProductCode: snapshot.pharmacyProductCode as string | null ?? undefined,
+        streetPharmacyCode: snapshot.streetPharmacyCode as string | null ?? undefined,
+        supplierBarcode: snapshot.supplierBarcode as string | null ?? undefined,
+        trendyolBarcode: snapshot.trendyolBarcode as string | null ?? undefined,
+        dopigoBarcode: snapshot.dopigoBarcode as string | null ?? undefined,
+        dopigoSku: snapshot.dopigoSku as string | null ?? undefined,
       },
     })
 

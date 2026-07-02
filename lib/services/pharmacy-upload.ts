@@ -49,7 +49,8 @@ export interface AnalyzedRow {
   subcategoryName: string | null
   streetPurchasePrice: number | null
   psf: number | null
-  streetStock: number
+  /** null = Excel'de stok kolonu eşleşmedi → mevcut streetStock'a dokunulmaz (diğer alanlar gibi) */
+  streetStock: number | null
   vatRate: number | null
   productCode: string | null
   decision: RowDecision
@@ -393,7 +394,8 @@ export async function analyzePharmacyUpload(
     const subcategoryName = mapping.subcategoryName ? toStr(row[mapping.subcategoryName]) : null
     const streetPurchasePrice = mapping.streetPurchasePrice ? toNum(row[mapping.streetPurchasePrice]) : null
     const psf = mapping.psf ? toNum(row[mapping.psf]) : null
-    const streetStock = mapping.streetStock ? toInt(row[mapping.streetStock]) : 0
+    // Kolon eşleşmediyse null — "boş" (0) ile karıştırılmasın, aşağıda hiç yazılmaz
+    const streetStock = mapping.streetStock ? toInt(row[mapping.streetStock]) : null
     const vatRate = mapping.vatRate ? toNum(row[mapping.vatRate]) : null
     const productCode = mapping.productCode ? toStr(row[mapping.productCode]) : null
 
@@ -595,7 +597,8 @@ export async function executePharmacyUpload(
       } = {}
       if (row.streetPurchasePrice != null) streetData.streetPurchasePrice = row.streetPurchasePrice
       if (row.psf != null) streetData.psf = row.psf
-      streetData.streetStock = row.streetStock
+      // null = kolon eşleşmedi → mevcut streetStock korunur (diğer alanlarla tutarlı davranış)
+      if (row.streetStock != null) streetData.streetStock = row.streetStock
       if (row.vatRate != null) streetData.vatRate = row.vatRate
       if (row.productCode) streetData.pharmacyProductCode = row.productCode
 
@@ -694,7 +697,8 @@ export async function executePharmacyUpload(
             // Ana depo dokunulmaz: mainStock=0, mainPurchasePrice=null
             streetPurchasePrice: row.streetPurchasePrice ?? null,
             psf: row.psf ?? null,
-            streetStock: row.streetStock,
+            // Yeni ürün — korunacak eski değer yok, kolon eşleşmediyse 0 varsayılan
+            streetStock: row.streetStock ?? 0,
             pharmacyProductCode: row.productCode ?? null,
             barcodes: { create: [{ barcode: row.barcode, isPrimary: true }] },
           },
