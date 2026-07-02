@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useRef, useState, useTransition } from "react"
 import { Upload, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import {
   previewN11ReconciliationAction,
   saveMarketplaceReconciliationAction,
 } from "./actions"
+import { MonthlyReconciliationTable, type MonthlyReconData } from "./monthly-recon-table"
 
 type Preview = MarketplacePreview & {
   _rows: MarketplaceReconRow[]
@@ -31,11 +32,17 @@ const fmt = (n: number) =>
   n.toLocaleString("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 })
 const fmtPct = (n: number) => `%${n.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}`
 
-export function N11ReconciliationFlow() {
+export function N11ReconciliationFlow({ monthlyData }: { monthlyData: MonthlyReconData[] }) {
   const [pending, startTransition] = useTransition()
   const [shipping, setShipping] = useState("")
   const [preview, setPreview] = useState<Preview | null>(null)
   const [month, setMonth] = useState("")
+  const uploadCardRef = useRef<HTMLDivElement>(null)
+
+  function handleSelectMonth(m: string) {
+    setMonth(m)
+    uploadCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
   const shippingNum = (() => {
     const v = parseFloat(shipping.replace(",", "."))
@@ -50,7 +57,7 @@ export function N11ReconciliationFlow() {
         return
       }
       setPreview(result.data)
-      setMonth(result.data.month)
+      setMonth((prev) => prev || result.data.month)
     })
   }
 
@@ -75,7 +82,9 @@ export function N11ReconciliationFlow() {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <MonthlyReconciliationTable data={monthlyData} onSelectMonth={handleSelectMonth} />
+
+      <Card ref={uploadCardRef}>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">N11 raporu yükle (2 dosya)</CardTitle>
         </CardHeader>
@@ -123,6 +132,11 @@ export function N11ReconciliationFlow() {
               summary'nin ay ortalaması (ciro × oran) uygulanır. Kargo bu alandan her siparişe
               eşit uygulanır.
             </p>
+            {month && !preview && (
+              <div className="text-xs">
+                Hedef ay: <Badge variant="outline">{month}</Badge>
+              </div>
+            )}
             <Button type="submit" disabled={pending}>
               {pending ? (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />

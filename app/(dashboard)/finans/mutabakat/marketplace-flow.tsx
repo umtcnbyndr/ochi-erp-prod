@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useRef, useState, useTransition } from "react"
 import { Upload, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import {
   previewMarketplaceReconciliationAction,
   saveMarketplaceReconciliationAction,
 } from "./actions"
+import { MonthlyReconciliationTable, type MonthlyReconData } from "./monthly-recon-table"
 
 interface Props {
   marketplace: string
@@ -23,6 +24,7 @@ interface Props {
   hasOwnShipping?: boolean
   /** Panelden rapor nereden/nasıl indirilir (kullanıcıya adım adım gösterilir) */
   downloadInstructions?: string
+  monthlyData: MonthlyReconData[]
 }
 
 type Preview = MarketplacePreview & {
@@ -34,11 +36,17 @@ type Preview = MarketplacePreview & {
 const fmt = (n: number) =>
   n.toLocaleString("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 })
 
-export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping, downloadInstructions }: Props) {
+export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping, downloadInstructions, monthlyData }: Props) {
   const [pending, startTransition] = useTransition()
   const [shipping, setShipping] = useState("")
   const [preview, setPreview] = useState<Preview | null>(null)
   const [month, setMonth] = useState("")
+  const uploadCardRef = useRef<HTMLDivElement>(null)
+
+  function handleSelectMonth(m: string) {
+    setMonth(m)
+    uploadCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
   const shippingNum = (() => {
     const v = parseFloat(shipping.replace(",", "."))
@@ -57,7 +65,7 @@ export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping, dow
         return
       }
       setPreview(result.data)
-      setMonth(result.data.month)
+      setMonth((prev) => prev || result.data.month)
     })
   }
 
@@ -84,7 +92,9 @@ export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping, dow
 
   return (
     <div className="space-y-4">
-      <Card>
+      <MonthlyReconciliationTable data={monthlyData} onSelectMonth={handleSelectMonth} />
+
+      <Card ref={uploadCardRef}>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">{marketplace} raporu yükle</CardTitle>
         </CardHeader>
@@ -119,6 +129,11 @@ export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping, dow
                 ? "Komisyon, stopaj ve kargo rapordan per-order (gerçek değerlerle) okunur."
                 : "Komisyon (Hizmet Bedeli) ve stopaj rapordan per-order okunur. Kargo bu alandan her siparişe eşit uygulanır."}
             </p>
+            {month && !preview && (
+              <div className="text-xs">
+                Hedef ay: <Badge variant="outline">{month}</Badge>
+              </div>
+            )}
             <Button type="submit" disabled={pending}>
               {pending ? (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useRef, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -26,18 +26,25 @@ import type {
   ReconciliationPreview,
   TrendyolRow,
 } from "@/lib/services/trendyol-reconciliation"
+import { MonthlyReconciliationTable, type MonthlyReconData } from "./monthly-recon-table"
 
 function tl(n: number, max = 0): string {
   return n.toLocaleString("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: max })
 }
 
-export function TrendyolReconciliationFlow() {
+export function TrendyolReconciliationFlow({ monthlyData }: { monthlyData: MonthlyReconData[] }) {
   const router = useRouter()
   const confirm = useConfirm()
   const [pending, startTransition] = useTransition()
   const [preview, setPreview] = useState<(ReconciliationPreview & { _rows: TrendyolRow[]; month: string; detectedMonths: { month: string; count: number }[] }) | null>(null)
   const [selectedMonth, setSelectedMonth] = useState<string>("")
   const [filter, setFilter] = useState<"all" | "missing" | "unmatched">("all")
+  const uploadCardRef = useRef<HTMLDivElement>(null)
+
+  function handleSelectMonth(month: string) {
+    setSelectedMonth(month)
+    uploadCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -51,7 +58,7 @@ export function TrendyolReconciliationFlow() {
         return
       }
       setPreview(r.data)
-      setSelectedMonth(r.data.month)
+      setSelectedMonth((prev) => prev || r.data.month)
       toast.success(
         `${r.data.matched} eşleşti · ${r.data.unmatched} eşleşmedi · ${r.data.rowsWithMissingPrice} eksik alış`,
       )
@@ -90,8 +97,10 @@ export function TrendyolReconciliationFlow() {
 
   return (
     <>
+      <MonthlyReconciliationTable data={monthlyData} onSelectMonth={handleSelectMonth} />
+
       {/* Dosya yükle */}
-      <Card>
+      <Card ref={uploadCardRef}>
         <CardContent className="p-6 flex flex-col items-center justify-center gap-3 text-center">
           <Upload className="h-8 w-8 text-muted-foreground" />
           <div>
@@ -102,6 +111,11 @@ export function TrendyolReconciliationFlow() {
               <br />
               Sipariş No ile eşleştirme yapılır, sadece "name" alanı dokunulmaz.
             </p>
+            {selectedMonth && !preview && (
+              <div className="text-xs mt-2">
+                Hedef ay: <Badge variant="outline">{selectedMonth}</Badge>
+              </div>
+            )}
           </div>
           <Input type="file" accept=".xlsx" onChange={onFile} disabled={pending} className="max-w-xs" />
           {pending && !preview && (
@@ -124,9 +138,13 @@ export function TrendyolReconciliationFlow() {
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="h-9 rounded-md border bg-background px-3 text-sm"
               >
-                {/* Dosyada tespit edilen aylar + dosya adından gelen ay */}
+                {/* Dosyada tespit edilen aylar + dosya adından gelen ay + tablodan seçilen hedef ay */}
                 {Array.from(
-                  new Set([preview.month, ...preview.detectedMonths.map((m) => m.month)]),
+                  new Set([
+                    ...(selectedMonth ? [selectedMonth] : []),
+                    preview.month,
+                    ...preview.detectedMonths.map((m) => m.month),
+                  ]),
                 ).map((m) => {
                   const detected = preview.detectedMonths.find((d) => d.month === m)
                   return (
