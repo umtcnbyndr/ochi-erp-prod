@@ -4,6 +4,21 @@
 
 ---
 
+## 📌 GÜNCEL DURUM (2026-07-02) — Derin mimari denetim + veri tutarlılık düzeltmeleri
+
+**4 paralel salt-okunur ajan (dosya/doküman/kural, servis/veri-akışı, performans, entegrasyon/otonom-zemin) + prod SQL sondajlarıyla sistem baştan sona tarandı.** Çıktı: Sonnet 5 için "OCHI-ERP MASTER PROMPT" (bulgu kodları F1-F16 veri tutarlılığı, P1-P8 performans, G1-G10 doküman/gate, U1-U4 UI bugları, FAZ 0-7 planı — detay: memory `veri-tutarlilik-denetimi-2026-07`).
+
+**Bu turda uygulanan 4 düzeltme (canlı):**
+- **Merge zinciri:** SET/GIFT birleştirilemez; ProductMarketplaceListing + DopigoOrderItem eşleşmeleri artık hedefe taşınıyor; revertMerge eczane/Dopigo kimlik alanlarını geri yüklüyor.
+- **Eczane stok koruması:** "Bakiye" kolonu tanınamazsa streetStock'a artık dokunulmuyor (önceden sessizce 0 yazılıyordu).
+- **58 üründe eczane kodu** 7 haneye sıfırla tamamlandı (Vichy id=619 hariç — gerçek kod kullanıcıdan bekleniyor).
+- **Kargo-kanal dışlama:** `sanat optik`/`chamelo-*`/`i̇ade`/`tekrar gönderim` artık hiçbir ciro/prim/gider hesabına girmiyor (yeni `lib/services/channel-classification.ts`, tek kaynak).
+- Ürün formuna **Dopigo Ürün Kodu (SKU) + Dopigo Tedarikçi Barkod** eklendi — artık ana formdan giriliyor, Listings sekmesi sadece ek/ikincil kayıtlar için (bkz. memory `listing-kimlik-modeli`).
+
+**Denetimden gelen ama henüz uygulanmayan önemli açıklar** (öncelik sırası, master prompt'ta F-kodlarıyla detaylı): çoklu-paket mutabakatta gider çifte düşülüyor (F4) · marka-filtreli KPI'da aylık gider filtresiz düşülüyor (F5) · tam-iade dışlama marketplace-scope'suz (F3) · stok yazımlarında race condition (F6) · Gelir/Gider sayfası (getMonthlyAggregates) diğer raporlarla tutmuyor (F10) · CI yok, para-kritik dosyalarda test sıfır (G1) · `ProductMarketplaceListing.sku/supplierSku` index eksik + cron artımlı değil (P1/P3).
+
+---
+
 ## 📌 GÜNCEL DURUM (2026-06-11) — Production'da, 14 marka / 637 ürün
 
 ### ✅ Bugün (2026-06-11) yapılanlar
@@ -24,9 +39,9 @@
 5. **[araştır] Dopigo eşleştirme önerileri** — XML feed (foreign_sku/barcode + çok-kanal kategori mapping) ile eşleşmemiş ürün/kanal tespiti + öneri. Kapsam netleşecek (tartışılıyor).
 6. **[sürekli] E-ticaret danışmanlığı** — bu sohbette; sistem + prod veri görünür, proaktif içgörü. Aksiyon değil.
 
-**📌 Açık kuyruk (2026-06-24):**
-- **Ürün 887 (Anthelios Uvmune Fluid, barkod 3337875917407) hâlâ 0/0** — Fix #1 (barkod-skip) deploy oldu ama 887 çözülmedi. Excel'de o satırın gerçek barkod+Tria kodu nedir, soruşturma kuyrukta.
-- **Eşleşmeyen kalem 1.098 (+36/hafta artıyor)** — re-match taraması ve/veya "bizim değil" etiketi gerek.
+**📌 Açık kuyruk (2026-06-24, 2026-07-02'de kısmen güncellendi):**
+- **Ürün 887 (Anthelios Uvmune Fluid, barkod 3337875917407) hâlâ 0/0** — 2026-07-02 kök neden bulundu: eşleşme kopuk DEĞİL (`pharmacyProductCode=0172582` dolu, upload her sabah güncelliyor), sorun eczane stok koruması eksikliğiydi (bkz. yukarıdaki "Eczane stok koruması" düzeltmesi, artık canlıda). Retroaktif düzeltilmedi — bir sonraki eczane yüklemesinde 887'nin gerçek durumu netleşecek.
+- **Eşleşmeyen kalem 593'e indi** (eski 1.098 rakamı güncel değildi) — 2026-07-02 analiz: bunların SIFIRI teknik eşleştirme kaçağı değil, **ERP'de hiç var olmayan ürünler** (çoğu trendyol/epttavm/HB/pazarama/amazon/n11'de satılan ama katalogda olmayan) + kargo-kanal satırları (artık ayrıca dışlanıyor, bkz. yukarı). Çözüm re-match değil, "unmatched'dan ürün oluştur" akışı (master prompt FAZ 3.1, henüz uygulanmadı).
 - **Çift Trendyol listing (7 ürün)** — Vichy ters-veri net hata, hemen düzeltilebilir; diğer 6 için Trendyol teyidi gerek.
 - **Cron Scheduled Tasks Coolify'da kurulmadı** — Dopigo 20dk + BuyBox saatlik; endpoint çalışıyor, otomatik tetik yok.
 - **5433 firewall** sende kalmıştı (prod DB dış erişim).
