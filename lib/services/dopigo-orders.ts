@@ -18,6 +18,7 @@
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@prisma/client"
 import { iterateOrders, type DopigoApiOrder, type DopigoApiOrderItem } from "./dopigo-api/orders"
+import { isNonSalesChannel } from "./channel-classification"
 
 export interface SyncOrdersOptions {
   /** Hangi tarihten itibaren (YYYY-MM-DD). Boşsa son 7 gün. */
@@ -268,6 +269,12 @@ function resolveMarketplaceId(
   map: Map<string, number>,
 ): number | null {
   const key = salesChannel.toLowerCase().trim()
+
+  // Bilinen kargo/başka-firma kanalları hiçbir marketplace'e bağlanmaz — genel
+  // contains fallback'in yanlışlıkla bunları bir marketplace'e (örn. "Mağaza"
+  // adlı bir kayıt varsa) eşlemesini önler (bkz. channel-classification.ts).
+  if (isNonSalesChannel(key)) return null
+
   const direct = map.get(key)
   if (direct) return direct
 

@@ -8,6 +8,7 @@
  */
 import { prisma } from "@/lib/db"
 import { getTopLineKPIs } from "./sales-analytics"
+import { NON_SALES_CHANNELS_SQL_ARRAY } from "./channel-classification"
 
 const TR_OFFSET_MS = 3 * 60 * 60 * 1000
 
@@ -187,10 +188,12 @@ async function getDailyRevenue(
       AND o."derivedStatus" NOT IN ('CANCELLED', 'RETURNED')
       AND o.archived = false
       AND (i."itemStatus" IS NULL OR i."itemStatus" NOT IN ('cancelled', 'returned'))
+      AND NOT (LOWER(o."salesChannel") = ANY($2::text[]))
       ${channelClause}
     GROUP BY d
     `,
     since,
+    NON_SALES_CHANNELS_SQL_ARRAY,
   )
   const map = new Map(rows.map((r) => [r.d, Number(r.rev)]))
   const out: { date: string; revenue: number }[] = []

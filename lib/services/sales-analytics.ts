@@ -15,6 +15,11 @@ import { prisma } from "@/lib/db"
 import type { Prisma } from "@prisma/client"
 import { isReconOrderStatusPending } from "./reconciliation-status"
 import {
+  isStoreChannel,
+  NON_SALES_CHANNELS_SQL_ARRAY,
+  STORE_CHANNELS_SQL_LITERAL,
+} from "./channel-classification"
+import {
   COMMISSION_TARIFF_JOIN_SQL,
   EFFECTIVE_COMMISSION_PCT_SQL,
 } from "@/lib/pricing/effective-commission"
@@ -281,7 +286,7 @@ function buildPnlCTE(whereSql: string): string {
       (${EFFECTIVE_COMMISSION_PCT_SQL})::float8 AS eff_comm_pct,
       COALESCE(m."shippingCost", 0)::float8 AS mp_shipping,
       COALESCE(m."withholdingTax", 0)::float8 AS mp_withholding,
-      (o."salesChannel" IN ('store', 'magaza', 'mağaza')) AS is_store
+      (LOWER(o."salesChannel") IN (${STORE_CHANNELS_SQL_LITERAL})) AS is_store
     FROM "DopigoOrderItem" i
     JOIN "DopigoOrder" o ON o.id = i."orderId"
     LEFT JOIN "Product" p ON p.id = i."productId"
@@ -529,7 +534,7 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
     const revenue = Number(r.revenue ?? 0)
     const cost = Number(r.cost ?? 0)
     const orders = Number(r.order_count ?? 0)
-    const isStore = r.sales_channel === "store" || r.sales_channel === "store"
+    const isStore = isStoreChannel(r.sales_channel)
 
     // Öncelik: per-order mutabakat (recon) > aylık gider (actual) > tahmin
     const recon = isStore ? undefined : reconByMp.get(r.sales_channel)
@@ -1242,6 +1247,7 @@ export async function getMonthlyAggregates(year: number): Promise<MonthlySalesRo
       AND o."derivedStatus" != 'RETURNED'
       AND (i."itemStatus" IS NULL OR i."itemStatus" NOT IN ('cancelled', 'returned'))
       AND o.archived = false
+      AND NOT (LOWER(o."salesChannel") = ANY(${NON_SALES_CHANNELS_SQL_ARRAY}::text[]))
     GROUP BY EXTRACT(MONTH FROM o."serviceCreatedAt")
     ORDER BY month
   `
@@ -1280,6 +1286,12 @@ function buildWhere(filter: SalesFilter): QueryParts {
   params.push(filter.fromDate)
   conditions.push(`o."serviceCreatedAt" <= $${idx++}`)
   params.push(filter.toDate)
+
+  // Kargo gönderimi/başka firma kanalları — hiçbir ciro/prim/gider hesabına girmez
+  // (bkz. lib/services/channel-classification.ts). Store kanalı (varsa) hariç —
+  // o ciro sayılır, sadece komisyon/kargo/stopajı 0 kabul edilir (is_store, aşağıda).
+  conditions.push(`NOT (LOWER(o."salesChannel") = ANY($${idx++}::text[]))`)
+  params.push(NON_SALES_CHANNELS_SQL_ARRAY)
 
   // Eğer spesifik bir derivedStatus istendiyse, sadece onu filtrele
   // (excludeCancelled/Returned bayrakları geçersiz olur)
@@ -1412,7 +1424,7 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
   for (const r of rows) {
     const revenue = Number(r.revenue ?? 0)
     const orders = Number(r.orders ?? 0)
-    const isStore = r.sales_channel === "store"
+    const isStore = isStoreChannel(r.sales_channel)
 
     // Öncelik 1: Pazaryeri mutabakatı (gerçek panel verisi — Trendyol, Farmazon...)
     const recon = isStore ? undefined : reconByMp.get(r.sales_channel)
