@@ -363,6 +363,7 @@ type DbOrder = {
   id: number
   serviceValue: string | null
   serviceCreatedAt: Date
+  derivedStatus: string
   total: Prisma.Decimal
   items: {
     amount: number
@@ -448,6 +449,9 @@ export interface MarketplacePreview {
   totalCogs: number
   totalNetProfit: number
   rowsWithMissingPrice: number
+  /** Eşleşen ama henüz teslim edilmemiş (WAITING) sipariş sayısı — kargo/diğer bu ayki
+   *  yüklemede 0 gelmiş olabilir, pazaryeri henüz kesinleştirmediği için. */
+  unfinalizedCount: number
   rows: MarketplacePreviewRow[]
   missingPriceItems: { sku: string | null; barcode: string | null; name: string; qty: number }[]
 }
@@ -488,6 +492,7 @@ export async function buildMarketplaceReconPreview(
       id: true,
       serviceValue: true,
       serviceCreatedAt: true,
+      derivedStatus: true,
       total: true,
       items: {
         select: {
@@ -537,6 +542,7 @@ export async function buildMarketplaceReconPreview(
   let totalCogs = 0
   let totalNetProfit = 0
   let rowsWithMissing = 0
+  let unfinalizedCount = 0
 
   for (const r of rows) {
     const packets = dbMap.get(r.serviceOrderId)
@@ -550,6 +556,7 @@ export async function buildMarketplaceReconPreview(
     const unknownItems: string[] = []
     if (isMatched) {
       matched++
+      if (packets!.some((pkt) => pkt.derivedStatus === "WAITING")) unfinalizedCount++
       const c = computeCogs(packets!, manual)
       cogs = c.cogs
       cogsKnown = c.known
@@ -604,6 +611,7 @@ export async function buildMarketplaceReconPreview(
     totalCogs,
     totalNetProfit,
     rowsWithMissingPrice: rowsWithMissing,
+    unfinalizedCount,
     rows: previewRows,
     missingPriceItems: [...missingByKey.values()].sort((a, b) => b.qty - a.qty),
   }

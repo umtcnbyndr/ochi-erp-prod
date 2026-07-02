@@ -188,6 +188,17 @@ export function N11ReconciliationFlow() {
               </div>
             )}
 
+            {preview.unfinalizedCount > 0 && (
+              <div className="rounded-md bg-amber-50 dark:bg-amber-950/20 p-3 text-xs flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                <span>
+                  {preview.unfinalizedCount} sipariş henüz teslim edilmedi — pazaryeri kargo/diğer
+                  gider kalemlerini teslimattan önce kesinleştirmiyor, bu yüzden 0 görünebilir.
+                  Teslim edildikten sonra bu ayı tekrar yükleyip kaydedersen rakamlar güncellenir.
+                </span>
+              </div>
+            )}
+
             {preview.rowsWithMissingPrice > 0 && (
               <div className="rounded-md bg-orange-50 dark:bg-orange-950/20 p-3 text-xs">
                 <p className="font-medium mb-1">

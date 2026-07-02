@@ -588,6 +588,14 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                               +{groupSize - 1}
                             </Badge>
                           )}
+                          {r.isReconciled && r.derivedStatus === "WAITING" && (
+                            <span
+                              className="text-amber-500"
+                              title="Kesinleşmemiş — henüz teslim edilmedi, kargo/diğer gider kalemleri güncellenebilir"
+                            >
+                              ⏳
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <span className="text-muted-foreground/40">↳</span>
@@ -881,9 +889,17 @@ function OrderDetailDrawer({ row, siblings, onSwitchItem, onClose }: {
           })()}
         </div>
 
-        {row.isReconciled && (
+        {row.isReconciled && row.derivedStatus === "WAITING" && (
+          <div className="rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 p-2 text-xs text-amber-700 dark:text-amber-400">
+            ⏳ <strong>Kesinleşmemiş</strong> — bu sipariş henüz teslim edilmedi. Pazaryeri kargo/diğer
+            gider kalemlerini teslimattan önce kesinleştirmiyor, bu yüzden 0 görünebilir. Sipariş
+            teslim edildikten sonra bu ayın mutabakat Excel'ini tekrar yükleyince rakamlar güncellenir.
+          </div>
+        )}
+
+        {row.isReconciled && row.derivedStatus !== "WAITING" && (
           <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50 p-2 text-xs text-emerald-700 dark:text-emerald-400">
-            ✅ <strong>Mutabakatlı</strong> — komisyon/kargo/diğer giderler Trendyol panelinden gelen
+            ✅ <strong>Mutabakatlı</strong> — komisyon/kargo/diğer giderler pazaryeri panelinden gelen
             gerçek değerlerdir. (Çoklu kalemli siparişte cironun payına göre dağıtılmıştır.)
           </div>
         )}

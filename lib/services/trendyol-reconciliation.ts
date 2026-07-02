@@ -184,6 +184,9 @@ export interface ReconciliationPreview {
   totalNetProfit: number
   rowsWithMissingPrice: number
   uniqueMissingSkus: number
+  /** Eşleşen ama henüz teslim edilmemiş (WAITING) sipariş sayısı — kargo/diğer bu ayki
+   *  yüklemede 0 gelmiş olabilir, pazaryeri henüz kesinleştirmediği için. */
+  unfinalizedCount: number
   rows: ReconciliationPreviewRow[]
   /** Eksik alış girişi gereken benzersiz SKU/barkod listesi */
   missingPriceItems: { sku: string | null; barcode: string | null; name: string; qty: number }[]
@@ -206,6 +209,7 @@ export async function buildReconciliationPreview(
       serviceValue: true,
       serviceOrderId: true,
       total: true,
+      derivedStatus: true,
       items: {
         select: {
           amount: true,
@@ -255,6 +259,7 @@ export async function buildReconciliationPreview(
   let totalCogs = 0
   let totalNetProfit = 0
   let rowsWithMissing = 0
+  let unfinalizedCount = 0
 
   for (const r of rows) {
     const dbPackets = dbMap.get(r.serviceOrderId) // çoklu paket olabilir
@@ -264,6 +269,7 @@ export async function buildReconciliationPreview(
 
     if (dbPackets && dbPackets.length > 0) {
       matched++
+      if (dbPackets.some((pkt) => pkt.derivedStatus === "WAITING")) unfinalizedCount++
       // Tüm paketlerin item'larını topla
       for (const pkt of dbPackets) {
         for (const item of pkt.items) {
@@ -352,6 +358,7 @@ export async function buildReconciliationPreview(
     totalNetProfit,
     rowsWithMissingPrice: rowsWithMissing,
     uniqueMissingSkus: missingByKey.size,
+    unfinalizedCount,
     rows: previewRows,
     missingPriceItems: Array.from(missingByKey.values()).sort((a, b) => b.qty - a.qty),
   }
