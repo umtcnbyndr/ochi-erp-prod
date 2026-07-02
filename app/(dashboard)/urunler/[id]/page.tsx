@@ -15,7 +15,6 @@ import { getLatestBuyboxForProduct } from "@/lib/services/price-recommendation"
 import { getActiveCampaignForProduct } from "@/lib/services/campaign"
 import { MergeHistorySection } from "./merge-history"
 import { ListingsSection } from "./listings-section"
-import { FavoriteWidget } from "@/components/products/favorite-widget"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -196,7 +195,6 @@ export default async function ProductDetailPage({
             <TabsTrigger value="bilesenler">Bileşenler</TabsTrigger>
           )}
           <TabsTrigger value="genel">Genel</TabsTrigger>
-          <TabsTrigger value="stok">Stok</TabsTrigger>
           <TabsTrigger value="fiyatlar">Fiyatlar</TabsTrigger>
           <TabsTrigger value="listings">Listings</TabsTrigger>
           <TabsTrigger value="hareketler">Stok Hareketleri</TabsTrigger>
@@ -404,6 +402,18 @@ export default async function ProductDetailPage({
 
         {/* --- GENEL TAB --- */}
         <TabsContent value="genel" className="mt-4">
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-4 mb-4">
+            <StatCard label="Ana Stok" value={product.mainStock} icon={Package} />
+            <StatCard label="Cadde Stok" value={product.streetStock} />
+            <StatCard
+              label="Takasta"
+              value={product.exchangeStock}
+              highlight={product.exchangeStock > 0 ? "warning" : undefined}
+              icon={Repeat2}
+            />
+            <StatCard label="Min Stok" value={product.minStock} />
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
@@ -549,25 +559,6 @@ export default async function ProductDetailPage({
             </Card>
           )}
 
-          {/* Trendyol Favorilenme widget'ı */}
-          <div className="mt-4">
-            <FavoriteWidget productId={product.id} />
-          </div>
-        </TabsContent>
-
-        {/* --- STOK TAB --- */}
-        <TabsContent value="stok" className="mt-4">
-          <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-            <StatCard label="Ana Stok" value={product.mainStock} icon={Package} />
-            <StatCard label="Cadde Stok" value={product.streetStock} />
-            <StatCard
-              label="Takasta"
-              value={product.exchangeStock}
-              highlight={product.exchangeStock > 0 ? "warning" : undefined}
-              icon={Repeat2}
-            />
-            <StatCard label="Min Stok" value={product.minStock} />
-          </div>
         </TabsContent>
 
         {/* --- FİYATLAR TAB --- */}
