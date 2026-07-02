@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react"
 import { toast } from "sonner"
 import { useConfirm } from "@/components/common/confirm-provider"
-import { Plus, Trash2, Save, Star, StarOff, Loader2, Info } from "lucide-react"
+import { Plus, Trash2, Save, Loader2, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -191,8 +191,12 @@ export function ListingsSection({ productId }: { productId: number }) {
     })
   }
 
-  // Marketplace bazlı grupla
-  const grouped = rows.reduce<Record<string, ListingRowState[]>>((acc, r) => {
+  // Primary kayıt ürün formundan yönetiliyor — burada sadece ek/ikincil kayıtlar düzenlenir
+  const primaryRows = rows.filter((r) => r.isPrimary)
+  const secondaryRows = rows.filter((r) => !r.isPrimary)
+
+  // Marketplace bazlı grupla (sadece ikincil kayıtlar)
+  const grouped = secondaryRows.reduce<Record<string, ListingRowState[]>>((acc, r) => {
     if (!acc[r.marketplaceName]) acc[r.marketplaceName] = []
     acc[r.marketplaceName].push(r)
     return acc
@@ -203,10 +207,11 @@ export function ListingsSection({ productId }: { productId: number }) {
       <CardHeader>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="space-y-1.5">
-            <CardTitle className="text-base">Pazar Yeri Kayıtları (Listings)</CardTitle>
+            <CardTitle className="text-base">Ek Pazar Yeri Kayıtları</CardTitle>
             <CardDescription>
-              Aynı ürünün marketplace'te farklı barkod/SKU ile birden fazla kez
-              listelendiği durumlar için. Her satır = Dopigo Excel'de 1 satır.
+              Bu ürünün bir markette birden fazla barkodu/listingi varsa (Mustela tipi)
+              buradan ek satır ekle. Birincil kayıt (Dopigo SKU + Tedarikçi Barkod) ürün
+              düzenleme formundan yönetilir.
             </CardDescription>
           </div>
           {!adding && (
@@ -219,6 +224,21 @@ export function ListingsSection({ productId }: { productId: number }) {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Birincil kayıt — salt okunur özet */}
+        {primaryRows.length > 0 && (
+          <div className="rounded-md border bg-muted/20 p-3 text-xs space-y-2">
+            <div className="font-medium text-muted-foreground">Birincil kayıt (ürün formundan yönetilir)</div>
+            {primaryRows.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono">
+                <span className="text-muted-foreground font-sans">{r.marketplaceName}</span>
+                <span>Barkod: {r.barcode || "—"}</span>
+                <span>SKU: {r.sku || "—"}</span>
+                <span>Tedarikçi: {r.supplierSku || "—"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Açıklayıcı şema */}
         <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-2">
           <div className="font-medium flex items-center gap-1.5">
@@ -229,26 +249,25 @@ export function ListingsSection({ productId }: { productId: number }) {
             <div>
               <div className="font-mono text-[11px] bg-background border rounded px-1.5 py-0.5 inline-block">Trendyol Barkod</div>
               <div className="mt-1 text-muted-foreground">
-                TY'de bu listing'in barkodu. Dopigo Excel'in <code className="text-[10px]">barkod/gtin</code> kolonuna yazılır. Bir ürünün TY'de 2 barkodu varsa (Mustela tipi), 2 satır ekle.
+                TY'de bu ek listing'in barkodu. Dopigo Excel'in <code className="text-[10px]">barkod/gtin</code> kolonuna yazılır.
               </div>
             </div>
             <div>
               <div className="font-mono text-[11px] bg-background border rounded px-1.5 py-0.5 inline-block">Dopigo Ürün Kodu (SKU)</div>
               <div className="mt-1 text-muted-foreground">
-                Dopigo'nun internal SKU'su. Excel'in <code className="text-[10px]">sku</code> kolonuna yazılır — Dopigo bu kolonla eşleştirir. Aynı ürünün Dopigo'da 2 farklı SKU'su varsa 2 satır ekle.
+                Excel'in <code className="text-[10px]">sku</code> kolonuna yazılır — Dopigo bu kolonla eşleştirir.
               </div>
             </div>
             <div>
               <div className="font-mono text-[11px] bg-background border rounded px-1.5 py-0.5 inline-block">Tedarikçi Barkod</div>
               <div className="mt-1 text-muted-foreground">
-                Distribütörün/tedarikçinin barkodu. Excel'in <code className="text-[10px]">Tedarikçi SKU</code> kolonuna yazılır. Brand catalog upload eşleştirmesinde de yedek key.
+                Excel'in <code className="text-[10px]">Tedarikçi SKU</code> kolonuna yazılır.
               </div>
             </div>
           </div>
           <div className="text-muted-foreground border-t pt-2 mt-2">
-            <strong>Primary ⭐:</strong> BuyBox sync ve fiyat öneri motoru için referans listing.{" "}
             <strong>Aktif ✓:</strong> Excel'e dahil et (kapalı = listing duruyor ama Excel'e gitmez).{" "}
-            <strong>Stok Paylaş:</strong> ON → her listing'e tam mainStock yazılır (max satış). OFF → sadece Primary listing'e tam stok, diğerlerine 0 yazılır (eski listing satmaz).
+            <strong>Stok Paylaş:</strong> ON → her listing'e tam mainStock yazılır (max satış). OFF → sadece birincil kayda tam stok, diğerlerine 0 yazılır (eski listing satmaz).
           </div>
         </div>
 
@@ -313,15 +332,6 @@ export function ListingsSection({ productId }: { productId: number }) {
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-1.5 text-xs">
                   <Checkbox
-                    checked={newRow.isPrimary}
-                    onCheckedChange={(v) =>
-                      setNewRow((p) => ({ ...p, isPrimary: v === true }))
-                    }
-                  />
-                  Primary (referans)
-                </label>
-                <label className="flex items-center gap-1.5 text-xs">
-                  <Checkbox
                     checked={newRow.shareStock}
                     onCheckedChange={(v) =>
                       setNewRow((p) => ({ ...p, shareStock: v === true }))
@@ -352,9 +362,9 @@ export function ListingsSection({ productId }: { productId: number }) {
           <div className="text-sm text-muted-foreground py-4 text-center">
             Yükleniyor…
           </div>
-        ) : rows.length === 0 ? (
+        ) : secondaryRows.length === 0 ? (
           <div className="text-sm text-muted-foreground py-8 text-center border rounded-md">
-            Henüz listing yok. "Yeni Listing" butonuyla ekle.
+            Ek listing yok. Birden fazla barkod/listing gerekiyorsa "Yeni Listing" butonuyla ekle.
           </div>
         ) : (
           Object.entries(grouped).map(([mpName, mpRows]) => (
@@ -371,23 +381,6 @@ export function ListingsSection({ productId }: { productId: number }) {
                   return (
                     <div key={r.id} className="p-3 space-y-2.5">
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => patchRow(idx, { isPrimary: !r.isPrimary })}
-                          title={r.isPrimary ? "Primary" : "Primary yap"}
-                          className="flex-shrink-0"
-                        >
-                          {r.isPrimary ? (
-                            <Star className="h-4 w-4 fill-amber-400 text-amber-500" />
-                          ) : (
-                            <StarOff className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </button>
-                        {r.isPrimary && (
-                          <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 text-[10px]">
-                            Primary (referans)
-                          </Badge>
-                        )}
                         {!r.isActive && (
                           <Badge variant="secondary" className="text-[10px]">
                             Pasif (Excel'e gitmez)

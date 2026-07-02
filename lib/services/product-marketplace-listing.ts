@@ -197,6 +197,53 @@ export async function deleteListing(id: number): Promise<void> {
 }
 
 /**
+ * Ürün formundaki Ana Barkod + Dopigo SKU + Dopigo Tedarikçi Barkod alanlarını
+ * Trendyol'daki primary listing'e yazar (yoksa oluşturur).
+ *
+ * Listings sekmesi artık sadece ek/ikincil kayıtlar (Mustela tipi çoklu barkod)
+ * için kullanılıyor — birincil kayıt ürün formundan yönetilir, bu fonksiyon o
+ * yazımı primary listing'e senkron eder (createProduct/updateProduct çağırır).
+ */
+export async function syncPrimaryTrendyolListing(
+  productId: number,
+  fields: { barcode: string | null; sku: string | null; supplierSku: string | null },
+): Promise<void> {
+  const trendyol = await prisma.marketplace.findFirst({ where: { name: "Trendyol" } })
+  if (!trendyol) return
+
+  const barcode = fields.barcode?.trim() || null
+  const sku = fields.sku?.trim() || null
+  const supplierSku = fields.supplierSku?.trim() || null
+
+  const existing = await prisma.productMarketplaceListing.findFirst({
+    where: { productId, marketplaceId: trendyol.id, isPrimary: true },
+  })
+
+  if (existing) {
+    await prisma.productMarketplaceListing.update({
+      where: { id: existing.id },
+      data: { barcode, sku, supplierSku },
+    })
+    return
+  }
+
+  if (!barcode && !sku && !supplierSku) return
+
+  await prisma.productMarketplaceListing.create({
+    data: {
+      productId,
+      marketplaceId: trendyol.id,
+      barcode,
+      sku,
+      supplierSku,
+      isPrimary: true,
+      isActive: true,
+      shareStock: true,
+    },
+  })
+}
+
+/**
  * Excel export için: Bir ürünün belirli marketplace'teki AKTIF listing'leri.
  * isPrimary=true önce gelir.
  * Listing yoksa null döner (eski mantık devreye girer: primaryBarcode tek satır).

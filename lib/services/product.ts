@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import type { ProductFormValues } from "@/lib/validators/product"
 import { recalculateMarketplacePrices } from "./marketplace-price"
 import { recalculateSetsContainingComponents } from "./set-product"
+import { syncPrimaryTrendyolListing } from "./product-marketplace-listing"
 
 export interface ProductListFilters {
   search?: string
@@ -431,6 +432,13 @@ export async function createProduct(data: ProductFormValues) {
 
   await recalculateMarketplacePrices(product.id)
 
+  // Ana form artık primary Trendyol listing'in de kaynağı — senkron et
+  await syncPrimaryTrendyolListing(product.id, {
+    barcode: product.trendyolBarcode || product.primaryBarcode,
+    sku: product.dopigoSku,
+    supplierSku: product.dopigoBarcode,
+  })
+
   // İlk alış fiyatı varsa history kaydı
   if (productData.mainPurchasePrice) {
     await prisma.priceHistory.create({
@@ -516,6 +524,13 @@ export async function updateProduct(id: number, data: ProductFormValues) {
 
   // Bu ürün bir başka sette bileşense, setleri de güncelle
   await recalculateSetsContainingComponents([id])
+
+  // Ana form artık primary Trendyol listing'in de kaynağı — senkron et
+  await syncPrimaryTrendyolListing(id, {
+    barcode: productData.trendyolBarcode || productData.primaryBarcode,
+    sku: productData.dopigoSku ?? null,
+    supplierSku: productData.dopigoBarcode ?? null,
+  })
 
   return prisma.product.findUnique({ where: { id } })
 }

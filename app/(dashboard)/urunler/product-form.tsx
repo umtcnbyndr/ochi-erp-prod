@@ -210,6 +210,32 @@ export function ProductForm({ brands, categories, initialData, isAdmin = false }
                   <FieldError message={errors.supplierBarcode?.message} />
                 </div>
 
+                <div>
+                  <Label htmlFor="dopigoSku">Dopigo Ürün Kodu (SKU)</Label>
+                  <Input
+                    id="dopigoSku"
+                    {...form.register("dopigoSku")}
+                    placeholder="AG-NTRRPTR-DVNC"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Dopigo'nun internal SKU'su — Excel'in <code className="text-[10px]">sku</code> kolonuna yazılır.
+                  </p>
+                  <FieldError message={errors.dopigoSku?.message} />
+                </div>
+
+                <div>
+                  <Label htmlFor="dopigoBarcode">Dopigo Tedarikçi Barkod</Label>
+                  <Input
+                    id="dopigoBarcode"
+                    {...form.register("dopigoBarcode")}
+                    placeholder="Trendyol/Dopigo tedarikçi barkodu"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Excel'in <code className="text-[10px]">Tedarikçi SKU</code> kolonuna yazılır (genelde TY barkoduyla aynı GTIN).
+                  </p>
+                  <FieldError message={errors.dopigoBarcode?.message} />
+                </div>
+
                 {/* Tria Ürün Kodu — sadece admin */}
                 {isAdmin && (
                   <div className="sm:col-span-2 rounded-md border bg-amber-50/50 dark:bg-amber-950/20 p-3">
@@ -240,11 +266,11 @@ export function ProductForm({ brands, categories, initialData, isAdmin = false }
                 )}
                 {!isEdit && (
                   <div className="sm:col-span-2 border-t pt-4 mt-2">
-                    <h3 className="text-sm font-semibold mb-1">Pazar Yeri Kayıtları</h3>
+                    <h3 className="text-sm font-semibold mb-1">Ek Pazar Yeri Kayıtları</h3>
                     <p className="text-xs text-muted-foreground">
-                      Trendyol barkod, Dopigo SKU, tedarikçi barkod gibi
-                      pazaryeri-spesifik bilgileri ürünü kaydettikten sonra bu sayfada
-                      ekleyebilirsin (her marketplace için 1+ kayıt).
+                      Bu ürünün Trendyol'da birden fazla barkodu/listingi varsa (Mustela
+                      tipi) ürünü kaydettikten sonra bu sayfada ekleyebilirsin. Tek listing
+                      için yukarıdaki Dopigo SKU + Dopigo Tedarikçi Barkod yeterli.
                     </p>
                   </div>
                 )}
