@@ -138,12 +138,15 @@ export default async function UrunlerPage({
       campaignPurchasePrice: number | null
     } | null = null
 
-    if (campInfo && p.psf != null) {
-      const psf = Number(p.psf)
-      const mainPurch = p.mainPurchasePrice != null ? Number(p.mainPurchasePrice) : null
-      const discountTL = (psf * campInfo.discountRate) / 100
+    // SET ürünlerde DB psf/alış genelde boş — sanal (bileşen toplamı) değerlere düş
+    const effectivePsf = p.psf != null ? Number(p.psf) : p.virtualPsf
+    const effectivePurchase =
+      p.mainPurchasePrice != null ? Number(p.mainPurchasePrice) : p.virtualMainPurchasePrice
+
+    if (campInfo && effectivePsf != null) {
+      const discountTL = (effectivePsf * campInfo.discountRate) / 100
       const campaignPurchase =
-        mainPurch != null ? Math.max(0, mainPurch - discountTL) : null
+        effectivePurchase != null ? Math.max(0, effectivePurchase - discountTL) : null
       activeCampaign = {
         campaignId: campInfo.campaignId,
         campaignName: campInfo.campaignName,
@@ -155,14 +158,20 @@ export default async function UrunlerPage({
       }
     }
 
+    // setComponents client'ta kullanılmıyor ve bileşen Decimal'ları RSC sınırından geçemez — çıkar
+    const { setComponents: _sc, ...serializable } = p
+    void _sc
+
     return {
-      ...p,
+      ...serializable,
       vatRate: p.vatRate.toString(),
       mainPurchasePrice: p.mainPurchasePrice?.toString() ?? null,
       streetPurchasePrice: p.streetPurchasePrice?.toString() ?? null,
       calculatedStreetPrice: calculatedStreetPrice?.toString() ?? null,
       psf: p.psf?.toString() ?? null,
       setExtraDiscount: p.setExtraDiscount?.toString() ?? null,
+      giftMinSalePrice: p.giftMinSalePrice?.toString() ?? null,
+      lifetimeDemandScore: p.lifetimeDemandScore?.toString() ?? null,
       virtualPsf: p.virtualPsf != null ? p.virtualPsf.toFixed(2) : null,
       virtualMainPurchasePrice:
         p.virtualMainPurchasePrice != null

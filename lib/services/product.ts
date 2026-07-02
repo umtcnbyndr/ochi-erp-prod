@@ -119,6 +119,7 @@ export async function listProducts(options: ProductListOptions = {}) {
       WHERE p."mainStock" = 0
         AND p."streetStock" > b."pharmacyStockRule"
         AND p.status = 'ACTIVE'
+        AND p."productType" != 'SET'
     `
     const ids = rows.map((r) => r.id)
     if (ids.length === 0) {
@@ -330,6 +331,9 @@ export async function listProducts(options: ProductListOptions = {}) {
       virtualMainPurchasePrice,
       trendyolBuybox: buybox,
       trendyolOurPrice: trendyolPrice,
+      // stockSource bilinçli YOK: SET'te ana/eczane stok kavramı bileşenler üzerinden
+      // işler, MAIN/PHARMACY/ZERO rozeti yanıltıcı olur (satır renklenmez).
+      trendyolListing,
     }
   })
 
@@ -540,6 +544,23 @@ export async function updateProduct(id: number, data: ProductFormValues) {
  */
 export async function listProductsForExport(filters: ProductListFilters = {}) {
   const where = buildWhere(filters)
+
+  // pharmacyStockOnly — listProducts'taki raw-SQL filtresinin aynısı (ekran = Excel tutarlılığı)
+  if (filters.pharmacyStockOnly) {
+    const rows = await prisma.$queryRaw<Array<{ id: number }>>`
+      SELECT p.id
+      FROM "Product" p
+      JOIN "Brand" b ON b.id = p."brandId"
+      WHERE p."mainStock" = 0
+        AND p."streetStock" > b."pharmacyStockRule"
+        AND p.status = 'ACTIVE'
+        AND p."productType" != 'SET'
+    `
+    const ids = rows.map((r) => r.id)
+    if (ids.length === 0) return []
+    where.AND = [...((where.AND as Prisma.ProductWhereInput[]) ?? []), { id: { in: ids } }]
+  }
+
   return prisma.product.findMany({
     where,
     orderBy: { name: "asc" },

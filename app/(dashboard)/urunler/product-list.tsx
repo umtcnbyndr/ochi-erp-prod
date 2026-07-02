@@ -91,6 +91,7 @@ interface ProductRow {
     onSale: boolean
   } | null
   stockSource?: "MAIN" | "PHARMACY" | "ZERO"
+  giftMinSalePrice?: string | number | null
   activeCampaign?: {
     campaignId: number
     campaignName: string
@@ -311,6 +312,7 @@ export function ProductList({
       hasStreet: params.get("hasStreet") === "1",
       hasExchange: params.get("hasExchange") === "1",
       lowStock: params.get("lowStock") === "1",
+      pharmacyStockOnly: params.get("pharmacyStockOnly") === "1",
     }
   }
 
@@ -505,13 +507,20 @@ export function ProductList({
           <TableBody>
             {products.map((p) => {
               const isSet = p.productType === "SET"
+              const isGift = p.productType === "GIFT"
               // Display values: SET tipi için kayıtlı yoksa sanal değerleri göster
               const displayPurchase =
                 p.mainPurchasePrice ??
                 (isSet ? p.virtualMainPurchasePrice ?? null : null)
-              const displayPsf =
-                p.psf ?? (isSet ? p.virtualPsf ?? null : null)
-              const psfCheck = checkPsfSanity(p.mainPurchasePrice ?? 0, p.psf ?? 0)
+              // GIFT'in anlamlı satış fiyatı giftMinSalePrice'tır (PSF yok kuralı)
+              const displayPsf = isGift
+                ? p.giftMinSalePrice ?? p.psf ?? null
+                : p.psf ?? (isSet ? p.virtualPsf ?? null : null)
+              // Sanity check ekranda GÖSTERİLEN değerlerle çalışmalı (SET'te sanal)
+              const psfCheck = checkPsfSanity(
+                Number(displayPurchase ?? 0),
+                Number(displayPsf ?? 0),
+              )
               return (
                 <TableRow
                   key={p.id}
@@ -691,12 +700,14 @@ export function ProductList({
                       {displayPsf ? (
                         <span
                           title={
-                            isSet && !p.psf
-                              ? "Bileşen PSF'lerinden toplandı (sanal)"
-                              : undefined
+                            isGift && !p.psf
+                              ? "Hediye ürün — min. satış fiyatı (giftMinSalePrice)"
+                              : isSet && !p.psf
+                                ? "Bileşen PSF'lerinden toplandı (sanal)"
+                                : undefined
                           }
                           className={
-                            isSet && !p.psf
+                            (isSet || isGift) && !p.psf
                               ? "text-muted-foreground italic"
                               : ""
                           }
@@ -705,6 +716,11 @@ export function ProductList({
                           {isSet && !p.psf && (
                             <span className="ml-1 text-[10px] text-muted-foreground">
                               sanal
+                            </span>
+                          )}
+                          {isGift && !p.psf && (
+                            <span className="ml-1 text-[10px] text-muted-foreground">
+                              min
                             </span>
                           )}
                         </span>
@@ -826,11 +842,17 @@ export function ProductList({
       <div className="mt-3 grid grid-cols-1 gap-3 md:hidden">
         {products.map((p) => {
           const isSet = p.productType === "SET"
+          const isGift = p.productType === "GIFT"
           const displayPurchase =
             p.mainPurchasePrice ??
             (isSet ? p.virtualMainPurchasePrice ?? null : null)
-          const displayPsf = p.psf ?? (isSet ? p.virtualPsf ?? null : null)
-          const psfCheck = checkPsfSanity(p.mainPurchasePrice ?? 0, p.psf ?? 0)
+          const displayPsf = isGift
+            ? p.giftMinSalePrice ?? p.psf ?? null
+            : p.psf ?? (isSet ? p.virtualPsf ?? null : null)
+          const psfCheck = checkPsfSanity(
+            Number(displayPurchase ?? 0),
+            Number(displayPsf ?? 0),
+          )
           return (
             <Card key={p.id}>
               <CardContent className="p-4">
@@ -909,7 +931,8 @@ export function ProductList({
                     label="Alış"
                     value={
                       displayPurchase ? (
-                        <div>
+                        // KV value'su <p> içinde render ediliyor — blok element (div) hydration hatası verir
+                        <span className="inline-flex flex-col">
                           <span
                             className={
                               isSet && !p.mainPurchasePrice
@@ -921,11 +944,11 @@ export function ProductList({
                             {isSet && !p.mainPurchasePrice && " (sanal)"}
                           </span>
                           {p.activeCampaign?.campaignPurchasePrice != null && (
-                            <div className="text-[10px] text-pink-600 font-medium">
+                            <span className="text-[10px] text-pink-600 font-medium">
                               →₺{p.activeCampaign.campaignPurchasePrice.toFixed(2)}
-                            </div>
+                            </span>
                           )}
-                        </div>
+                        </span>
                       ) : (
                         "—"
                       )
