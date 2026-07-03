@@ -496,15 +496,32 @@ export async function updateProduct(id: number, data: ProductFormValues) {
       },
     })
 
-    // Barkodları yeniden kur
-    await tx.productBarcode.deleteMany({ where: { productId: id } })
-    await tx.productBarcode.createMany({
-      data: [
-        { productId: id, barcode: productData.primaryBarcode, isPrimary: true },
-        ...uniqueAdditional.map((b) => ({ productId: id, barcode: b, isPrimary: false })),
-      ],
-      skipDuplicates: true,
+    // Barkodları diff ile güncelle (deleteMany+createMany DEĞİL) — önceden her
+    // kayıt silinip yeniden oluşturulunca source (TRENDYOL_AUDIT/DOPIGO_AUDIT/IMPORT)
+    // her formda MANUAL'e sıfırlanıyordu. Sadece artık listede olmayanlar silinir,
+    // değişmeyenler dokunulmadan kalır, yeniler MANUAL olarak eklenir.
+    const desiredBarcodes = [productData.primaryBarcode, ...uniqueAdditional]
+    const desiredSet = new Set(desiredBarcodes)
+    const existingBarcodes = await tx.productBarcode.findMany({
+      where: { productId: id },
+      select: { id: true, barcode: true, isPrimary: true },
     })
+    const existingByBarcode = new Map(existingBarcodes.map((b) => [b.barcode, b]))
+
+    const toRemove = existingBarcodes.filter((b) => !desiredSet.has(b.barcode))
+    if (toRemove.length > 0) {
+      await tx.productBarcode.deleteMany({ where: { id: { in: toRemove.map((b) => b.id) } } })
+    }
+
+    for (const barcode of desiredBarcodes) {
+      const isPrimary = barcode === productData.primaryBarcode
+      const row = existingByBarcode.get(barcode)
+      if (!row) {
+        await tx.productBarcode.create({ data: { productId: id, barcode, isPrimary } })
+      } else if (row.isPrimary !== isPrimary) {
+        await tx.productBarcode.update({ where: { id: row.id }, data: { isPrimary } })
+      }
+    }
 
     // Fiyat geçmişi
     if (

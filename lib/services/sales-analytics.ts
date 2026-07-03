@@ -1321,7 +1321,16 @@ function buildWhere(filter: SalesFilter): QueryParts {
       NOT EXISTS (
         SELECT 1 FROM "TrendyolOrderReconciliation" tr
         WHERE o."serviceValue" IS NOT NULL
-          AND tr."serviceOrderId" = SPLIT_PART(o."serviceValue", '-', 1)
+          -- Recon o siparişin KENDİ pazaryerinden olmalı — yoksa başka kanalın
+          -- (örn. Farmazon) serviceValue'su tesadüfen bir Trendyol iade kaydına
+          -- denk gelip o siparişi yanlışlıkla dışlayabilir.
+          AND LOWER(tr."marketplace") = o."salesChannel"
+          -- Eşleşme anahtarı ana LATERAL join'deki (yukarıda) kuralla aynı:
+          -- Trendyol'da çoklu paket → serviceValue ilk parça, diğerlerinde tam.
+          AND tr."serviceOrderId" = CASE
+                WHEN o."salesChannel" = 'trendyol'
+                  THEN SPLIT_PART(o."serviceValue", '-', 1)
+                ELSE o."serviceValue" END
           AND tr."netReceived" <= 0
       )
     `)

@@ -199,9 +199,24 @@ async function upsertOrder(
     })
     orderId = existing.id
   } else {
-    const newOrder = await prisma.dopigoOrder.create({ data: orderData })
-    orderId = newOrder.id
-    created = true
+    try {
+      const newOrder = await prisma.dopigoOrder.create({ data: orderData })
+      orderId = newOrder.id
+      created = true
+    } catch (err) {
+      // Race: cron (20dk) + manuel senkron aynı anda aynı YENİ siparişi oluşturmaya
+      // çalışırsa ikinci create() unique constraint'e (dopigoOrderId) çarpar — bu
+      // tek satırı update'e düşürüyoruz ki tüm sync run'ı FAILED olmasın.
+      if (isUniqueConstraintError(err)) {
+        const raced = await prisma.dopigoOrder.update({
+          where: { dopigoOrderId: BigInt(apiOrder.id) },
+          data: orderData as Prisma.DopigoOrderUpdateInput,
+        })
+        orderId = raced.id
+      } else {
+        throw err
+      }
+    }
   }
 
   // items upsert
@@ -240,6 +255,16 @@ async function upsertOrder(
   }
 
   return { created, itemCount: items.length, matchedCount }
+}
+
+/** Prisma unique constraint ihlali mi? (P2002) — runtime error class import'u gerektirmez. */
+function isUniqueConstraintError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "P2002"
+  )
 }
 
 // ===== Marketplace eşleştirme =====

@@ -338,9 +338,11 @@ export async function completeExchange(input: CompleteExchangeInput): Promise<vo
     // ---- GIVEN (Senaryo B/C) ----
     if (input.mode === "COMPLETE") {
       // Senaryo B: fatura kesildi → exchangeStock -= qty, EXCHANGE_COMPLETE movement
+      // Math.max(0,...) — kayıt tutarsızlığında (örn. iki tamamlama çakışırsa) negatife inmesin;
+      // movement yine tam miktarı kaydeder (aşağıda), sadece stok alanı 0'da kaplanır.
       await tx.product.update({
         where: { id: ex.productId },
-        data: { exchangeStock: ex.product.exchangeStock - ex.quantity },
+        data: { exchangeStock: Math.max(0, ex.product.exchangeStock - ex.quantity) },
       })
       await tx.stockMovement.create({
         data: {
@@ -358,7 +360,7 @@ export async function completeExchange(input: CompleteExchangeInput): Promise<vo
       await tx.product.update({
         where: { id: ex.productId },
         data: {
-          exchangeStock: ex.product.exchangeStock - ex.quantity,
+          exchangeStock: Math.max(0, ex.product.exchangeStock - ex.quantity),
           mainStock: ex.product.mainStock + ex.quantity,
         },
       })
@@ -395,7 +397,7 @@ export async function completeExchange(input: CompleteExchangeInput): Promise<vo
       // Verilen için: exchangeStock -= qty, EXCHANGE_COMPLETE
       await tx.product.update({
         where: { id: ex.productId },
-        data: { exchangeStock: ex.product.exchangeStock - ex.quantity },
+        data: { exchangeStock: Math.max(0, ex.product.exchangeStock - ex.quantity) },
       })
       await tx.stockMovement.create({
         data: {
@@ -570,7 +572,7 @@ export async function completeExchangesBatch(
         // B: fatura kesildi
         await tx.product.update({
           where: { id: ex.productId },
-          data: { exchangeStock: ex.product.exchangeStock - ex.quantity },
+          data: { exchangeStock: Math.max(0, ex.product.exchangeStock - ex.quantity) },
         })
         await tx.stockMovement.create({
           data: {
@@ -588,7 +590,7 @@ export async function completeExchangesBatch(
         await tx.product.update({
           where: { id: ex.productId },
           data: {
-            exchangeStock: ex.product.exchangeStock - ex.quantity,
+            exchangeStock: Math.max(0, ex.product.exchangeStock - ex.quantity),
             mainStock: ex.product.mainStock + ex.quantity,
           },
         })
@@ -642,7 +644,7 @@ export async function cancelExchange(exchangeId: number, reason?: string): Promi
         where: { id: ex.productId },
         data: {
           mainStock: ex.product.mainStock + ex.quantity,
-          exchangeStock: ex.product.exchangeStock - ex.quantity,
+          exchangeStock: Math.max(0, ex.product.exchangeStock - ex.quantity),
         },
       })
       await tx.stockMovement.create({
@@ -663,13 +665,22 @@ export async function cancelExchange(exchangeId: number, reason?: string): Promi
         where: { id: ex.productId },
         data: { mainStock: Math.max(0, ex.product.mainStock - ex.quantityToStock) },
       })
+      // NOT: weighted-average mainPurchasePrice bilerek GERİ ALINMIYOR — bu kaydın
+      // oluşturduğu fiyat değişiminden sonra araya başka bir alış girmiş olabilir,
+      // otomatik geri alma yanlış (eski) bir fiyata dönebilir. Kullanıcı gerekirse
+      // Ürün Düzenle'den elle düzeltsin — movement note'unda açıkça uyarılıyor.
+      const priceMayBeStale = ex.unitPrice != null
       await tx.stockMovement.create({
         data: {
           productId: ex.productId,
           type: "ADJUSTMENT",
           quantity: ex.quantityToStock,
           counterpartyId: ex.counterpartyId,
-          note: reason ? `Takas iptal: ${reason}` : "Takas iptal: stoğa giren kısım geri alındı",
+          note:
+            (reason ? `Takas iptal: ${reason}` : "Takas iptal: stoğa giren kısım geri alındı") +
+            (priceMayBeStale
+              ? " — DİKKAT: bu takasın etkilediği ortalama alış fiyatı otomatik geri alınmadı, gerekirse elle kontrol et"
+              : ""),
         },
       })
       affectedProductIds.add(ex.productId)
