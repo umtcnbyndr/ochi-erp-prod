@@ -283,6 +283,8 @@ model ProductMarketplaceListing {
   @@index([productId])
   @@index([marketplaceId])
   @@index([barcode])
+  @@index([sku])
+  @@index([supplierSku])
 }
 
 /**

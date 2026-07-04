@@ -222,8 +222,31 @@ async function upsertOrder(
   // items upsert
   const items = apiOrder.items ?? []
   let matchedCount = 0
+
+  // Zaten eşleşmiş kalemler için matchProduct() tekrar çalıştırılmasın — cron her 20dk
+  // aynı 2 günlük pencereyi tarıyor, önceden eşleşmiş (veya elle düzeltilmiş/MANUAL)
+  // kalemler için bu hem gereksiz sorgu yükü hem de MANUAL eşleşmeyi sessizce
+  // otomatik sonuçla ezme riski taşıyordu. Batch halinde mevcut durumu çek, sadece
+  // hâlâ eşleşmemiş kalemler için matchProduct() çağır.
+  const itemIds = items.map((item) => BigInt(item.id))
+  const existingItems = itemIds.length > 0
+    ? await prisma.dopigoOrderItem.findMany({
+        where: { dopigoItemId: { in: itemIds } },
+        select: { dopigoItemId: true, productId: true, matchMethod: true, matchedAt: true, productType: true },
+      })
+    : []
+  const existingItemMap = new Map(existingItems.map((e) => [e.dopigoItemId.toString(), e]))
+
   for (const item of items) {
-    const match = await matchProduct(item)
+    const existingItem = existingItemMap.get(String(item.id))
+    const alreadyMatched = existingItem?.productId != null
+    const match: MatchResult = alreadyMatched
+      ? {
+          productId: existingItem!.productId,
+          method: (existingItem!.matchMethod ?? "NONE") as MatchResult["method"],
+          productType: existingItem!.productType,
+        }
+      : await matchProduct(item)
     if (match.productId !== null) matchedCount++
 
     // İlişki formu (order/product relation) — scalar FK yerine, prod client güvencesi
@@ -243,7 +266,7 @@ async function upsertOrder(
       itemStatus: item.status ?? null,
       product: match.productId != null ? { connect: { id: match.productId } } : undefined,
       matchMethod: match.method,
-      matchedAt: match.productId ? new Date() : null,
+      matchedAt: alreadyMatched ? existingItem!.matchedAt : match.productId ? new Date() : null,
       productType: match.productType,
     } satisfies Prisma.DopigoOrderItemCreateInput
 
