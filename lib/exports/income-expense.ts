@@ -54,6 +54,7 @@ export async function buildIncomeExpenseWorkbook(): Promise<XLSX.WorkBook> {
     "Komisyon (TL)": num(s.commission) ?? 0,
     "Kargo (TL)": num(s.shipping) ?? 0,
     "Stopaj (TL)": num(s.withholding) ?? 0,
+    "Diğer (TL)": num(s.other) ?? 0,
     "Kaynak": s.isManual ? "Manuel" : "Dopigo",
     "Not": s.note ?? "",
     "Güncelleme": fmtDateTime(s.updatedAt),

@@ -39,7 +39,8 @@ export default async function GelirGiderPage({ searchParams }: PageProps) {
   const totalCommission = monthlyAgg.reduce((s, r) => s + r.commission, 0)
   const totalShipping = monthlyAgg.reduce((s, r) => s + r.shipping, 0)
   const totalWithholding = monthlyAgg.reduce((s, r) => s + r.withholding, 0)
-  const totalBrutMarketplace = totalCommission + totalShipping + totalWithholding
+  const totalOther = monthlyAgg.reduce((s, r) => s + r.other, 0)
+  const totalBrutMarketplace = totalCommission + totalShipping + totalWithholding + totalOther
   const totalOperational = expenseMatrix.grandTotal
   const totalExpense = totalCost + totalBrutMarketplace + totalOperational
   const netProfit = totalRevenue - totalExpense
@@ -75,6 +76,7 @@ export default async function GelirGiderPage({ searchParams }: PageProps) {
           commission: totalCommission,
           shipping: totalShipping,
           withholding: totalWithholding,
+          other: totalOther,
           brutMarketplace: totalBrutMarketplace,
           operational: totalOperational,
           totalExpense,

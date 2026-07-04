@@ -250,6 +250,7 @@ function buildPnlCTE(whereSql: string): string {
     SELECT
       i.id AS item_id,
       o.id AS order_id,
+      EXTRACT(MONTH FROM o."serviceCreatedAt")::int AS month,
       i.price::float8 AS revenue,
       i.amount::int AS units,
       p.id AS product_id,
@@ -1179,6 +1180,7 @@ export interface MonthlySalesRow {
   commission: number
   shipping: number
   withholding: number
+  other: number // platform fee + ceza + diğer kesintiler (mutabakattan)
 }
 
 /**
@@ -1188,8 +1190,11 @@ export interface MonthlySalesRow {
 export async function getMonthlyAggregates(year: number): Promise<MonthlySalesRow[]> {
   const fromDate = new Date(Date.UTC(year, 0, 1))
   const toDate = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999))
+  // Diğer breakdown'larla (KPI/marka/kategori) aynı buildPnlCTE — tarife, mutabakat
+  // (gerçek komisyon/kargo/stopaj/diğer) ve iade-dışlama artık burada da uygulanıyor.
+  const { whereSql, params } = buildWhere({ fromDate, toDate })
 
-  const rows = await prisma.$queryRaw<
+  const rows = await prisma.$queryRawUnsafe<
     Array<{
       month: number
       revenue: number | null
@@ -1199,58 +1204,27 @@ export async function getMonthlyAggregates(year: number): Promise<MonthlySalesRo
       commission: number | null
       shipping: number | null
       withholding: number | null
+      other: number | null
     }>
-  >`
+  >(
+    `
+    ${buildPnlCTE(whereSql)}
     SELECT
-      EXTRACT(MONTH FROM o."serviceCreatedAt")::int AS month,
-      COALESCE(SUM(i.price), 0)::float8 AS revenue,
-      COUNT(DISTINCT o.id)::int AS orders,
-      COALESCE(SUM(i.amount), 0)::int AS units,
-      COALESCE(SUM(
-        CASE
-          WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0
-            THEN p."mainPurchasePrice" * i.amount
-          WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0
-            THEN (
-              p."streetPurchasePrice"
-                / (1 + COALESCE(b."yearEndDiscount1", 0) / 100)
-                / (1 + COALESCE(b."yearEndDiscount2", 0) / 100)
-                / (1 + COALESCE(b."yearEndDiscount3", 0) / 100)
-                * (1 + COALESCE(p."vatRate", 20) / 100)
-                * (1 + COALESCE(b."pharmacyMargin", 0) / 100)
-            ) * i.amount
-          WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice" * i.amount
-          ELSE 0
-        END
-      ), 0)::float8 AS cost,
-      COALESCE(SUM(i.price * COALESCE(m."commissionRate", 0) / 100), 0)::float8 AS commission,
-      COALESCE(SUM(m."shippingCost"), 0)::float8 AS shipping,
-      COALESCE(SUM(i.price * COALESCE(m."withholdingTax", 0) / 100), 0)::float8 AS withholding
-    FROM "DopigoOrderItem" i
-    JOIN "DopigoOrder" o ON o.id = i."orderId"
-    LEFT JOIN "Product" p ON p.id = i."productId"
-    LEFT JOIN "Brand" b ON b.id = p."brandId"
-    LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
-    LEFT JOIN LATERAL (
-      SELECT "purchasePrice"
-      FROM "ManualPurchasePrice"
-      WHERE i."productId" IS NULL
-        AND (
-          (i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
-          OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode")
-        )
-      LIMIT 1
-    ) mpp ON true
-    WHERE o."serviceCreatedAt" >= ${fromDate}
-      AND o."serviceCreatedAt" <= ${toDate}
-      AND o."derivedStatus" != 'CANCELLED'
-      AND o."derivedStatus" != 'RETURNED'
-      AND (i."itemStatus" IS NULL OR i."itemStatus" NOT IN ('cancelled', 'returned'))
-      AND o.archived = false
-      AND NOT (LOWER(o."salesChannel") = ANY(${NON_SALES_CHANNELS_SQL_ARRAY}::text[]))
-    GROUP BY EXTRACT(MONTH FROM o."serviceCreatedAt")
+      month,
+      COALESCE(SUM(revenue), 0)::float8 AS revenue,
+      COUNT(DISTINCT order_id)::int AS orders,
+      COALESCE(SUM(units), 0)::int AS units,
+      COALESCE(SUM(cost), 0)::float8 AS cost,
+      COALESCE(SUM(line_commission), 0)::float8 AS commission,
+      COALESCE(SUM(line_shipping), 0)::float8 AS shipping,
+      COALESCE(SUM(line_withholding), 0)::float8 AS withholding,
+      COALESCE(SUM(line_other), 0)::float8 AS other
+    FROM line_pnl
+    GROUP BY month
     ORDER BY month
-  `
+    `,
+    ...params,
+  )
 
   // 12 ay için boş kayıtlar
   const result: MonthlySalesRow[] = []
@@ -1265,6 +1239,7 @@ export async function getMonthlyAggregates(year: number): Promise<MonthlySalesRo
       commission: row ? Number(row.commission ?? 0) : 0,
       shipping: row ? Number(row.shipping ?? 0) : 0,
       withholding: row ? Number(row.withholding ?? 0) : 0,
+      other: row ? Number(row.other ?? 0) : 0,
     })
   }
   return result

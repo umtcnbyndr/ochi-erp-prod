@@ -1713,6 +1713,8 @@ model MonthlySalesSnapshot {
   shipping    Decimal  @db.Decimal(14, 2) @default(0)
   /** Stopaj */
   withholding Decimal  @db.Decimal(14, 2) @default(0)
+  /** Diğer (platform fee + ceza + diğer kesintiler, mutabakattan) */
+  other       Decimal  @db.Decimal(14, 2) @default(0)
   /** Manuel mi otomatik (Dopigo'dan) mı kaydedildi */
   isManual    Boolean  @default(true)
   note        String?

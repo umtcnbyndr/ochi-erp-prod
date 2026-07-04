@@ -19,6 +19,7 @@ export interface SnapshotRow {
   commission: number
   shipping: number
   withholding: number
+  other: number
   isManual: boolean
   note: string | null
 }
@@ -40,6 +41,7 @@ export async function listSnapshotsForYear(year: number): Promise<SnapshotRow[]>
     commission: Number(s.commission),
     shipping: Number(s.shipping),
     withholding: Number(s.withholding),
+    other: Number(s.other),
     isManual: s.isManual,
     note: s.note,
   }))
@@ -53,6 +55,7 @@ export interface SaveSnapshotInput {
   commission: number
   shipping: number
   withholding: number
+  other: number
   isManual: boolean
   note?: string | null
   createdBy?: string | null
@@ -65,6 +68,7 @@ export async function upsertSnapshot(input: SaveSnapshotInput): Promise<Snapshot
     commission: round2(input.commission),
     shipping: round2(input.shipping),
     withholding: round2(input.withholding),
+    other: round2(input.other),
     isManual: input.isManual,
     note: input.note ?? null,
     createdBy: input.createdBy ?? null,
@@ -82,6 +86,7 @@ export async function upsertSnapshot(input: SaveSnapshotInput): Promise<Snapshot
     commission: Number(saved.commission),
     shipping: Number(saved.shipping),
     withholding: Number(saved.withholding),
+    other: Number(saved.other),
     isManual: saved.isManual,
     note: saved.note,
   }
@@ -112,6 +117,7 @@ export async function calculateMonthFromDopigo(
       commission: 0,
       shipping: 0,
       withholding: 0,
+      other: 0,
     }
   }
   return {
@@ -122,6 +128,7 @@ export async function calculateMonthFromDopigo(
     commission: round2(row.commission),
     shipping: round2(row.shipping),
     withholding: round2(row.withholding),
+    other: round2(row.other),
   }
 }
 
@@ -150,6 +157,7 @@ export async function getMergedMonthlyData(year: number): Promise<
         commission: snap.commission,
         shipping: snap.shipping,
         withholding: snap.withholding,
+        other: snap.other,
         source: snap.isManual ? "MANUAL" : "DOPIGO_SNAPSHOT",
       }
     }

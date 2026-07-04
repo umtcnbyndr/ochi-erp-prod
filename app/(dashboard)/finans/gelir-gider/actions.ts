@@ -154,6 +154,7 @@ const snapshotSchema = z.object({
   commission: z.number().min(0),
   shipping: z.number().min(0),
   withholding: z.number().min(0),
+  other: z.number().min(0),
   isManual: z.boolean(),
   note: z.string().nullable().optional(),
 })
@@ -193,7 +194,7 @@ export async function fetchDopigoMonthAction(
   year: number,
   month: number,
 ): Promise<
-  | { success: true; data: { revenue: number; cost: number; commission: number; shipping: number; withholding: number } }
+  | { success: true; data: { revenue: number; cost: number; commission: number; shipping: number; withholding: number; other: number } }
   | { success: false; error: string }
 > {
   try {
@@ -207,6 +208,7 @@ export async function fetchDopigoMonthAction(
         commission: data.commission,
         shipping: data.shipping,
         withholding: data.withholding,
+        other: data.other,
       },
     }
   } catch (err) {

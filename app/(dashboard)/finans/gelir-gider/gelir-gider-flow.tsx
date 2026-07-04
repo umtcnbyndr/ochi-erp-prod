@@ -93,6 +93,7 @@ interface MonthlySalesRow {
   commission: number
   shipping: number
   withholding: number
+  other: number
   source: "MANUAL" | "DOPIGO_SNAPSHOT" | "DOPIGO_LIVE"
 }
 
@@ -115,6 +116,7 @@ interface Props {
     commission: number
     shipping: number
     withholding: number
+    other: number
     brutMarketplace: number
     operational: number
     totalExpense: number
@@ -468,9 +470,14 @@ export function GelirGiderFlow(props: Props) {
                   total={props.yearTotals.withholding}
                 />
                 <SalesRow
+                  label="Diğer"
+                  values={props.monthlyAgg.map((r) => r.other)}
+                  total={props.yearTotals.other}
+                />
+                <SalesRow
                   label="Toplam Brüt Gider"
                   values={props.monthlyAgg.map(
-                    (r) => r.cost + r.commission + r.shipping + r.withholding,
+                    (r) => r.cost + r.commission + r.shipping + r.withholding + r.other,
                   )}
                   total={props.yearTotals.cost + props.yearTotals.brutMarketplace}
                   bold
@@ -673,7 +680,7 @@ export function GelirGiderFlow(props: Props) {
                 <SalesRow
                   label="− Brüt Pazaryeri"
                   values={props.monthlyAgg.map(
-                    (r) => -(r.commission + r.shipping + r.withholding),
+                    (r) => -(r.commission + r.shipping + r.withholding + r.other),
                   )}
                   total={-props.yearTotals.brutMarketplace}
                   textClass="text-rose-700 dark:text-rose-400"
@@ -694,7 +701,7 @@ export function GelirGiderFlow(props: Props) {
                   </td>
                   {props.monthlyAgg.map((r) => {
                     const opEx = props.expenseMatrix.monthlyTotal[r.month] ?? 0
-                    const net = r.revenue - r.cost - r.commission - r.shipping - r.withholding - opEx
+                    const net = r.revenue - r.cost - r.commission - r.shipping - r.withholding - r.other - opEx
                     const monthPct = r.revenue > 0 ? (net / r.revenue) * 100 : null
                     return (
                       <td
@@ -1363,6 +1370,7 @@ function MonthSnapshotDialog({
     commission: "",
     shipping: "",
     withholding: "",
+    other: "",
   })
 
   useEffect(() => {
@@ -1373,6 +1381,7 @@ function MonthSnapshotDialog({
         commission: formatMoneyDisplay(existing.commission.toFixed(2).replace(".", ",")),
         shipping: formatMoneyDisplay(existing.shipping.toFixed(2).replace(".", ",")),
         withholding: formatMoneyDisplay(existing.withholding.toFixed(2).replace(".", ",")),
+        other: formatMoneyDisplay(existing.other.toFixed(2).replace(".", ",")),
       })
     }
   }, [existing?.month, open])
@@ -1392,6 +1401,7 @@ function MonthSnapshotDialog({
         commission: formatMoneyDisplay(res.data.commission.toFixed(2).replace(".", ",")),
         shipping: formatMoneyDisplay(res.data.shipping.toFixed(2).replace(".", ",")),
         withholding: formatMoneyDisplay(res.data.withholding.toFixed(2).replace(".", ",")),
+        other: formatMoneyDisplay(res.data.other.toFixed(2).replace(".", ",")),
       })
       toast.success("Dopigo verisi getirildi (henüz kaydedilmedi)")
     })
@@ -1403,6 +1413,7 @@ function MonthSnapshotDialog({
     const commission = parseMoneyInput(form.commission) ?? 0
     const shipping = parseMoneyInput(form.shipping) ?? 0
     const withholding = parseMoneyInput(form.withholding) ?? 0
+    const other = parseMoneyInput(form.other) ?? 0
     startTransition(async () => {
       const res = await saveMonthlySnapshotAction({
         year,
@@ -1412,6 +1423,7 @@ function MonthSnapshotDialog({
         commission,
         shipping,
         withholding,
+        other,
         isManual,
       })
       if (!res.success) {
@@ -1528,6 +1540,17 @@ function MonthSnapshotDialog({
                 inputMode="decimal"
                 value={form.withholding}
                 onChange={(e) => setForm({ ...form, withholding: formatMoneyDisplay(e.target.value) })}
+                className="h-9 text-sm tabular-nums"
+                placeholder="0,00"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px]">Diğer ₺</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={form.other}
+                onChange={(e) => setForm({ ...form, other: formatMoneyDisplay(e.target.value) })}
                 className="h-9 text-sm tabular-nums"
                 placeholder="0,00"
               />
