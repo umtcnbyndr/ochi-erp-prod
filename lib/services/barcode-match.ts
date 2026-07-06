@@ -235,25 +235,30 @@ export async function buildThreeWayMatch(opts?: {
   for (const p of erpProducts) {
     const known = erpKnownBarcodesOrdered(p)
 
-    // Trendyol exact
+    // Trendyol exact — TABLO'da gösterilecek TEK satır öncelik sırasına göre seçilir
+    // (ilk bulunan), ama bir ürünün birden fazla bilinen barkodu (ör. hem primaryBarcode
+    // hem Listings'teki ayrı bir barkod) Trendyol'da AYRI AYRI listelenmiş olabilir —
+    // Trendyol aynı fiziksel ürünü bazen 2 farklı barkodla 2 kez oluşturuyor. Sadece
+    // ilk eşleşmeyi "matched" işaretlersek, ürünün 2. barkoduna karşılık gelen o diğer
+    // Trendyol kaydı sahiden bu ürüne ait olduğu halde sonsuza kadar "orphan" görünür.
+    // Bu yüzden TÜM bilinen barkodların eşleştiği kayıtları işaretliyoruz (break YOK),
+    // sadece gösterim için ilk bulunanı tyMatch/dpMatch olarak tutuyoruz.
     let tyMatch: (typeof trendyolListings)[0] | null = null
     for (const bc of known) {
       const t = tyByBarcode.get(bc)
       if (t) {
-        tyMatch = t
+        if (!tyMatch) tyMatch = t
         matchedTyBarcodes.add(t.barcode)
-        break
       }
     }
-    // Dopigo exact — 3 kolondan birden ara
+    // Dopigo exact — 3 kolondan birden ara, aynı çoklu-eşleşme mantığı
     let dpMatch: (typeof dopigoListings)[0] | null = null
     for (const bc of known) {
       const d = dpByCode.get(bc)
       if (d) {
-        dpMatch = d
+        if (!dpMatch) dpMatch = d
         // matched set'e barcode'ı ekle (varsa) — orphan filter için
         if (d.barcode) matchedDpBarcodes.add(d.barcode)
-        break
       }
     }
 
