@@ -277,6 +277,17 @@ function buildPnlCTE(whereSql: string): string {
         END, 0)::float8 AS cost,
       -- Sipariş toplam cirosu (kargo/komisyon orantısal pay için)
       (SUM(i.price) OVER (PARTITION BY o.id))::float8 AS order_total,
+      -- Çoklu paket mutabakatı için grup toplam cirosu: 1 Excel satırı (mutabakat) N
+      -- DopigoOrder (paket) karşılığı olabiliyor (aynı sipariş, ayrı kargolar). order_total
+      -- sadece PAKETİN kendi cirosunu görüyor — mutabakat komisyonu/kargosu her paket kendi
+      -- payını TAM tutar üzerinden hesaplarsa (N paket varsa) toplamda N kat sayılır.
+      -- Bu yüzden aynı orijinal siparişe ait TÜM paketlerin (iptal/iade hariç) cirosunu
+      -- topluyoruz — recon_group_key, recon LATERAL join'deki eşleşme anahtarıyla birebir aynı.
+      (SUM(CASE WHEN o."derivedStatus" NOT IN ('CANCELLED', 'RETURNED') THEN i.price ELSE 0 END)
+        OVER (PARTITION BY o."salesChannel", CASE
+          WHEN o."salesChannel" = 'trendyol' THEN SPLIT_PART(o."serviceValue", '-', 1)
+          ELSE o."serviceValue" END
+        ))::float8 AS recon_group_revenue,
       -- Mutabakat (varsa)
       recon."netReceived"::float8 AS recon_net,
       recon."commission"::float8 AS recon_comm,
@@ -325,19 +336,19 @@ function buildPnlCTE(whereSql: string): string {
   line_pnl AS (
     SELECT *,
       CASE WHEN is_store THEN 0
-           WHEN recon_net IS NOT NULL THEN recon_comm * (revenue / NULLIF(order_total, 0))
+           WHEN recon_net IS NOT NULL THEN recon_comm * (revenue / NULLIF(recon_group_revenue, 0))
            ELSE revenue * eff_comm_pct / 100 END AS line_commission,
       CASE WHEN is_store THEN 0
-           WHEN recon_net IS NOT NULL THEN recon_ship * (revenue / NULLIF(order_total, 0))
+           WHEN recon_net IS NOT NULL THEN recon_ship * (revenue / NULLIF(recon_group_revenue, 0))
            ELSE mp_shipping * (revenue / NULLIF(order_total, 0)) END AS line_shipping,
       CASE WHEN is_store THEN 0
-           WHEN recon_net IS NOT NULL THEN COALESCE(recon_other, 0) * (revenue / NULLIF(order_total, 0))
+           WHEN recon_net IS NOT NULL THEN COALESCE(recon_other, 0) * (revenue / NULLIF(recon_group_revenue, 0))
            ELSE 0 END AS line_other,
       -- Stopaj: Farmazon vb. raporunda GERÇEK stopaj var → onu kullan (orantısal).
       -- Trendyol kesmez (recon_wh=0) → senin vergi maliyetin, ciro × oran (tahmin).
       CASE WHEN is_store THEN 0
            WHEN recon_net IS NOT NULL AND recon_wh > 0
-             THEN recon_wh * (revenue / NULLIF(order_total, 0))
+             THEN recon_wh * (revenue / NULLIF(recon_group_revenue, 0))
            ELSE revenue * mp_withholding / 100 END AS line_withholding
     FROM base
   )
@@ -530,6 +541,8 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
   // Ay seçimi varsa actual gider + pazaryeri mutabakatı yükle
   const monthlyExpenses = await loadMonthlyExpensesIfApplicable(filter)
   const reconByMp = await loadReconciliationByMarketplace(filter)
+  // Marka/kategori/arama filtresi aktifken aylık-gider oranlaması için payda (F5)
+  const channelRevenueMap = await loadChannelRevenueForMonth(filter)
 
   return rows.map((r) => {
     const revenue = Number(r.revenue ?? 0)
@@ -552,9 +565,12 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
       estWithholding =
         recon.withholding > 0 ? recon.withholding : (revenue * Number(r.withholding ?? 0)) / 100
     } else if (actual) {
-      estCommission = Number(actual.commissionPaid ?? 0)
-      estShipping = Number(actual.shippingPaid ?? 0)
-      estWithholding = Number(actual.withholdingPaid ?? 0)
+      // Aylık gider ayın TÜM markaları için tek toplam — filtrelenmiş ciro payına göre oranla (F5)
+      const channelTotalRevenue = channelRevenueMap.get(r.sales_channel) ?? revenue
+      const revenueShare = channelTotalRevenue > 0 ? revenue / channelTotalRevenue : 1
+      estCommission = Number(actual.commissionPaid ?? 0) * revenueShare
+      estShipping = Number(actual.shippingPaid ?? 0) * revenueShare
+      estWithholding = Number(actual.withholdingPaid ?? 0) * revenueShare
     } else if (isStore) {
       estCommission = 0
       estShipping = 0
@@ -934,6 +950,8 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       // Window: aynı sipariş için toplam ciro (kargo paylaştırmasında kullanılır)
       order_total: number
       items_in_order: number
+      // Çoklu paket mutabakatı için grup toplam cirosu (bkz. buildPnlCTE recon_group_revenue)
+      recon_group_revenue: number
       // Mutabakat (varsa) — sipariş bazlı gerçek değerler
       recon_net: number | null
       recon_commission: number | null
@@ -994,6 +1012,13 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       -- (cast PARANTEZ İÇİNDE olmalı, "OVER" öncesi syntax error verir)
       (SUM(i.price) OVER (PARTITION BY o.id))::float8  AS order_total,
       (COUNT(*) OVER (PARTITION BY o.id))::int         AS items_in_order,
+      -- Çoklu paket mutabakatı: aynı orijinal siparişin TÜM paketlerinin (iptal/iade hariç)
+      -- toplam cirosu — bkz. buildPnlCTE'deki recon_group_revenue ile aynı mantık.
+      (SUM(CASE WHEN o."derivedStatus" NOT IN ('CANCELLED', 'RETURNED') THEN i.price ELSE 0 END)
+        OVER (PARTITION BY o."salesChannel", CASE
+          WHEN o."salesChannel" = 'trendyol' THEN SPLIT_PART(o."serviceValue", '-', 1)
+          ELSE o."serviceValue" END
+        ))::float8 AS recon_group_revenue,
       -- Mutabakat: serviceValue ilk parça (siparişNo) = recon.serviceOrderId
       recon."netReceived"::float8 AS recon_net,
       recon."commission"::float8  AS recon_commission,
@@ -1048,6 +1073,10 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
     let isReconciled = false
     const orderTotal = Number(r.order_total ?? lineTotal)
     const lineShare = orderTotal > 0 ? lineTotal / orderTotal : 1
+    // Çoklu paket mutabakatında pay, PAKETİN değil aynı orijinal siparişin TÜM
+    // paketlerinin toplam cirosuna göre hesaplanır (yoksa N paket → N kat sayılır).
+    const reconGroupRevenue = Number(r.recon_group_revenue ?? lineTotal)
+    const reconLineShare = reconGroupRevenue > 0 ? lineTotal / reconGroupRevenue : 1
 
     if (isStore) {
       commission = 0
@@ -1058,15 +1087,15 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       // MUTABAKAT VAR — gerçek değerler. Sipariş bazlı tutarları item'a orantısal pay et.
       // (Tam iade siparişler buildWhere'de zaten dışlandı; buraya gelenler net > 0)
       isReconciled = true
-      commission = Number(r.recon_commission ?? 0) * lineShare
-      shipping = Number(r.recon_shipping ?? 0) * lineShare
+      commission = Number(r.recon_commission ?? 0) * reconLineShare
+      shipping = Number(r.recon_shipping ?? 0) * reconLineShare
       // Diğer = gerçek ek gider kalemleri (platform fee + ceza + diğer), iade/iptal HARİÇ
-      other = Number(r.recon_other ?? 0) * lineShare
+      other = Number(r.recon_other ?? 0) * reconLineShare
       // Stopaj: Farmazon vb. raporunda gerçek stopaj var → orantısal. Trendyol'da
       // yok (recon_withholding=0) → senin vergi maliyetin, ciro × oran (tahmin).
       withholding =
         Number(r.recon_withholding ?? 0) > 0
-          ? Number(r.recon_withholding) * lineShare
+          ? Number(r.recon_withholding) * reconLineShare
           : (lineTotal * Number(r.withholding_rate ?? 0)) / 100
     } else {
       // TAHMİN — tarife komisyon + marketplace kargo/stopaj
@@ -1396,6 +1425,8 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
   const monthlyExpenses = await loadMonthlyExpensesIfApplicable(filter)
   // Pazaryeri mutabakatı (en yüksek öncelik — gerçek panel verisi). Per-marketplace.
   const reconByMp = await loadReconciliationByMarketplace(filter)
+  // Marka/kategori/arama filtresi aktifken aylık-gider oranlaması için payda (F5)
+  const channelRevenueMap = await loadChannelRevenueForMonth(filter)
 
   let totalCommission = 0
   let totalShipping = 0
@@ -1426,9 +1457,13 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
 
     const actual = r.marketplace_id != null ? monthlyExpenses.get(r.marketplace_id) : undefined
     if (actual) {
-      totalCommission += Number(actual.commissionPaid ?? 0)
-      totalShipping += Number(actual.shippingPaid ?? 0)
-      totalWithholding += Number(actual.withholdingPaid ?? 0)
+      // Aylık gider ayın TÜM markaları için tek toplam — filtrelenmiş ciro payına göre oranla
+      // (yoksa marka filtresiyle bakınca ayın tüm gideri küçük bir ciroya düşer → saçma negatif kâr)
+      const channelTotalRevenue = channelRevenueMap.get(r.sales_channel) ?? revenue
+      const revenueShare = channelTotalRevenue > 0 ? revenue / channelTotalRevenue : 1
+      totalCommission += Number(actual.commissionPaid ?? 0) * revenueShare
+      totalShipping += Number(actual.shippingPaid ?? 0) * revenueShare
+      totalWithholding += Number(actual.withholdingPaid ?? 0) * revenueShare
       actualUsed = true
     } else if (isStore) {
       // mağaza: 0 (zaten 0 ekleniyor)
@@ -1505,6 +1540,35 @@ async function loadReconciliationByMarketplace(
     })
   }
   return map
+}
+
+/**
+ * Marka/kategori/arama filtresi olmadan (ama aynı tarih aralığı + durum kuralları ile)
+ * kanal başı TOPLAM ciro — MarketplaceMonthlyExpense ayın TÜM markaları için tek bir
+ * toplam gider olarak giriliyor; bir marka/kategori/arama filtresi aktifken bu toplamı
+ * doğrudan filtrelenmiş (küçük) ciroya uygulamak saçma sonuç veriyordu (F5). Bu fonksiyon
+ * oranlama için payda görevi görür: filtered_revenue / channel_total_revenue.
+ */
+async function loadChannelRevenueForMonth(filter: SalesFilter): Promise<Map<string, number>> {
+  const { whereSql, params } = buildWhere({
+    fromDate: filter.fromDate,
+    toDate: filter.toDate,
+    derivedStatus: filter.derivedStatus,
+    excludeCancelled: filter.excludeCancelled,
+    excludeReturned: filter.excludeReturned,
+    excludeArchived: filter.excludeArchived,
+  })
+  const rows = await prisma.$queryRawUnsafe<Array<{ sales_channel: string; revenue: number }>>(
+    `
+    SELECT o."salesChannel" AS sales_channel, COALESCE(SUM(i.price), 0)::float8 AS revenue
+    FROM "DopigoOrderItem" i
+    JOIN "DopigoOrder" o ON o.id = i."orderId"
+    ${whereSql}
+    GROUP BY o."salesChannel"
+    `,
+    ...params,
+  )
+  return new Map(rows.map((r) => [r.sales_channel, Number(r.revenue ?? 0)]))
 }
 
 /**
