@@ -106,16 +106,21 @@ export async function createReceivedExchanges(
     let totalToStock = 0
 
     for (const line of input.lines) {
-      const product = await tx.product.findUnique({
-        where: { id: line.productId },
-        select: {
-          id: true,
-          name: true,
-          productType: true,
-          mainStock: true,
-          mainPurchasePrice: true,
-        },
-      })
+      // SELECT ... FOR UPDATE — ürün satırını kilitler; aynı ürüne eşzamanlı gelen
+      // başka bir giriş/çıkış/takas işlemi bu transaction bitene kadar bekler (F6).
+      const productRows = await tx.$queryRaw<
+        Array<{
+          id: number
+          name: string
+          productType: string
+          mainStock: number
+          mainPurchasePrice: number | string | null
+        }>
+      >`
+        SELECT id, name, "productType", "mainStock", "mainPurchasePrice"
+        FROM "Product" WHERE id = ${line.productId} FOR UPDATE
+      `
+      const product = productRows[0]
       if (!product) throw new Error(`Ürün bulunamadı: ${line.productId}`)
       if (product.productType === "SET") {
         throw new Error(
@@ -231,16 +236,14 @@ export async function createGivenExchanges(
     let totalQuantity = 0
 
     for (const line of input.lines) {
-      const product = await tx.product.findUnique({
-        where: { id: line.productId },
-        select: {
-          id: true,
-          name: true,
-          productType: true,
-          mainStock: true,
-          exchangeStock: true,
-        },
-      })
+      // SELECT ... FOR UPDATE — ürün satırını kilitler (F6).
+      const productRows = await tx.$queryRaw<
+        Array<{ id: number; name: string; productType: string; mainStock: number; exchangeStock: number }>
+      >`
+        SELECT id, name, "productType", "mainStock", "exchangeStock"
+        FROM "Product" WHERE id = ${line.productId} FOR UPDATE
+      `
+      const product = productRows[0]
       if (!product) throw new Error(`Ürün bulunamadı: ${line.productId}`)
       if (product.productType === "SET") {
         throw new Error(
@@ -314,6 +317,40 @@ export async function completeExchange(input: CompleteExchangeInput): Promise<vo
   const affectedProductIds = new Set<number>()
 
   await prisma.$transaction(async (tx) => {
+    // Önce hafif bir bakış — kilitlenecek ürün id'lerini öğrenmek için (henüz kilit yok)
+    const exLookup = await tx.exchange.findUnique({
+      where: { id: input.exchangeId },
+      select: { id: true, status: true, direction: true, productId: true },
+    })
+    if (!exLookup) throw new Error("Takas bulunamadı")
+    if (exLookup.status !== "PENDING") throw new Error("Takas zaten tamamlanmış veya iptal edilmiş")
+
+    // ---- RECEIVED (Senaryo A) — ürün stoğuna dokunmuyor, kilit gerekmiyor ----
+    if (exLookup.direction === "RECEIVED") {
+      if (input.mode !== "COMPLETE") {
+        throw new Error("Alınan takaslar için yalnızca 'tamamla' seçeneği kullanılabilir")
+      }
+      await tx.exchange.update({
+        where: { id: exLookup.id },
+        data: { status: "COMPLETED", completedAt: new Date() },
+      })
+      return
+    }
+
+    // ---- GIVEN (Senaryo B/C) ----
+    // İlgili ürün satır(lar)ını kilitle (F6) — aynı ürüne eşzamanlı başka bir stok
+    // işlemi bu transaction bitene kadar bekler. RETURNED_DIFFERENT'ta gelen ürün de kilitlenir.
+    const lockIds = [exLookup.productId]
+    if (input.mode === "RETURNED_DIFFERENT" && input.returnedProductId) {
+      lockIds.push(input.returnedProductId)
+    }
+    // Sabit (artan id) sırayla kilitle — farklı işlemler aynı iki ürünü ters sırayla
+    // kilitlemeye çalışırsa deadlock oluşabilirdi.
+    lockIds.sort((a, b) => a - b)
+    await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ANY(${lockIds}::int[]) FOR UPDATE`
+
+    // Kilit altında güncel veriyi tekrar oku — status yeniden doğrulanır (aynı takası
+    // eşzamanlı tamamlamaya çalışan başka bir istek varsa burada yakalanır).
     const ex = await tx.exchange.findUnique({
       where: { id: input.exchangeId },
       include: {
@@ -323,19 +360,6 @@ export async function completeExchange(input: CompleteExchangeInput): Promise<vo
     if (!ex) throw new Error("Takas bulunamadı")
     if (ex.status !== "PENDING") throw new Error("Takas zaten tamamlanmış veya iptal edilmiş")
 
-    // ---- RECEIVED (Senaryo A) ----
-    if (ex.direction === "RECEIVED") {
-      if (input.mode !== "COMPLETE") {
-        throw new Error("Alınan takaslar için yalnızca 'tamamla' seçeneği kullanılabilir")
-      }
-      await tx.exchange.update({
-        where: { id: ex.id },
-        data: { status: "COMPLETED", completedAt: new Date() },
-      })
-      return
-    }
-
-    // ---- GIVEN (Senaryo B/C) ----
     if (input.mode === "COMPLETE") {
       // Senaryo B: fatura kesildi → exchangeStock -= qty, EXCHANGE_COMPLETE movement
       // Math.max(0,...) — kayıt tutarsızlığında (örn. iki tamamlama çakışırsa) negatife inmesin;
@@ -522,24 +546,31 @@ export async function completeExchangesBatch(
   let completed = 0
 
   await prisma.$transaction(async (tx) => {
-    // Önce hepsini çek ve validate et
+    // Önce hepsini çek ve validate et (stok alanları burada GÜVENİLMEZ — aşağıda
+    // kilit altında taze okunuyor, aynı ürün batch içinde birden fazla takasta
+    // geçebiliyor ve bu upfront fetch onu yansıtmaz).
     const exchanges = await tx.exchange.findMany({
       where: { id: { in: exchangeIds } },
-      include: {
-        product: {
-          select: {
-            id: true,
-            name: true,
-            mainStock: true,
-            exchangeStock: true,
-            mainPurchasePrice: true,
-          },
-        },
+      select: {
+        id: true,
+        status: true,
+        direction: true,
+        productId: true,
+        quantity: true,
+        unitPrice: true,
+        counterpartyId: true,
       },
     })
 
     if (exchanges.length !== exchangeIds.length) {
       throw new Error("Bazı takaslar bulunamadı")
+    }
+
+    // İlgili tüm ürün satırlarını kilitle (F6) — sabit (artan id) sırayla, aksi halde
+    // iki farklı batch aynı ürünleri ters sırayla kilitleyip deadlock oluşturabilirdi.
+    const productIds = Array.from(new Set(exchanges.map((e) => e.productId))).sort((a, b) => a - b)
+    if (productIds.length > 0) {
+      await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ANY(${productIds}::int[]) FOR UPDATE`
     }
 
     for (const ex of exchanges) {
@@ -567,12 +598,22 @@ export async function completeExchangesBatch(
         continue
       }
 
-      // GIVEN
+      // GIVEN — kilit altında güncel değeri şimdi oku (aynı ürün bu batch'te başka bir
+      // satırda az önce güncellenmiş olabilir, upfront fetch'i değil bunu kullan).
+      const product = await tx.product.findUnique({
+        where: { id: ex.productId },
+        select: { mainStock: true, exchangeStock: true },
+      })
+      if (!product) {
+        errors.push({ exchangeId: ex.id, error: "Ürün bulunamadı" })
+        continue
+      }
+
       if (mode === "COMPLETE") {
         // B: fatura kesildi
         await tx.product.update({
           where: { id: ex.productId },
-          data: { exchangeStock: Math.max(0, ex.product.exchangeStock - ex.quantity) },
+          data: { exchangeStock: Math.max(0, product.exchangeStock - ex.quantity) },
         })
         await tx.stockMovement.create({
           data: {
@@ -590,8 +631,8 @@ export async function completeExchangesBatch(
         await tx.product.update({
           where: { id: ex.productId },
           data: {
-            exchangeStock: Math.max(0, ex.product.exchangeStock - ex.quantity),
-            mainStock: ex.product.mainStock + ex.quantity,
+            exchangeStock: Math.max(0, product.exchangeStock - ex.quantity),
+            mainStock: product.mainStock + ex.quantity,
           },
         })
         await tx.stockMovement.create({
@@ -631,6 +672,17 @@ export async function cancelExchange(exchangeId: number, reason?: string): Promi
   const affectedProductIds = new Set<number>()
 
   await prisma.$transaction(async (tx) => {
+    const exLookup = await tx.exchange.findUnique({
+      where: { id: exchangeId },
+      select: { productId: true, status: true },
+    })
+    if (!exLookup) throw new Error("Takas bulunamadı")
+    if (exLookup.status !== "PENDING") throw new Error("Yalnızca bekleyen takaslar iptal edilebilir")
+
+    // Ürün satırını kilitle (F6) — aynı ürüne eşzamanlı başka bir stok işlemi bu
+    // transaction bitene kadar bekler.
+    await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${exLookup.productId} FOR UPDATE`
+
     const ex = await tx.exchange.findUnique({
       where: { id: exchangeId },
       include: { product: { select: { mainStock: true, exchangeStock: true } } },

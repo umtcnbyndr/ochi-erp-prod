@@ -43,10 +43,15 @@ export async function createExitSession(input: ExitSessionInput): Promise<ExitRe
     for (const line of input.lines) {
       if (line.quantity <= 0) throw new Error("Miktar sıfırdan büyük olmalı")
 
-      const product = await tx.product.findUnique({
-        where: { id: line.productId },
-        select: { id: true, name: true, productType: true, mainStock: true },
-      })
+      // SELECT ... FOR UPDATE — bu ürün satırını kilitler; aynı ürüne eşzamanlı gelen
+      // başka bir giriş/çıkış/takas işlemi bu transaction bitene kadar bekler (F6).
+      const productRows = await tx.$queryRaw<
+        Array<{ id: number; name: string; productType: string; mainStock: number }>
+      >`
+        SELECT id, name, "productType", "mainStock"
+        FROM "Product" WHERE id = ${line.productId} FOR UPDATE
+      `
+      const product = productRows[0]
       if (!product) throw new Error(`Ürün bulunamadı: ${line.productId}`)
       if (product.productType === "SET") {
         throw new Error(

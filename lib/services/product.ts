@@ -806,6 +806,13 @@ export async function mergeProducts(targetId: number, sourceIds: number[]) {
   }
 
   return prisma.$transaction(async (tx) => {
+    // Satırları kilitle (F6) — target + tüm sources aynı anda başka bir stok işlemine
+    // (giriş/çıkış/takas) girmesin; o işlemler bu transaction bitene kadar bekler.
+    // Sabit (artan id) sırayla — farklı işlemler aynı ürünleri ters sırayla kilitlemeye
+    // çalışırsa deadlock oluşabilirdi.
+    const lockIds = [targetId, ...sourceIds].sort((a, b) => a - b)
+    await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ANY(${lockIds}::int[]) FOR UPDATE`
+
     const target = await tx.product.findUnique({ where: { id: targetId } })
     const sources = await tx.product.findMany({
       where: { id: { in: sourceIds } },
@@ -1015,6 +1022,9 @@ export async function revertMerge(mergeHistoryId: number) {
     })
     if (!history) throw new Error("Birleştirme kaydı bulunamadı")
     if (history.status === "REVERTED") throw new Error("Bu birleştirme zaten geri alınmış")
+
+    // Satırı kilitle (F6) — hedef ürün aynı anda başka bir stok işlemine girmesin.
+    await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${history.targetProductId} FOR UPDATE`
 
     const target = await tx.product.findUnique({ where: { id: history.targetProductId } })
     if (!target) throw new Error("Hedef ürün bulunamadı")

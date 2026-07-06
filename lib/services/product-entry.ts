@@ -79,17 +79,24 @@ export async function createEntrySession(input: EntrySessionInput): Promise<Entr
     for (const line of input.lines) {
       if (line.quantity <= 0) throw new Error("Miktar sıfırdan büyük olmalı")
 
-      const product = await tx.product.findUnique({
-        where: { id: line.productId },
-        select: {
-          id: true,
-          name: true,
-          productType: true,
-          mainStock: true,
-          mainPurchasePrice: true,
-          lastBrandInvoiceNumber: true,
-        },
-      })
+      // SELECT ... FOR UPDATE — bu ürün satırını kilitler; aynı ürüne eşzamanlı gelen
+      // başka bir giriş/çıkış/takas işlemi bu transaction bitene kadar bekler (race
+      // condition guard — F6). Mevcut hesaplama mantığı (ağırlıklı ortalama dahil)
+      // değişmeden kalıyor, sadece okuma anı artık gerçekten güncel.
+      const productRows = await tx.$queryRaw<
+        Array<{
+          id: number
+          name: string
+          productType: string
+          mainStock: number
+          mainPurchasePrice: number | string | null
+          lastBrandInvoiceNumber: string | null
+        }>
+      >`
+        SELECT id, name, "productType", "mainStock", "mainPurchasePrice", "lastBrandInvoiceNumber"
+        FROM "Product" WHERE id = ${line.productId} FOR UPDATE
+      `
+      const product = productRows[0]
       if (!product) throw new Error(`Ürün bulunamadı: ${line.productId}`)
       if (product.productType === "SET") {
         throw new Error(
