@@ -17,6 +17,7 @@
 - ✅ G1 — CI eklendi (GitHub Actions: typecheck + lint + test)
 - ✅ P1/P3 (kısmen) — sku/supplierSku index + cron'da eşleşmişleri atlama
 - ✅ barkod-eslestirme orphan + komisyon çift tarife kolonu fix
+- ✅ docs/ (SYSTEM/ENTITY_MAP/MODULE_GRAPH) 2026-07-10 durumuna güncellendi (29→57 model, 22→33 sayfa) — artık güvenilir
 
 **HÂLÂ AÇIK (öncelik sırası):**
 - ⚠️ **Test kapsamı düşük** — 44 servisin 3'ünde test var; para-kritik yollar korumasız. Bundan sonra **Kural 6:** para-kritik koda dokunmadan önce test yaz.
@@ -25,7 +26,6 @@
 - Çift Trendyol listing (7 ürün; Vichy net hata, gerisi TY teyidi)
 - Cron Coolify Scheduled Task kurulumu (endpoint hazır, otomatik tetik yok)
 - Güvenlik O1-O5 (AUTH_SECRET ayır, güvenlik header, login rate-limit IP)
-- ⚠️ **docs/ bayat** (SYSTEM/ENTITY_MAP/MODULE_GRAPH — 2026-05-01'den kalma, 50+ commit geçti; güncellenene kadar güvenme)
 
 **Sıradaki fikir kuyruğu:** aşağıda "🎯 Sıradaki Plan" (otomatik uyarı maili, satın alma planlama modülü, vb.)
 
