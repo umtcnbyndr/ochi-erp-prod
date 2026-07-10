@@ -63,6 +63,7 @@ async function runOneScan(triggeredBy: "MANUAL" | "CRON" | "INITIAL"): Promise<v
           erpName: item.productName ?? "",
           erpBrand: null,
           cachedUrl: item.cachedUrl,
+          cachedUrlTrusted: item.urlSource === "API",
         })
         await recordScanResult({
           barcode: item.barcode,

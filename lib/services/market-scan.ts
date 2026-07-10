@@ -21,8 +21,14 @@ export interface ScanQueueItem {
   /** ERP ürün eşleşmesi (varsa). null = bizde yok. */
   productId: number | null
   productName: string | null
-  /** Önceki taramadan bulunan TY ürün linki — doluysa worker aramayı atlar. */
+  /**
+   * Doluysa worker aramayı ATLAR, direkt bu ürün sayfasına gider.
+   * Öncelik: Trendyol API productContentId (kesin, bizim listingimiz) >
+   * önceki taramanın bulduğu link (cache). Arama-tabanlı yanlış eşleşmeyi önler.
+   */
   cachedUrl: string | null
+  /** cachedUrl API content-id'sinden mi geldi (kesin) yoksa aramadan mı (tahmini) */
+  urlSource: "API" | "CACHE" | null
 }
 
 /** Worker'ın her ürün için döndürdüğü tarama sonucu. */
@@ -74,6 +80,12 @@ export async function getScanQueue(opts: {
   const barcodes = Array.from(byBarcode.keys())
   if (barcodes.length === 0) return []
 
+  const productIds = products.map((p) => p.id)
+
+  // productId → Trendyol productContentId (KESİN link — bizim TY listingimiz).
+  // Arama yerine bunu kullanmak yanlış eşleşmeyi (numune/spam/yanlış boyut) tamamen önler.
+  const contentIdByProduct = await loadContentIdMap(productIds)
+
   // Her barkod için: en son snapshot'ın linki (cache) + son tarama zamanı
   const latest = await prisma.$queryRaw<
     Array<{ barcode: string; tyProductUrl: string | null; observedAt: Date }>
@@ -88,11 +100,23 @@ export async function getScanQueue(opts: {
   const queue: ScanQueueItem[] = barcodes.map((bc) => {
     const meta = byBarcode.get(bc)!
     const cache = cacheByBarcode.get(bc)
+    const contentId = contentIdByProduct.get(meta.productId)
+    // Öncelik: API content-id (kesin) > snapshot linki (tahmini)
+    if (contentId) {
+      return {
+        barcode: bc,
+        productId: meta.productId,
+        productName: meta.name,
+        cachedUrl: `/x/x-p-${contentId}`, // Trendyol dummy-slug'ı canonical'e redirect eder
+        urlSource: "API" as const,
+      }
+    }
     return {
       barcode: bc,
       productId: meta.productId,
       productName: meta.name,
       cachedUrl: cache?.tyProductUrl ?? null,
+      urlSource: cache?.tyProductUrl ? ("CACHE" as const) : null,
     }
   })
 
@@ -105,6 +129,31 @@ export async function getScanQueue(opts: {
 
   void scope // Faz 1'de sadece "ours"; imza ileride genişleyecek
   return queue.slice(0, limit)
+}
+
+/**
+ * productId → Trendyol productContentId. Bizim TY listingimizin kesin ürün kimliği
+ * (rawJson.productContentId). Ürün sayfası URL'i: /x/x-p-{contentId}.
+ * Ürünün birden fazla listingi varsa en yenisi alınır (DISTINCT ON fetchedAt).
+ */
+async function loadContentIdMap(productIds: number[]): Promise<Map<number, string>> {
+  if (productIds.length === 0) return new Map()
+  const rows = await prisma.$queryRaw<Array<{ productId: number; content_id: string | null }>>(
+    Prisma.sql`
+      SELECT DISTINCT ON ("productId")
+        "productId", "rawJson"->>'productContentId' AS content_id
+      FROM "TrendyolListing"
+      WHERE "productId" IN (${Prisma.join(productIds)})
+        AND "rawJson"->>'productContentId' IS NOT NULL
+        AND "rawJson"->>'productContentId' <> ''
+      ORDER BY "productId", "fetchedAt" DESC
+    `,
+  )
+  const map = new Map<number, string>()
+  for (const r of rows) {
+    if (r.productId != null && r.content_id) map.set(r.productId, r.content_id)
+  }
+  return map
 }
 
 /** Yeni tarama çalıştırması başlat (RUNNING). */

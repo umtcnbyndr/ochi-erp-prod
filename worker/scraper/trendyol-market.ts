@@ -30,6 +30,12 @@ export interface ScrapeInput {
   erpName: string
   erpBrand?: string | null
   cachedUrl?: string | null
+  /**
+   * cachedUrl Trendyol API content-id'sinden mi geldi (kesin bizim ürünümüz)?
+   * true ise ürün sayfası ad-doğrulaması ATLANIR — content id zaten kesin.
+   * (Aramadan gelen link tahmini olduğu için orada doğrulama kalır.)
+   */
+  cachedUrlTrusted?: boolean
 }
 
 export interface ScrapeOutput {
@@ -130,6 +136,7 @@ async function scrapeProductPage(
   page: Page,
   url: string,
   erp: { name: string; brand?: string | null },
+  trust = false,
 ): Promise<ScrapeOutput | null> {
   let navOk = false
   for (let attempt = 0; attempt < 2 && !navOk; attempt++) {
@@ -147,17 +154,20 @@ async function scrapeProductPage(
   if (!data || !data.name) return null
 
   // Doğrulama: sayfadaki ürün gerçekten ERP ürünümüz mü?
-  const ok = productMatches(erp, {
-    name: data.name,
-    brand: data.brand,
-    url,
-  })
-  if (!ok) return null
+  // trust=true (API content-id) ise atla — kesin bizim ürünümüz, ERP adı
+  // TY başlığından farklı yazılmış olsa bile kaybetme.
+  if (!trust) {
+    const ok = productMatches(erp, { name: data.name, brand: data.brand, url })
+    if (!ok) return null
+  }
+
+  // Çözülen canonical URL'i kaydet (/x/x-p-{id} → gerçek ürün linki)
+  const resolvedUrl = page.url()
 
   return {
     found: true,
-    tyProductUrl: url,
-    tyContentId: extractContentId(url),
+    tyProductUrl: resolvedUrl,
+    tyContentId: extractContentId(resolvedUrl) ?? extractContentId(url),
     buyboxPrice: data.buyboxPrice,
     buyboxSeller: data.buyboxSeller,
     sellerCount: data.sellerCount,
@@ -171,10 +181,10 @@ export async function scrapeBarcode(
 ): Promise<ScrapeOutput> {
   const erp = { name: input.erpName, brand: input.erpBrand ?? null }
 
-  // 1) Cache linki varsa direkt ürün sayfası
+  // 1) Cache/API linki varsa direkt ürün sayfası (arama atlanır)
   if (input.cachedUrl) {
     try {
-      const res = await scrapeProductPage(page, input.cachedUrl, erp)
+      const res = await scrapeProductPage(page, input.cachedUrl, erp, input.cachedUrlTrusted ?? false)
       if (res) return res
       // cache eskimiş/ürün değişmiş → aramaya düş
     } catch {
