@@ -12,6 +12,10 @@ COPY package.json pnpm-lock.yaml* .npmrc* ./
 # Install pnpm
 RUN corepack enable pnpm && corepack prepare pnpm@10.30.3 --activate
 
+# playwright ERP'de sadece worker için var — ERP imajı tarayıcı ÇALIŞTIRMAZ.
+# Bu env olmadan pnpm install, playwright'ın Chromium'unu (~130MB) indirir → imaj şişer.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
 # Install dependencies (frozen lockfile for reproducibility).
 # --prod=false: NODE_ENV=production build env'inde bile devDeps'i (typescript,
 # prisma CLI vb.) zorla kur — yoksa prisma generate runtime DMMF ile uyuşmaz client üretir.
@@ -27,6 +31,7 @@ COPY . .
 
 # Enable pnpm in builder
 RUN corepack enable pnpm && corepack prepare pnpm@10.30.3 --activate
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # Generate Prisma client + build
 # Public klasoru yoksa olustur (Next.js standalone COPY hata verir)

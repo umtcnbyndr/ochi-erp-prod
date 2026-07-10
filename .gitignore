@@ -48,3 +48,6 @@ logs
 # Coolify / Docker
 .coolify/
 .claude/
+
+# Playwright MCP tarayıcı geçici çıktıları
+.playwright-mcp/

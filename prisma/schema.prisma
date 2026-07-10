@@ -12,20 +12,22 @@ datasource db {
 
 // ---------- Auth.js Tables ----------
 model User {
-  id            String    @id @default(cuid())
-  username      String    @unique
-  email         String    @unique
-  emailVerified DateTime?
-  passwordHash  String?
-  name          String?
-  image         String?
-  role          UserRole  @default(STAFF)
-  isActive      Boolean   @default(true)
-  pharmacyId    Int       @default(1)
-  /** "light" | "dark" | "system" — kullanıcı tercihli tema */
-  themePreference String  @default("system")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  username        String    @unique
+  email           String    @unique
+  emailVerified   DateTime?
+  passwordHash    String?
+  name            String?
+  image           String?
+  role            UserRole  @default(STAFF)
+  isActive        Boolean   @default(true)
+  pharmacyId      Int       @default(1)
+  /**
+   * "light" | "dark" | "system" — kullanıcı tercihli tema
+   */
+  themePreference String    @default("system")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   accounts      Account[]
   sessions      Session[]
@@ -55,12 +57,12 @@ model UserAllowedBrand {
 /// Panel sayfasındaki kişisel notlar / yapılacaklar.
 /// Her kullanıcının kendi notları olur. Basit todo: text + done flag.
 model PanelNote {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   userId    String
-  text      String   @db.Text
-  done      Boolean  @default(false)
-  pinned    Boolean  @default(false) // önemli notları üste sabitle
-  createdAt DateTime @default(now())
+  text      String    @db.Text
+  done      Boolean   @default(false)
+  pinned    Boolean   @default(false) // önemli notları üste sabitle
+  createdAt DateTime  @default(now())
   doneAt    DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -71,11 +73,11 @@ model PanelNote {
 
 // Kullanıcı bazlı modül izinleri
 model UserPermission {
-  id       Int     @id @default(autoincrement())
-  userId   String
-  module   String  // modül key'i (örn: "urunler", "markalar", "raporlar")
-  canView  Boolean @default(false)
-  canEdit  Boolean @default(false)
+  id      Int     @id @default(autoincrement())
+  userId  String
+  module  String // modül key'i (örn: "urunler", "markalar", "raporlar")
+  canView Boolean @default(false)
+  canEdit Boolean @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -140,8 +142,8 @@ model Brand {
   yearEndDiscount2 Decimal @default(0) @db.Decimal(5, 2)
   yearEndDiscount3 Decimal @default(0) @db.Decimal(5, 2)
 
-  pharmacyMargin    Decimal @default(0) @db.Decimal(5, 2)
-  pharmacyStockRule Int     @default(0)
+  pharmacyMargin     Decimal @default(0) @db.Decimal(5, 2)
+  pharmacyStockRule  Int     @default(0)
   // Açılacak maksimum miktar — null = "üstünün TAMAMINI aç" (mevcut davranış)
   // Sayı = "kural üstünden EN ÇOK bu kadar aç" (örn 1 → sadece 1 aç).
   // Az hareketli ürünlerde gereksiz açma yapmamak için.
@@ -154,7 +156,7 @@ model Brand {
 
   // BuyBox bazlı fiyat önerisinde rakibin ne kadar altına ineceğimiz (TL — sabit).
   // 0 = aynı fiyat, 5 = rakip fiyatı - 5 TL. priceUndercutBufferPct varsa o öncelikli.
-  priceUndercutBuffer Decimal @default(0) @db.Decimal(10, 2)
+  priceUndercutBuffer    Decimal @default(0) @db.Decimal(10, 2)
   // BuyBox altına inerken yüzde tampon (orantılı). 5 = rakip fiyatı × 0.95.
   // Hem TL hem % varsa: % öncelikli (orantılı koruma daha güvenli).
   priceUndercutBufferPct Decimal @default(0) @db.Decimal(5, 2)
@@ -165,12 +167,12 @@ model Brand {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  products Product[]
-  priceListItems BrandPriceList[]
-  campaigns      Campaign[]
+  products          Product[]
+  priceListItems    BrandPriceList[]
+  campaigns         Campaign[]
   marketplaceFloors BrandMarketplaceFloor[]
-  purchaseInvoices PurchaseInvoice[]
-  userAccess     UserAllowedBrand[]
+  purchaseInvoices  PurchaseInvoice[]
+  userAccess        UserAllowedBrand[]
 
   @@index([pharmacyId])
 }
@@ -202,53 +204,48 @@ model Subcategory {
 }
 
 model Marketplace {
-  id             Int      @id @default(autoincrement())
-  name           String   @unique
-  commissionRate Decimal  @default(0) @db.Decimal(5, 2) // %
-  shippingCost   Decimal  @default(0) @db.Decimal(10, 2) // TL sabit
+  id                       Int      @id @default(autoincrement())
+  name                     String   @unique
+  commissionRate           Decimal  @default(0) @db.Decimal(5, 2) // %
+  shippingCost             Decimal  @default(0) @db.Decimal(10, 2) // TL sabit
   // Ek maliyet (TL sabit). Formülde kargo gibi paya eklenir.
   // Örn: ambalaj ücreti, return işlem ücreti, vs.
-  extraCost      Decimal  @default(0) @db.Decimal(10, 2)
-  withholdingTax Decimal  @default(0) @db.Decimal(5, 2) // stopaj %
-  targetProfit   Decimal  @default(0) @db.Decimal(5, 2) // hedef kar %
+  extraCost                Decimal  @default(0) @db.Decimal(10, 2)
+  withholdingTax           Decimal  @default(0) @db.Decimal(5, 2) // stopaj %
+  targetProfit             Decimal  @default(0) @db.Decimal(5, 2) // hedef kar %
   // Brand seviyesinde tampon yoksa kullanılır (TL — sabit)
-  defaultUndercutBuffer Decimal? @db.Decimal(10, 2)
+  defaultUndercutBuffer    Decimal? @db.Decimal(10, 2)
   // Brand seviyesinde tampon yoksa kullanılır (% — orantılı). % öncelikli.
   defaultUndercutBufferPct Decimal? @db.Decimal(5, 2)
   // BuyBox altına inerken min kar tabanı (%). Boşsa targetProfit kullanılır.
   // Örn: targetProfit=25 ama floor=10 → BuyBox bazlı öneri %10 kar tabanına kadar düşebilir.
-  minProfitFloor Decimal? @db.Decimal(5, 2)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  minProfitFloor           Decimal? @db.Decimal(5, 2)
+  isActive                 Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
-  prices ProductMarketplacePrice[]
-  brandFloors BrandMarketplaceFloor[]
-  listings ProductMarketplaceListing[]
-  dopigoOrders DopigoOrder[]
+  prices          ProductMarketplacePrice[]
+  brandFloors     BrandMarketplaceFloor[]
+  listings        ProductMarketplaceListing[]
+  dopigoOrders    DopigoOrder[]
   monthlyExpenses MarketplaceMonthlyExpense[]
 }
 
 /**
  * Aynı ürünün bir marketplace'teki çoklu listing'leri.
- *
  * Senaryo: Mustela aynı 50ml kremi için TY'de 2 farklı barkodla listelemiş —
  * birinde 10 yorum (eski), birinde 500 yorum (yeni). Biz ERP'de tek ürün
  * tutuyoruz, ama Dopigo Excel export'ta her listing için ayrı satır gerekli.
- *
  * Stok ortak (Product.mainStock). Fiyat ortak (ProductMarketplacePrice).
  * Listing yalnız Dopigo Excel export'unda multi-row üretmek + BuyBox'ı
  * ayrı çekmek için kullanılır.
- *
  * isPrimary: birden fazla varsa default/anchor olarak kullanılır
  * (BuyBox sync, recommendation engine, vs).
- *
  * isActive=false: Excel'e gitmez ama silinmez (geçmiş kayıt).
- *
  * shareStock=true (default): Excel'de bu listing'e tam mainStock yazılır
- *   (çoklu listing varsa her birine aynı stok → max satış, oversold riski).
+ * (çoklu listing varsa her birine aynı stok → max satış, oversold riski).
  * shareStock=false: Excel'de bu listing'e 0 yazılır (sadece primary listing
- *   tam stok alır → eski listing dürüstçe ölür).
+ * tam stok alır → eski listing dürüstçe ölür).
  */
 model ProductMarketplaceListing {
   id            Int @id @default(autoincrement())
@@ -256,23 +253,23 @@ model ProductMarketplaceListing {
   marketplaceId Int
 
   // Marketplace'teki kimlik (Excel kolonlarına direkt karşılık gelir)
-  barcode       String?  // TY barkod → Dopigo Excel "barkod/gtin" kolonu
-  sku           String?  // Dopigo internal SKU → Excel "sku" kolonu (eşleştirme key'i)
-  supplierSku   String?  // Dopigo Tedarikçi SKU → Excel "Tedarikçi SKU" kolonu
-  externalCode  String?  // gelecekte TY contentId vs için (opsiyonel meta)
+  barcode      String? // TY barkod → Dopigo Excel "barkod/gtin" kolonu
+  sku          String? // Dopigo internal SKU → Excel "sku" kolonu (eşleştirme key'i)
+  supplierSku  String? // Dopigo Tedarikçi SKU → Excel "Tedarikçi SKU" kolonu
+  externalCode String? // gelecekte TY contentId vs için (opsiyonel meta)
 
   // Davranış
-  isPrimary    Boolean @default(true)
-  isActive     Boolean @default(true)
-  shareStock   Boolean @default(true)
+  isPrimary  Boolean @default(true)
+  isActive   Boolean @default(true)
+  shareStock Boolean @default(true)
 
   // Metadata (ileride scraping ile dolar — opsiyonel)
-  reviewCount  Int?
-  rating       Decimal? @db.Decimal(3, 2)
+  reviewCount Int?
+  rating      Decimal? @db.Decimal(3, 2)
 
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   marketplace Marketplace @relation(fields: [marketplaceId], references: [id], onDelete: Cascade)
@@ -289,19 +286,15 @@ model ProductMarketplaceListing {
 
 /**
  * Trendyol-relative price floor (marka × marketplace)
- *
  * Mantık: Trendyol fiyatı her marketplace için referans/zemin görevi görür.
  * Bir markanın bir marketplace'teki fiyatı, TY fiyatının belirli bir oranının
  * altına inmemeli. Skinceuticals + Hepsiburada için multiplier=0.9375 → HB fiyatı
  * en az TY×0.9375 olur. TY=8000 ise HB minimum 7500 TL.
- *
  * Trendyol için ayrıca kayıt tutulmaz (kendi referans). Diğer marketplace'ler
  * için kayıt yoksa floor uygulanmaz (klasik formül kazanır).
- *
  * Multiplier > 1.0 → premium (TY üstü, ör 1.05 = TY'nin %5 üstü)
  * Multiplier = 1.0 → eşit
  * Multiplier < 1.0 → kontrollü indirim (ör 0.9375 = TY'nin %93.75'i)
- *
  * Kullanım yeri: dopigo-sync.ts (Dopigo Excel export). İleride
  * price-recommendation.ts'e de eklenebilir.
  */
@@ -332,22 +325,22 @@ model Product {
   id         Int @id @default(autoincrement())
   pharmacyId Int @default(1)
 
-  name           String
-  primaryBarcode String      @unique
-  supplierBarcode String?    // Tedarikçi/distribütör barkodu — brand catalog upload + Dopigo eşleşme yedeği
+  name            String
+  primaryBarcode  String      @unique
+  supplierBarcode String? // Tedarikçi/distribütör barkodu — brand catalog upload + Dopigo eşleşme yedeği
   // Pazaryeri-bazlı kodlar (manuel eşleştirme ile gelir, kanal-bazlı görünüm için)
-  trendyolBarcode String?    // Trendyol'da listelenen ürünün GTIN/barkodu
-  dopigoBarcode   String?    // Dopigo Tedarikçi Barkodu (genelde TY ile aynı GTIN)
-  dopigoSku       String?    // Dopigo internal SKU (örn. SKN-CTCLS-G-NTR-3)
-  brandId        Int
-  categoryId     Int
-  subcategoryId  Int?
-  vatRate        Decimal     @db.Decimal(5, 2)
-  productType    ProductType @default(SINGLE)
+  trendyolBarcode String? // Trendyol'da listelenen ürünün GTIN/barkodu
+  dopigoBarcode   String? // Dopigo Tedarikçi Barkodu (genelde TY ile aynı GTIN)
+  dopigoSku       String? // Dopigo internal SKU (örn. SKN-CTCLS-G-NTR-3)
+  brandId         Int
+  categoryId      Int
+  subcategoryId   Int?
+  vatRate         Decimal     @db.Decimal(5, 2)
+  productType     ProductType @default(SINGLE)
 
   // Ana depo
-  mainStock         Int      @default(0)
-  mainPurchasePrice Decimal? @db.Decimal(14, 4) // KDV dahil, iskontolar dahil (weighted avg)
+  mainStock          Int       @default(0)
+  mainPurchasePrice  Decimal?  @db.Decimal(14, 4) // KDV dahil, iskontolar dahil (weighted avg)
   // mainPurchasePrice'ın son değişim zamanı — bayat öneri (recommendedPrice) kontrolü için.
   // ProductMarketplacePrice.recommendedAt < bu tarih ise öneri bayat → formula'ya düş.
   mainPriceUpdatedAt DateTime?
@@ -356,7 +349,7 @@ model Product {
   streetStock         Int      @default(0)
   streetPurchasePrice Decimal? @db.Decimal(14, 4) // KDV hariç, fatura altı iskonto dahil
   streetPharmacyCode  String? // cadde upload'ından gelen eczane ürün kodu (ileride kullanılabilir)
-  pharmacyProductCode String? @unique // EZC master kodu — alış eşleştirme için
+  pharmacyProductCode String?  @unique // EZC master kodu — alış eşleştirme için
 
   // Referans fiyat
   psf Decimal? @db.Decimal(14, 4)
@@ -417,6 +410,7 @@ model Product {
   trendyolListings            TrendyolListing[]
   dopigoOrderItems            DopigoOrderItem[]
   commissionTariffs           CommissionTariff[]
+  marketPriceSnapshots        MarketPriceSnapshot[]
 
   @@index([pharmacyId])
   @@index([brandId])
@@ -448,11 +442,11 @@ model ProductBarcode {
 }
 
 enum BarcodeSource {
-  MANUAL          // kullanıcı eli ile ekledi
-  ERP_PRIMARY     // Product.primaryBarcode mirror (backfill)
-  TRENDYOL_AUDIT  // /barkod-eslestirme'de Trendyol tarafından eklendi
-  DOPIGO_AUDIT    // /barkod-eslestirme'de Dopigo tarafından eklendi
-  IMPORT          // Excel/CSV import'tan
+  MANUAL // kullanıcı eli ile ekledi
+  ERP_PRIMARY // Product.primaryBarcode mirror (backfill)
+  TRENDYOL_AUDIT // /barkod-eslestirme'de Trendyol tarafından eklendi
+  DOPIGO_AUDIT // /barkod-eslestirme'de Dopigo tarafından eklendi
+  IMPORT // Excel/CSV import'tan
 }
 
 model ProductMarketplacePrice {
@@ -499,9 +493,9 @@ model Counterparty {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
-  exchanges      Exchange[]
-  stockMovements StockMovement[]
-  entrySessions  EntrySession[]
+  exchanges        Exchange[]
+  stockMovements   StockMovement[]
+  entrySessions    EntrySession[]
   purchaseInvoices PurchaseInvoice[]
 }
 
@@ -690,20 +684,19 @@ enum PriceType {
   SALE_CALCULATED
 }
 
-
 // ===== Pazaryeri Entegrasyonları =====
 
 /// Trendyol Seller API ayarları — singleton (id=1)
 model TrendyolConfig {
-  id         Int      @id @default(1)
-  pharmacyId Int      @default(1)
+  id         Int @id @default(1)
+  pharmacyId Int @default(1)
 
-  supplierId String   // Satıcı ID (Trendyol panelinden)
-  apiKey     String   // API Key
-  apiSecret  String   // API Secret (şifresiz tutuluyor; ileride encryption eklenecek)
+  supplierId String // Satıcı ID (Trendyol panelinden)
+  apiKey     String // API Key
+  apiSecret  String // API Secret (şifresiz tutuluyor; ileride encryption eklenecek)
 
   // Hangi ortam? prod / stage
-  environment String  @default("prod")
+  environment String @default("prod")
 
   // Aktif mi? Pasifse istek atılmaz
   isActive Boolean @default(true)
@@ -720,12 +713,12 @@ model TrendyolConfig {
 /// Dopigo API konfigürasyonu — SADECE OKUMA için kullanılır (GET only).
 /// CLAUDE.md: Dopigo'ya hiçbir veri POST/PUT/PATCH/DELETE gönderilmez.
 model DopigoConfig {
-  id         Int      @id @default(1)
-  pharmacyId Int      @default(1)
+  id         Int @id @default(1)
+  pharmacyId Int @default(1)
 
-  apiToken   String   // DRF tarzı: "Authorization: Token <apiToken>"
-  baseUrl    String   @default("https://panel.dopigo.com")
-  isActive   Boolean  @default(true)
+  apiToken String // DRF tarzı: "Authorization: Token <apiToken>"
+  baseUrl  String  @default("https://panel.dopigo.com")
+  isActive Boolean @default(true)
 
   lastTestedAt DateTime?
   lastTestOk   Boolean?
@@ -743,26 +736,26 @@ model DopigoOrder {
   dopigoOrderId BigInt @unique
 
   // Marketplace bilgisi (Dopigo'nun gönderdiği)
-  serviceName    String   // "trendyol", "hepsiburada", "farmazon", "store"...
-  salesChannel   String   // "trendyol", "hepsiburada"... (lower-case)
-  serviceOrderId String?  // ör. Trendyol order code "3833483689"
-  serviceValue   String?  // ör. "11216996303-3833483689"
+  serviceName    String // "trendyol", "hepsiburada", "farmazon", "store"...
+  salesChannel   String // "trendyol", "hepsiburada"... (lower-case)
+  serviceOrderId String? // ör. Trendyol order code "3833483689"
+  serviceValue   String? // ör. "11216996303-3833483689"
 
   // İçerideki Marketplace tablosuyla bağ (varsa). Yeni kanal görürsek null kalır.
   marketplaceId Int?
   marketplace   Marketplace? @relation(fields: [marketplaceId], references: [id], onDelete: SetNull)
 
   // Tarihler
-  serviceCreatedAt DateTime  // Dopigo "service_created" — esas tarihimiz
+  serviceCreatedAt DateTime // Dopigo "service_created" — esas tarihimiz
   shippedAt        DateTime?
 
   // Tutarlar
-  total       Decimal  @db.Decimal(12, 2) // Toplam (KDV dahil)
-  serviceFee  Decimal? @db.Decimal(12, 2) // Dopigo'nun service_fee
-  discount    Decimal? @db.Decimal(12, 2)
+  total      Decimal  @db.Decimal(12, 2) // Toplam (KDV dahil)
+  serviceFee Decimal? @db.Decimal(12, 2) // Dopigo'nun service_fee
+  discount   Decimal? @db.Decimal(12, 2)
 
   paymentType String? // "cc", vb.
-  status      String  // "waiting_shipment", "shipped", "cancelled", ... (Dopigo'nun ham status'u)
+  status      String // "waiting_shipment", "shipped", "cancelled", ... (Dopigo'nun ham status'u)
   archived    Boolean @default(false)
 
   // Türetilmiş durum (UI'da kullanılır):
@@ -777,19 +770,19 @@ model DopigoOrder {
   invoiceDeleted Boolean @default(false)
   invoiceNumber  String?
 
-  notes       String?
+  notes String?
 
   // Müşteri bilgisi (denormalize, tekrar müşteri tablosu lazım olursa ayrı tablo)
-  customerName    String?
-  customerCity    String?
+  customerName     String?
+  customerCity     String?
   customerDistrict String?
-  customerEmail   String?
+  customerEmail    String?
 
   // Senkron meta
   fetchedAt DateTime @default(now())
-  rawJson   Json     // ham API cevabı (debugging için)
+  rawJson   Json // ham API cevabı (debugging için)
 
-  items DopigoOrderItem[]
+  items                  DopigoOrderItem[]
   trendyolReconciliation TrendyolOrderReconciliation?
 
   @@index([serviceCreatedAt])
@@ -804,34 +797,34 @@ model DopigoOrder {
 model DopigoOrderItem {
   id Int @id @default(autoincrement())
 
-  dopigoItemId BigInt @unique
+  dopigoItemId BigInt      @unique
   orderId      Int
   order        DopigoOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   // Dopigo verisi
-  serviceItemId    String?  // Trendyol line item id (ör. "5489388389")
-  serviceProductId String?  // genelde barkod ya da TY product id
-  sku              String?  // Dopigo'daki SKU (lojistik kod)
-  foreignSku       String?  // linked_product.foreign_sku — genelde BARKOD
-  barcode          String?  // ham barkod
+  serviceItemId    String? // Trendyol line item id (ör. "5489388389")
+  serviceProductId String? // genelde barkod ya da TY product id
+  sku              String? // Dopigo'daki SKU (lojistik kod)
+  foreignSku       String? // linked_product.foreign_sku — genelde BARKOD
+  barcode          String? // ham barkod
   productName      String
 
-  amount    Int            // adet
-  price     Decimal        @db.Decimal(12, 2) // satır toplamı (price * amount değil, line total — Dopigo öyle veriyor)
-  unitPrice Decimal?       @db.Decimal(12, 2)
-  taxRatio  Int?           // KDV %
-  itemStatus String?       // "approved", "cancelled", ...
+  amount     Int // adet
+  price      Decimal  @db.Decimal(12, 2) // satır toplamı (price * amount değil, line total — Dopigo öyle veriyor)
+  unitPrice  Decimal? @db.Decimal(12, 2)
+  taxRatio   Int? // KDV %
+  itemStatus String? // "approved", "cancelled", ...
 
   // Bizim Product'a eşleşme
   productId Int?
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   // Eşleşme metodu (audit için)
-  matchMethod String?  // "BARCODE_EXACT" | "FOREIGN_SKU_EXACT" | "DOPIGO_SKU" | "MANUAL" | "NONE"
+  matchMethod String? // "BARCODE_EXACT" | "FOREIGN_SKU_EXACT" | "DOPIGO_SKU" | "MANUAL" | "NONE"
   matchedAt   DateTime?
 
   // Hediye/Set işareti — analiz raporunda ayrı göstermek için
-  productType String?  // SINGLE | SET | GIFT (snapshot)
+  productType String? // SINGLE | SET | GIFT (snapshot)
 
   @@index([orderId])
   @@index([productId])
@@ -845,17 +838,17 @@ model DopigoOrderItem {
 model DopigoOrderSyncRun {
   id Int @id @default(autoincrement())
 
-  startedAt   DateTime @default(now())
-  finishedAt  DateTime?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
 
   // Hangi tarih aralığı çekildi
   rangeFrom DateTime?
   rangeTo   DateTime?
 
-  totalFetched Int     @default(0)
-  totalCreated Int     @default(0)
-  totalUpdated Int     @default(0)
-  totalMatched Int     @default(0) // bu run'da product eşleşmesi yapılan item sayısı
+  totalFetched Int @default(0)
+  totalCreated Int @default(0)
+  totalUpdated Int @default(0)
+  totalMatched Int @default(0) // bu run'da product eşleşmesi yapılan item sayısı
 
   status       String  @default("RUNNING") // RUNNING | SUCCESS | FAILED
   errorMessage String?
@@ -867,9 +860,9 @@ model DopigoOrderSyncRun {
 /// Mod 2 (detaylı rapor) bu verilerle gerçek net karı hesaplar.
 /// Bu kayıt yoksa Mod 1 (tahmini) kullanılır.
 model MarketplaceMonthlyExpense {
-  id              Int      @id @default(autoincrement())
-  marketplaceId   Int
-  marketplace     Marketplace @relation(fields: [marketplaceId], references: [id], onDelete: Cascade)
+  id            Int         @id @default(autoincrement())
+  marketplaceId Int
+  marketplace   Marketplace @relation(fields: [marketplaceId], references: [id], onDelete: Cascade)
 
   // Ayın ilk günü (UTC midnight)
   month DateTime
@@ -894,15 +887,15 @@ model MarketplaceMonthlyExpense {
 
 /// BuyBox/rakip fiyat gözlemi — zaman içinde fiyat hareketini izlemek için
 model CompetitorPriceObservation {
-  id        Int      @id @default(autoincrement())
+  id        Int @id @default(autoincrement())
   productId Int
 
-  source           String   // "TRENDYOL_BUYBOX"
-  buyboxPrice      Decimal  @db.Decimal(12, 2)
-  buyboxOrder      Int?     // 1 = bizdeyiz, >1 = rakip BuyBox'ta
-  hasMultipleSeller Boolean @default(false)
+  source            String // "TRENDYOL_BUYBOX"
+  buyboxPrice       Decimal  @db.Decimal(12, 2)
+  buyboxOrder       Int? // 1 = bizdeyiz, >1 = rakip BuyBox'ta
+  hasMultipleSeller Boolean  @default(false)
   // Bizim o anki fiyatımız (referans için saklıyoruz)
-  ourPrice Decimal? @db.Decimal(12, 2)
+  ourPrice          Decimal? @db.Decimal(12, 2)
 
   observedAt DateTime @default(now())
 
@@ -917,27 +910,27 @@ model CompetitorPriceObservation {
 /// Trendyol'daki kendi satıcı kataloğumuzun snapshot'ı — son senkron sonucu.
 /// `/barkod-eslestirme` audit'inde kullanılır, her sefer Trendyol'a hit etmesin diye.
 model TrendyolListing {
-  id           Int      @id @default(autoincrement())
-  barcode      String   @unique
-  productCode  String?  // Trendyol productCode (= "Model Kodu" varyantı)
+  id            Int      @id @default(autoincrement())
+  barcode       String   @unique
+  productCode   String? // Trendyol productCode (= "Model Kodu" varyantı)
   productMainId String? // Trendyol productMainId (= "Model Kodu" diğer varyantı, ds-/Skinceuticals.049 vs.)
-  title        String
-  brand        String?
-  categoryName String?
-  listPrice    Decimal? @db.Decimal(12, 2)
-  salePrice    Decimal? @db.Decimal(12, 2)
-  quantity     Int?
-  approved     Boolean  @default(false)
-  archived     Boolean  @default(false)
-  rejected     Boolean  @default(false)
-  onSale       Boolean  @default(false)
-  rawJson      Json     // tam Trendyol response — ileride yeni alan eklenirse migration'sız
-  fetchedAt    DateTime @default(now())
+  title         String
+  brand         String?
+  categoryName  String?
+  listPrice     Decimal? @db.Decimal(12, 2)
+  salePrice     Decimal? @db.Decimal(12, 2)
+  quantity      Int?
+  approved      Boolean  @default(false)
+  archived      Boolean  @default(false)
+  rejected      Boolean  @default(false)
+  onSale        Boolean  @default(false)
+  rawJson       Json // tam Trendyol response — ileride yeni alan eklenirse migration'sız
+  fetchedAt     DateTime @default(now())
 
   // ERP Product eşleştirmesi (post-sync match ile doldurulur)
   // Excel.ModelKodu → TrendyolListing.productCode → productId tek-hop lookup için.
-  productId         Int?
-  productMatchedAt  DateTime?
+  productId        Int?
+  productMatchedAt DateTime?
 
   product Product? @relation(fields: [productId], references: [id])
 
@@ -1058,27 +1051,27 @@ model DopigoSyncRun {
 
 // ---------- Ürün Birleştirme Geçmişi ----------
 model ProductMergeHistory {
-  id              Int      @id @default(autoincrement())
+  id              Int         @id @default(autoincrement())
   targetProductId Int
-  sourceProductId Int      // silinen ürünün orijinal ID'si
-  sourceName      String   // silinen ürünün adı
-  sourceBarcode   String   // silinen ürünün primary barkodu
-  sourceSnapshot  Json     // silinen ürünün tüm verileri (geri alma için)
-  mergedBarcodes  Json     // taşınan barkodlar listesi (string[])
-  stockTransfer   Json     // { mainStock, streetStock, exchangeStock } transfer edilen
+  sourceProductId Int // silinen ürünün orijinal ID'si
+  sourceName      String // silinen ürünün adı
+  sourceBarcode   String // silinen ürünün primary barkodu
+  sourceSnapshot  Json // silinen ürünün tüm verileri (geri alma için)
+  mergedBarcodes  Json // taşınan barkodlar listesi (string[])
+  stockTransfer   Json // { mainStock, streetStock, exchangeStock } transfer edilen
   status          MergeStatus @default(ACTIVE)
-  mergedAt        DateTime @default(now())
+  mergedAt        DateTime    @default(now())
   revertedAt      DateTime?
 
-  targetProduct   Product  @relation(fields: [targetProductId], references: [id])
+  targetProduct Product @relation(fields: [targetProductId], references: [id])
 
   @@index([targetProductId])
   @@index([sourceBarcode])
 }
 
 enum MergeStatus {
-  ACTIVE    // birleştirme aktif
-  REVERTED  // geri alındı
+  ACTIVE // birleştirme aktif
+  REVERTED // geri alındı
 }
 
 /// Trendyol Sipariş Kayıtları Excel'inden indirilen ay sonu mutabakat verisi.
@@ -1099,7 +1092,7 @@ model TrendyolOrderReconciliation {
   serviceOrderId String
 
   /// Eşleşen DopigoOrder (varsa). Null → Excel'de var bizde yok.
-  dopigoOrderId Int? @unique
+  dopigoOrderId Int?         @unique
   dopigoOrder   DopigoOrder? @relation(fields: [dopigoOrderId], references: [id], onDelete: SetNull)
 
   /// Sipariş tarihi (Excel "Sipariş Tarihi" — DD.MM.YYYY HH:MM parse edilmiş)
@@ -1115,19 +1108,19 @@ model TrendyolOrderReconciliation {
   itemCount Int @default(0)
 
   /// Excel'deki tüm tutar kalemleri (Decimal, hepsi pozitif tutarlar olarak saklanır)
-  saleAmount         Decimal  @db.Decimal(12, 2) // Sipariş Tutarı
-  commission         Decimal  @default(0) @db.Decimal(12, 2) // Komisyon / Hizmet Bedeli (mutlak değer)
-  withholding        Decimal  @default(0) @db.Decimal(12, 2) // Stopaj (Farmazon vb. raporunda var; Trendyol'da 0)
-  discount           Decimal  @default(0) @db.Decimal(12, 2) // İndirim
-  shipping           Decimal  @default(0) @db.Decimal(12, 2) // Gönderi Kargo Bedeli
-  returnShipping     Decimal  @default(0) @db.Decimal(12, 2) // İade Kargo Bedeli
-  penalty            Decimal  @default(0) @db.Decimal(12, 2) // Ceza Bedeli
-  cancelled          Decimal  @default(0) @db.Decimal(12, 2) // İptal
-  refunded           Decimal  @default(0) @db.Decimal(12, 2) // İade
-  otherDeductions    Decimal  @default(0) @db.Decimal(12, 2) // Diğer
-  internationalFee   Decimal  @default(0) @db.Decimal(12, 2) // Uluslararası Hizmet Bedeli
+  saleAmount          Decimal @db.Decimal(12, 2) // Sipariş Tutarı
+  commission          Decimal @default(0) @db.Decimal(12, 2) // Komisyon / Hizmet Bedeli (mutlak değer)
+  withholding         Decimal @default(0) @db.Decimal(12, 2) // Stopaj (Farmazon vb. raporunda var; Trendyol'da 0)
+  discount            Decimal @default(0) @db.Decimal(12, 2) // İndirim
+  shipping            Decimal @default(0) @db.Decimal(12, 2) // Gönderi Kargo Bedeli
+  returnShipping      Decimal @default(0) @db.Decimal(12, 2) // İade Kargo Bedeli
+  penalty             Decimal @default(0) @db.Decimal(12, 2) // Ceza Bedeli
+  cancelled           Decimal @default(0) @db.Decimal(12, 2) // İptal
+  refunded            Decimal @default(0) @db.Decimal(12, 2) // İade
+  otherDeductions     Decimal @default(0) @db.Decimal(12, 2) // Diğer
+  internationalFee    Decimal @default(0) @db.Decimal(12, 2) // Uluslararası Hizmet Bedeli
   internationalRefund Decimal @default(0) @db.Decimal(12, 2) // Yurtdışı Operasyon İade Bedeli
-  platformFee        Decimal  @default(0) @db.Decimal(12, 2) // Platform Hizmet Bedeli
+  platformFee         Decimal @default(0) @db.Decimal(12, 2) // Platform Hizmet Bedeli
 
   /// Trendyol'un eline geçen net tutar (Excel "Net Tutar"). Mutabakat'ın altın değeri.
   netReceived Decimal @db.Decimal(12, 2)
@@ -1135,7 +1128,7 @@ model TrendyolOrderReconciliation {
   /// Audit
   importedAt DateTime @default(now())
   importedBy String?
-  rawJson    Json     // Excel satırı (raw)
+  rawJson    Json // Excel satırı (raw)
 
   @@unique([marketplace, serviceOrderId])
   @@index([serviceOrderId]) // analytics recon LATERAL join'i serviceOrderId'ye göre arar
@@ -1150,16 +1143,20 @@ model TrendyolOrderReconciliation {
 /// Ay bazlı değil — bir kez girilir, ileride de geçerli (lookup).
 model ManualPurchasePrice {
   id            Int      @id @default(autoincrement())
-  /** Eşleştirme anahtarı — SKU veya barkod (öncelik SKU) */
+  /**
+   * Eşleştirme anahtarı — SKU veya barkod (öncelik SKU)
+   */
   sku           String?
   barcode       String?
-  /** Görsel için ürün adı (snapshot) */
+  /**
+   * Görsel için ürün adı (snapshot)
+   */
   name          String
-  purchasePrice Decimal  @db.Decimal(14, 4)  // KDV dahil alış
+  purchasePrice Decimal  @db.Decimal(14, 4) // KDV dahil alış
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  createdBy     String?  // userId
+  createdBy     String? // userId
 
   @@unique([sku, barcode])
   @@index([sku])
@@ -1170,12 +1167,12 @@ model ManualPurchasePrice {
 
 /// Marka liste fiyatları — Excel'den yüklenir, sipariş hesabında başlangıç noktası
 model BrandPriceList {
-  id              Int      @id @default(autoincrement())
-  brandId         Int
-  productId       Int
-  listPrice       Decimal  @db.Decimal(14, 4)  // marka liste fiyatı
-  isVatIncluded   Boolean  @default(false)     // KDV dahil mi
-  uploadedAt      DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  brandId       Int
+  productId     Int
+  listPrice     Decimal  @db.Decimal(14, 4) // marka liste fiyatı
+  isVatIncluded Boolean  @default(false) // KDV dahil mi
+  uploadedAt    DateTime @default(now())
 
   brand   Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1187,50 +1184,50 @@ model BrandPriceList {
 
 /// Marka liste fiyat yükleme audit log
 model BrandPriceListUpload {
-  id          Int      @id @default(autoincrement())
-  brandId     Int
-  filename    String
-  rowCount    Int
-  matchedCount Int     @default(0)
+  id            Int      @id @default(autoincrement())
+  brandId       Int
+  filename      String
+  rowCount      Int
+  matchedCount  Int      @default(0)
   isVatIncluded Boolean
-  uploadedAt  DateTime @default(now())
+  uploadedAt    DateTime @default(now())
 
   @@index([brandId])
 }
 
 /// Satın alma siparişi (distribütöre verilen)
 model PurchaseOrder {
-  id              Int      @id @default(autoincrement())
+  id       Int                 @id @default(autoincrement())
   /// Sipariş bir veya birden fazla markayı kapsayabilir
-  brandIds        Int[]    @default([])
-  status          PurchaseOrderStatus @default(DRAFT)
+  brandIds Int[]               @default([])
+  status   PurchaseOrderStatus @default(DRAFT)
 
   /// Hesap parametreleri (snapshot)
-  analysisDays    Int      @default(90)  // satış analizi için bakılan gün
-  targetStockDays Int      @default(60)  // hedef stok günü
+  analysisDays    Int @default(90) // satış analizi için bakılan gün
+  targetStockDays Int @default(60) // hedef stok günü
 
   /// Marka kampanya alım indirimi (% — örn 8.50 = %8.5). Boş = yok.
   /// Tüm kalemlere uygulanır; her satırda discountOverridePct ile override edilebilir.
   brandDiscountPct Decimal? @db.Decimal(5, 2)
 
   /// Notlar
-  note            String?
+  note String?
 
   /// Tutar özeti (cache — items'tan hesaplanır)
-  totalListAmount Decimal  @default(0) @db.Decimal(14, 2)  // liste fiyat toplamı
-  totalNetAmount  Decimal  @default(0) @db.Decimal(14, 2)  // net alış toplamı (KDV dahil)
-  totalQuantity   Int      @default(0)
+  totalListAmount Decimal @default(0) @db.Decimal(14, 2) // liste fiyat toplamı
+  totalNetAmount  Decimal @default(0) @db.Decimal(14, 2) // net alış toplamı (KDV dahil)
+  totalQuantity   Int     @default(0)
 
   /// Tarih
-  createdAt       DateTime @default(now())
-  confirmedAt     DateTime?
-  completedAt     DateTime?
-  cancelledAt     DateTime?
+  createdAt   DateTime  @default(now())
+  confirmedAt DateTime?
+  completedAt DateTime?
+  cancelledAt DateTime?
 
   /// Kullanıcı
-  createdBy       String?
+  createdBy String?
 
-  items           PurchaseOrderItem[]
+  items PurchaseOrderItem[]
 
   @@index([status])
   @@index([createdAt])
@@ -1238,44 +1235,44 @@ model PurchaseOrder {
 
 /// Sipariş kalemi (her ürün için bir satır)
 model PurchaseOrderItem {
-  id              Int      @id @default(autoincrement())
-  orderId         Int
-  productId       Int
+  id        Int @id @default(autoincrement())
+  orderId   Int
+  productId Int
 
   /// Snapshot fiyatlar (sipariş anında dondurulur)
-  listPrice       Decimal  @db.Decimal(14, 4)  // marka liste fiyatı
-  isVatIncluded   Boolean  @default(false)
-  netPurchasePrice Decimal @db.Decimal(14, 4)  // hesaplanmış net alış (KDV dahil, tüm iskontolar; KAMPANYA İNDİRİMİ DAHİL DEĞİL — sipariş başında uygulanır)
+  listPrice            Decimal  @db.Decimal(14, 4) // marka liste fiyatı
+  isVatIncluded        Boolean  @default(false)
+  netPurchasePrice     Decimal  @db.Decimal(14, 4) // hesaplanmış net alış (KDV dahil, tüm iskontolar; KAMPANYA İNDİRİMİ DAHİL DEĞİL — sipariş başında uygulanır)
   /// Bu kalem için kampanya indirimi override (% — marka oranını ezer). Boş = order.brandDiscountPct kullan.
-  discountOverridePct Decimal? @db.Decimal(5, 2)
+  discountOverridePct  Decimal? @db.Decimal(5, 2)
   /// Kalem oluşturulurken etkin olan toplam indirim (% — snapshot, brand veya override hangisi etkindiyse)
   effectiveDiscountPct Decimal? @db.Decimal(5, 2)
 
   /// Snapshot satış verileri
-  currentStock    Int      // (LEGACY) sipariş anındaki ana+cadde stok toplam — geriye uyumluluk için tutuluyor
-  mainStockSnapshot   Int?  // sipariş anındaki ana depo stoğu (yeni siparişlerde dolu, eski siparişlerde null)
-  streetStockSnapshot Int?  // sipariş anındaki cadde stoğu
-  totalSoldInPeriod   Int?  // analiz periyodunda toplam satılan adet (yeni alan, eski siparişlerde null)
-  dailySalesAvg   Decimal  @default(0) @db.Decimal(10, 4)  // günlük ort. satış
-  daysUntilStockout Int?   // tahmini bitme süresi (gün)
+  currentStock        Int // (LEGACY) sipariş anındaki ana+cadde stok toplam — geriye uyumluluk için tutuluyor
+  mainStockSnapshot   Int? // sipariş anındaki ana depo stoğu (yeni siparişlerde dolu, eski siparişlerde null)
+  streetStockSnapshot Int? // sipariş anındaki cadde stoğu
+  totalSoldInPeriod   Int? // analiz periyodunda toplam satılan adet (yeni alan, eski siparişlerde null)
+  dailySalesAvg       Decimal @default(0) @db.Decimal(10, 4) // günlük ort. satış
+  daysUntilStockout   Int? // tahmini bitme süresi (gün)
 
   /// Sipariş miktarları
-  suggestedQty    Int      // sistem önerisi
-  orderedQty      Int      // gerçek sipariş miktarı (kullanıcı override edebilir)
-  receivedQty     Int      @default(0)  // mal kabul edilen toplam
+  suggestedQty Int // sistem önerisi
+  orderedQty   Int // gerçek sipariş miktarı (kullanıcı override edebilir)
+  receivedQty  Int @default(0) // mal kabul edilen toplam
 
   /// "Eksik kapatıldı" bayrağı — closeOrder çağrıldığında receivedQty < orderedQty ise true.
   /// Eksik bakiye buharlaşmasın diye: yeni sipariş builder'ında kullanıcıya uyarı için saklanır.
-  closedShort     Boolean   @default(false)
-  closedShortAt   DateTime?
-  closedShortQty  Int?      // ne kadar eksik kapatıldı (orderedQty - receivedQty)
+  closedShort    Boolean   @default(false)
+  closedShortAt  DateTime?
+  closedShortQty Int? // ne kadar eksik kapatıldı (orderedQty - receivedQty)
 
   /// BuyBox bilgileri (snapshot)
-  buyboxPrice     Decimal? @db.Decimal(14, 4)
-  ourSalePrice    Decimal? @db.Decimal(14, 4)  // mevcut satış fiyatımız (recommendedPrice veya formula)
+  buyboxPrice  Decimal? @db.Decimal(14, 4)
+  ourSalePrice Decimal? @db.Decimal(14, 4) // mevcut satış fiyatımız (recommendedPrice veya formula)
 
-  order           PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product         Product       @relation(fields: [productId], references: [id])
+  order   PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id])
 
   @@unique([orderId, productId])
   @@index([orderId])
@@ -1283,11 +1280,11 @@ model PurchaseOrderItem {
 }
 
 enum PurchaseOrderStatus {
-  DRAFT       // taslak — düzenleniyor
-  CONFIRMED   // onaylandı, satıcıya gitti
-  PARTIAL     // kısmen geldi
-  COMPLETED   // tamamı geldi
-  CANCELLED   // iptal
+  DRAFT // taslak — düzenleniyor
+  CONFIRMED // onaylandı, satıcıya gitti
+  PARTIAL // kısmen geldi
+  COMPLETED // tamamı geldi
+  CANCELLED // iptal
 }
 
 // ---------- Kampanya (Marka iskonto kampanyaları) ----------
@@ -1307,25 +1304,25 @@ enum PurchaseOrderStatus {
 //   - PRODUCTS, BRAND'i ezer (more specific wins)
 //   - Aynı ürün eş zamanlı 2 kampanyada olamaz (form kontrol)
 model Campaign {
-  id                  Int            @id @default(autoincrement())
-  name                String         // "Skinceuticals Mart 2026"
-  type                CampaignType
-  brandId             Int?           // BRAND için (zorunlu)
-  discountRate        Decimal        @db.Decimal(5, 2)  // 10.00 = %10
-  startDate           DateTime
-  endDate             DateTime
-  status              CampaignStatus @default(ACTIVE)
+  id           Int            @id @default(autoincrement())
+  name         String // "Skinceuticals Mart 2026"
+  type         CampaignType
+  brandId      Int? // BRAND için (zorunlu)
+  discountRate Decimal        @db.Decimal(5, 2) // 10.00 = %10
+  startDate    DateTime
+  endDate      DateTime
+  status       CampaignStatus @default(ACTIVE)
 
   // Tahsilat
-  collectionDueDate   DateTime?      // marka deadline (örn. ay sonu)
+  collectionDueDate   DateTime? // marka deadline (örn. ay sonu)
   collectedAt         DateTime?
-  collectionInvoiceNo String?        // bizim kestiğimiz iskonto faturası
-  collectedAmount     Decimal?       @db.Decimal(12, 2)
+  collectionInvoiceNo String? // bizim kestiğimiz iskonto faturası
+  collectedAmount     Decimal?  @db.Decimal(12, 2)
 
-  notes               String?
-  createdAt           DateTime       @default(now())
-  endedAt             DateTime?      // status ENDED'a geçtiği an
-  updatedAt           DateTime       @updatedAt
+  notes     String?
+  createdAt DateTime  @default(now())
+  endedAt   DateTime? // status ENDED'a geçtiği an
+  updatedAt DateTime  @updatedAt
 
   brand    Brand?            @relation(fields: [brandId], references: [id])
   products CampaignProduct[] // PRODUCTS tipi için seçilen ürünler
@@ -1344,10 +1341,10 @@ model Campaign {
 model CampaignPayment {
   id          Int      @id @default(autoincrement())
   campaignId  Int
-  amount      Decimal  @db.Decimal(12, 2)  // tahsil edilen tutar (TL)
-  paymentDate DateTime                     // tahsilat tarihi (kullanıcı seçer)
-  invoiceNo   String?                       // opsiyonel — kesilen iskonto fatura no
-  notes       String?                       // opsiyonel — "havale", "kısmi" vs.
+  amount      Decimal  @db.Decimal(12, 2) // tahsil edilen tutar (TL)
+  paymentDate DateTime // tahsilat tarihi (kullanıcı seçer)
+  invoiceNo   String? // opsiyonel — kesilen iskonto fatura no
+  notes       String? // opsiyonel — "havale", "kısmi" vs.
   createdAt   DateTime @default(now())
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -1370,17 +1367,17 @@ model CampaignProduct {
 
 // Kampanya boyunca yapılan satışlar — tahsilat hesabı için snapshot
 model CampaignSale {
-  id                   Int       @id @default(autoincrement())
+  id                   Int      @id @default(autoincrement())
   campaignId           Int
   productId            Int
-  stockMovementId      Int?      // hangi OUT'tan geldi (audit)
+  stockMovementId      Int? // hangi OUT'tan geldi (audit)
   quantity             Int
-  psfSnapshot          Decimal   @db.Decimal(12, 2)  // satış anındaki PSF
-  unitPurchaseSnapshot Decimal   @db.Decimal(12, 2)  // satış anındaki alış
-  discountAmountTL     Decimal   @db.Decimal(12, 2)  // (psf × oran% × adet) tahsilat tutarı
-  saleDate             DateTime  // OUT tarihi
-  source               String    // "STOCK_MOVEMENT" | "DOPIGO_ORDER" (ileride)
-  createdAt            DateTime  @default(now())
+  psfSnapshot          Decimal  @db.Decimal(12, 2) // satış anındaki PSF
+  unitPurchaseSnapshot Decimal  @db.Decimal(12, 2) // satış anındaki alış
+  discountAmountTL     Decimal  @db.Decimal(12, 2) // (psf × oran% × adet) tahsilat tutarı
+  saleDate             DateTime // OUT tarihi
+  source               String // "STOCK_MOVEMENT" | "DOPIGO_ORDER" (ileride)
+  createdAt            DateTime @default(now())
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   product  Product  @relation(fields: [productId], references: [id])
@@ -1390,15 +1387,15 @@ model CampaignSale {
 }
 
 enum CampaignType {
-  BRAND      // tüm marka
-  PRODUCTS   // seçili ürünler
+  BRAND // tüm marka
+  PRODUCTS // seçili ürünler
 }
 
 enum CampaignStatus {
-  ACTIVE     // aktif (tarih aralığında, henüz bitmedi)
-  ENDED      // bitti, henüz tahsil edilmedi
-  COLLECTED  // tahsilat tamam
-  CANCELLED  // iptal
+  ACTIVE // aktif (tarih aralığında, henüz bitmedi)
+  ENDED // bitti, henüz tahsil edilmedi
+  COLLECTED // tahsilat tamam
+  CANCELLED // iptal
 }
 
 // ---------- Audit Log (kritik islemler) ----------
@@ -1410,12 +1407,12 @@ enum CampaignStatus {
 // admin tarafindan yapilabilir.
 model AuditLog {
   id         Int      @id @default(autoincrement())
-  userId     String?  // null = system
-  action     String   // "USER_CREATE", "TRENDYOL_CONFIG_UPDATE", "CAMPAIGN_END", "LOGIN_FAIL", vs.
-  entityType String?  // "User", "Campaign", "Product", ...
+  userId     String? // null = system
+  action     String // "USER_CREATE", "TRENDYOL_CONFIG_UPDATE", "CAMPAIGN_END", "LOGIN_FAIL", vs.
+  entityType String? // "User", "Campaign", "Product", ...
   entityId   String?
-  before     Json?    // değişiklik öncesi snapshot
-  after      Json?    // değişiklik sonrası
+  before     Json? // değişiklik öncesi snapshot
+  after      Json? // değişiklik sonrası
   ipAddress  String?
   userAgent  String?
   createdAt  DateTime @default(now())
@@ -1439,15 +1436,15 @@ model AuditLog {
 
 model CommissionTariffUpload {
   id            Int      @id @default(autoincrement())
-  marketplace   String   // "Trendyol" | "Hepsiburada" | "N11" (Marketplace.name ile uyumlu)
+  marketplace   String // "Trendyol" | "Hepsiburada" | "N11" (Marketplace.name ile uyumlu)
   filename      String
   effectiveFrom DateTime // Tarifenin başlangıç tarihi (Salı 08:00)
   effectiveTo   DateTime // Tarifenin bitiş tarihi (sonraki Salı 07:59)
   rowCount      Int      @default(0)
   matchedCount  Int      @default(0) // ERP'ye eşleşen satır sayısı
-  tarifeGrubu   String?  // Excel'deki "TARİFE GRUBU" alanı
+  tarifeGrubu   String? // Excel'deki "TARİFE GRUBU" alanı
   uploadedAt    DateTime @default(now())
-  uploadedBy    String?  // userId
+  uploadedBy    String? // userId
 
   tariffs CommissionTariff[]
 
@@ -1456,7 +1453,7 @@ model CommissionTariffUpload {
 }
 
 model CommissionTariff {
-  id       Int @id @default(autoincrement())
+  id       Int                    @id @default(autoincrement())
   uploadId Int
   upload   CommissionTariffUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
 
@@ -1468,7 +1465,7 @@ model CommissionTariff {
   // Trendyol ham verisi
   barcode              String
   modelKodu            String?
-  satıcıStokKodu       String?  @map("satici_stok_kodu")
+  satıcıStokKodu     String?  @map("satici_stok_kodu")
   productName          String
   brand                String?
   category             String?
@@ -1483,23 +1480,23 @@ model CommissionTariff {
   // tier2AltLimit-tier2UstLimit → tier2CommissionPct
   // tier3AltLimit-tier3UstLimit → tier3CommissionPct
   // ≤ tier4UstLimit → tier4CommissionPct
-  tier1AltLimit       Decimal? @db.Decimal(12, 2)
-  tier1CommissionPct  Decimal? @db.Decimal(5, 2)
-  tier2UstLimit       Decimal? @db.Decimal(12, 2)
-  tier2AltLimit       Decimal? @db.Decimal(12, 2)
-  tier2CommissionPct  Decimal? @db.Decimal(5, 2)
-  tier3UstLimit       Decimal? @db.Decimal(12, 2)
-  tier3AltLimit       Decimal? @db.Decimal(12, 2)
-  tier3CommissionPct  Decimal? @db.Decimal(5, 2)
-  tier4UstLimit       Decimal? @db.Decimal(12, 2)
-  tier4CommissionPct  Decimal? @db.Decimal(5, 2)
+  tier1AltLimit      Decimal? @db.Decimal(12, 2)
+  tier1CommissionPct Decimal? @db.Decimal(5, 2)
+  tier2UstLimit      Decimal? @db.Decimal(12, 2)
+  tier2AltLimit      Decimal? @db.Decimal(12, 2)
+  tier2CommissionPct Decimal? @db.Decimal(5, 2)
+  tier3UstLimit      Decimal? @db.Decimal(12, 2)
+  tier3AltLimit      Decimal? @db.Decimal(12, 2)
+  tier3CommissionPct Decimal? @db.Decimal(5, 2)
+  tier4UstLimit      Decimal? @db.Decimal(12, 2)
+  tier4CommissionPct Decimal? @db.Decimal(5, 2)
 
   // ERP eşleştirmesi (TrendyolListing veya ProductBarcode üzerinden)
   productId Int?
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   // Kullanıcının seçtiği kademe (Excel export'una yansır)
-  selectedTier  Int?      // 1, 2, 3, 4
+  selectedTier  Int? // 1, 2, 3, 4
   selectedPrice Decimal?  @db.Decimal(12, 2) // Kademede önerilen yeni TSF
   applyToEnd    Boolean   @default(false) // "Tarife Sonuna Kadar Uygula" — default false
   selectedAt    DateTime?
@@ -1526,35 +1523,55 @@ model CommissionTariff {
 // Aynı (brand, period) için birden fazla fatura olabilir — ara kesimler yüzünden.
 
 model PurchaseInvoice {
-  id             Int      @id @default(autoincrement())
-  /** Eczanenin fatura kesim tarihi */
-  invoiceDate    DateTime
-  /** YYYY-MM (örn "2026-01") — gruplama ve filtre için */
-  period         String
-  /** Eczane fatura no (opsiyonel) */
-  invoiceNumber  String?
-  /** Marka — null = "Karışık" (yıl sonu iskonto harici) */
-  brandId        Int?
-  /** Aracı eczane (Counterparty.type = PHARMACY) */
-  counterpartyId Int
-  /** Brüt tutar — eczane bize ne kestiyse (ödenecek) */
-  grossAmount    Decimal  @db.Decimal(14, 2)
-  /** İskonto yüzdesi (0-100). Marka × dönem bazında, manuel girilir. */
-  discountPct    Decimal  @default(0) @db.Decimal(5, 2)
-  /** İskonto tutarı (alacak) — application-side hesaplanır: gross × (%/100) */
-  discountAmount Decimal  @db.Decimal(14, 2)
-  /** İskonto alacağının vade tarihi (yıl sonu/quarter sonu/manuel). Null = vade yok. */
+  id              Int       @id @default(autoincrement())
+  /**
+   * Eczanenin fatura kesim tarihi
+   */
+  invoiceDate     DateTime
+  /**
+   * YYYY-MM (örn "2026-01") — gruplama ve filtre için
+   */
+  period          String
+  /**
+   * Eczane fatura no (opsiyonel)
+   */
+  invoiceNumber   String?
+  /**
+   * Marka — null = "Karışık" (yıl sonu iskonto harici)
+   */
+  brandId         Int?
+  /**
+   * Aracı eczane (Counterparty.type = PHARMACY)
+   */
+  counterpartyId  Int
+  /**
+   * Brüt tutar — eczane bize ne kestiyse (ödenecek)
+   */
+  grossAmount     Decimal   @db.Decimal(14, 2)
+  /**
+   * İskonto yüzdesi (0-100). Marka × dönem bazında, manuel girilir.
+   */
+  discountPct     Decimal   @default(0) @db.Decimal(5, 2)
+  /**
+   * İskonto tutarı (alacak) — application-side hesaplanır: gross × (%/100)
+   */
+  discountAmount  Decimal   @db.Decimal(14, 2)
+  /**
+   * İskonto alacağının vade tarihi (yıl sonu/quarter sonu/manuel). Null = vade yok.
+   */
   discountDueDate DateTime?
-  /** OPEN | PARTIAL | COLLECTED — tahsilat toplamına göre otomatik */
-  discountStatus String   @default("OPEN")
-  note           String?
+  /**
+   * OPEN | PARTIAL | COLLECTED — tahsilat toplamına göre otomatik
+   */
+  discountStatus  String    @default("OPEN")
+  note            String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String?
 
-  brand        Brand?       @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+  brand        Brand?                   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  counterparty Counterparty             @relation(fields: [counterpartyId], references: [id])
   collections  PurchaseInvoicePayment[]
 
   @@index([period])
@@ -1568,16 +1585,24 @@ model PurchaseInvoice {
 /// İskonto alacağı tahsilatı (markadan/eczaneden geri alınan parçalı).
 /// "PurchaseInvoicePayment" tabloyu rename etmeden devam — anlamı tahsilat olarak değişti.
 model PurchaseInvoicePayment {
-  id          Int      @id @default(autoincrement())
-  invoiceId   Int
-  /** Tahsilat tarihi */
-  paymentDate DateTime
-  /** Tahsil edilen tutar (alacaktan düşülür) */
-  amount      Decimal  @db.Decimal(14, 2)
-  /** Bizim karşı kestiğimiz fatura numarası (opsiyonel) */
+  id            Int      @id @default(autoincrement())
+  invoiceId     Int
+  /**
+   * Tahsilat tarihi
+   */
+  paymentDate   DateTime
+  /**
+   * Tahsil edilen tutar (alacaktan düşülür)
+   */
+  amount        Decimal  @db.Decimal(14, 2)
+  /**
+   * Bizim karşı kestiğimiz fatura numarası (opsiyonel)
+   */
   invoiceNumber String?
-  /** Tahsilat notu (örn "havale", "kasa", "mahsup") */
-  note        String?
+  /**
+   * Tahsilat notu (örn "havale", "kasa", "mahsup")
+   */
+  note          String?
 
   createdAt DateTime @default(now())
   createdBy String?
@@ -1595,75 +1620,91 @@ model PurchaseInvoicePayment {
 
 enum ExpenseCategory {
   // Personel
-  SALARY        // Maaş
-  BONUS         // Prim
-  MEAL          // Yemek
-  INSURANCE     // Sigorta / SGK
+  SALARY // Maaş
+  BONUS // Prim
+  MEAL // Yemek
+  INSURANCE // Sigorta / SGK
 
   // İşyeri
-  RENT          // Kira
-  BUILDING_FEE  // Aidat
-  ELECTRICITY   // Elektrik
-  GAS           // Doğalgaz
-  WATER         // Su
-  INTERNET      // İnternet
-  CLEANING      // Temizlik
+  RENT // Kira
+  BUILDING_FEE // Aidat
+  ELECTRICITY // Elektrik
+  GAS // Doğalgaz
+  WATER // Su
+  INTERNET // İnternet
+  CLEANING // Temizlik
 
   // Operasyonel paketleme
-  BOX           // Koli
-  NYLON         // Naylon
-  LABEL         // Etiket
-  TAPE          // Bant
-  OFFICE        // Ofis malzemeleri
+  BOX // Koli
+  NYLON // Naylon
+  LABEL // Etiket
+  TAPE // Bant
+  OFFICE // Ofis malzemeleri
 
   // Yazılım/Servis
-  SOFTWARE      // Yazılım abonelikleri (MS365, Excel, Mail, Shopify, vs)
-  HOSTING       // Sunucu/Hosting
-  DOMAIN        // Alan adı
-  DOPIGO        // Dopigo aboneliği
-  INTEGRATION   // Diğer entegrasyonlar
-  SMS           // SMS gateway
-  CREDIT        // Telefon kontör
+  SOFTWARE // Yazılım abonelikleri (MS365, Excel, Mail, Shopify, vs)
+  HOSTING // Sunucu/Hosting
+  DOMAIN // Alan adı
+  DOPIGO // Dopigo aboneliği
+  INTEGRATION // Diğer entegrasyonlar
+  SMS // SMS gateway
+  CREDIT // Telefon kontör
 
   // Pazarlama
-  ADVERTISING   // Reklam (Meta/Google Ads)
-  CONTENT       // İçerik üretici / Influencer
+  ADVERTISING // Reklam (Meta/Google Ads)
+  CONTENT // İçerik üretici / Influencer
 
   // Mali
-  ACCOUNTING    // Muhasebe
-  TAX           // Vergi (KDV/gelir)
-  BANK_FEE      // Banka komisyon / havale
+  ACCOUNTING // Muhasebe
+  TAX // Vergi (KDV/gelir)
+  BANK_FEE // Banka komisyon / havale
 
-  OTHER         // Diğer (customCategory ile detay)
+  OTHER // Diğer (customCategory ile detay)
 }
 
 enum ExpensePeriodicity {
-  ONE_TIME      // Tek seferlik
-  MONTHLY       // Aylık tekrarlayan
-  QUARTERLY     // Üç aylık
-  YEARLY        // Yıllık
+  ONE_TIME // Tek seferlik
+  MONTHLY // Aylık tekrarlayan
+  QUARTERLY // Üç aylık
+  YEARLY // Yıllık
 }
 
 model Expense {
   id             Int                @id @default(autoincrement())
-  /** Ödeme/gider tarihi */
+  /**
+   * Ödeme/gider tarihi
+   */
   expenseDate    DateTime
-  /** YYYY-MM — gruplama için */
+  /**
+   * YYYY-MM — gruplama için
+   */
   period         String
   category       ExpenseCategory
-  /** Kategori OTHER ise serbest metin (ya da diğerleri için detay) */
+  /**
+   * Kategori OTHER ise serbest metin (ya da diğerleri için detay)
+   */
   customCategory String?
   amount         Decimal            @db.Decimal(14, 2)
-  /** Tekrarlama: tek seferlik mi sürekli mi (rapor amaçlı tag, otomatik kayıt değil) */
+  /**
+   * Tekrarlama: tek seferlik mi sürekli mi (rapor amaçlı tag, otomatik kayıt değil)
+   */
   periodicity    ExpensePeriodicity @default(ONE_TIME)
-  /** Açıklama / kim için */
+  /**
+   * Açıklama / kim için
+   */
   description    String?
-  /** Vendor (ödeme yapılan firma/kişi) */
+  /**
+   * Vendor (ödeme yapılan firma/kişi)
+   */
   vendor         String?
-  /** Personel ID — sadece SALARY/BONUS/MEAL/INSURANCE kategorilerinde anlamlı */
+  /**
+   * Personel ID — sadece SALARY/BONUS/MEAL/INSURANCE kategorilerinde anlamlı
+   */
   employeeId     Int?
   employee       Employee?          @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  /** Fatura no opsiyonel */
+  /**
+   * Fatura no opsiyonel
+   */
   invoiceNumber  String?
   note           String?
 
@@ -1679,18 +1720,18 @@ model Expense {
 
 /// Personel kaydı — maaş/prim/yemek/sigorta giderleri için referans.
 model Employee {
-  id        Int       @id @default(autoincrement())
-  name      String
-  position  String?   // Pozisyon: depo, satış, muhasebe vs (opsiyonel)
-  isActive  Boolean   @default(true)
-  hiredAt   DateTime?
-  leftAt    DateTime?
-  note      String?
+  id       Int       @id @default(autoincrement())
+  name     String
+  position String? // Pozisyon: depo, satış, muhasebe vs (opsiyonel)
+  isActive Boolean   @default(true)
+  hiredAt  DateTime?
+  leftAt   DateTime?
+  note     String?
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  expenses  Expense[]
+  expenses Expense[]
 
   @@index([isActive])
   @@index([name])
@@ -1702,23 +1743,37 @@ model Employee {
 ///   - Otomatik: ay sonu Dopigo'dan hesaplanıp kaydedilen (May 2026+)
 /// Snapshot varsa gelir/gider sayfası bunu kullanır, yoksa Dopigo'dan canlı hesaplar.
 model MonthlySalesSnapshot {
-  id          Int      @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   year        Int
-  month       Int      // 1-12
-  /** Bu ayın cirosu (satış toplamı) */
-  revenue     Decimal  @db.Decimal(14, 2) @default(0)
-  /** Alış maliyeti (ürün maliyeti toplamı) */
-  cost        Decimal  @db.Decimal(14, 2) @default(0)
-  /** Komisyon */
-  commission  Decimal  @db.Decimal(14, 2) @default(0)
-  /** Kargo */
-  shipping    Decimal  @db.Decimal(14, 2) @default(0)
-  /** Stopaj */
-  withholding Decimal  @db.Decimal(14, 2) @default(0)
-  /** Diğer (platform fee + ceza + diğer kesintiler, mutabakattan) */
-  other       Decimal  @db.Decimal(14, 2) @default(0)
-  /** Manuel mi otomatik (Dopigo'dan) mı kaydedildi */
-  isManual    Boolean  @default(true)
+  month       Int // 1-12
+  /**
+   * Bu ayın cirosu (satış toplamı)
+   */
+  revenue     Decimal @default(0) @db.Decimal(14, 2)
+  /**
+   * Alış maliyeti (ürün maliyeti toplamı)
+   */
+  cost        Decimal @default(0) @db.Decimal(14, 2)
+  /**
+   * Komisyon
+   */
+  commission  Decimal @default(0) @db.Decimal(14, 2)
+  /**
+   * Kargo
+   */
+  shipping    Decimal @default(0) @db.Decimal(14, 2)
+  /**
+   * Stopaj
+   */
+  withholding Decimal @default(0) @db.Decimal(14, 2)
+  /**
+   * Diğer (platform fee + ceza + diğer kesintiler, mutabakattan)
+   */
+  other       Decimal @default(0) @db.Decimal(14, 2)
+  /**
+   * Manuel mi otomatik (Dopigo'dan) mı kaydedildi
+   */
+  isManual    Boolean @default(true)
   note        String?
 
   createdAt DateTime @default(now())
@@ -1748,9 +1803,76 @@ model SalesBonusTier {
 model SalesBonusConfig {
   id           Int      @id @default(1)
   /// Primi hak etmek için gereken min net kâr marjı (% — sadece gösterim, primi sıfırlamaz)
-  minProfitPct Decimal  @db.Decimal(5, 2) @default(25)
+  minProfitPct Decimal  @default(25) @db.Decimal(5, 2)
   /// Ciro kaynağı: "ALL" (tüm pazaryerleri) | "TRENDYOL"
   salesBasis   String   @default("ALL")
   isActive     Boolean  @default(true)
   updatedAt    DateTime @updatedAt
+}
+
+// ---------- Pazar Fiyat Takip (Trendyol scraper worker) ----------
+//
+// Worker (ayrı Coolify uygulaması, Playwright) barkodla Trendyol'da arar,
+// ürün sayfasından BuyBox + ilk 5 satıcı fiyatını okur, buraya yazar.
+// Amaç: bizde açık OLSUN OLMASIN her ürünün piyasa fiyatını görmek →
+// "fiyat yükselt" ve "listele/satın al" fırsat motorlarını beslemek.
+
+/// Bir barkodun Trendyol'daki piyasa fiyatı gözlemi (zaman serisi — geçmiş korunur).
+model MarketPriceSnapshot {
+  id          Int      @id @default(autoincrement())
+  /// Aranan barkod (GTIN)
+  barcode     String
+  /// ERP ürün eşleşmesi. NULL = bizde yok (asıl hedef: eczane/katalog fırsatları)
+  productId   Int?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  /// Şimdilik sadece "Trendyol"; ileride HB/N11 için genelleştirilebilir
+  marketplace String   @default("Trendyol")
+
+  /// Bulunan ürün linki — CACHE. Doluysa worker arama adımını atlar, direkt gider.
+  tyProductUrl String?
+  /// Trendyol ürün id (link cache anahtarı, ör. "-p-356564829")
+  tyContentId  String?
+
+  /// Barkod TY'de bulundu mu
+  found        Boolean  @default(false)
+  /// 1. sıradaki (BuyBox) fiyat (KDV dahil)
+  buyboxPrice  Decimal? @db.Decimal(12, 2)
+  buyboxSeller String?
+  /// Toplam satıcı sayısı
+  sellerCount  Int      @default(0)
+  /// İlk 5 satıcı: [{ seller, price, rating }] (JSON)
+  sellers      Json?
+  /// En düşük satıcı fiyatı (sellers'tan türetilir)
+  lowestPrice  Decimal? @db.Decimal(12, 2)
+
+  scanRunId  Int?
+  scanRun    MarketScanRun? @relation(fields: [scanRunId], references: [id], onDelete: SetNull)
+  observedAt DateTime       @default(now())
+
+  @@index([barcode])
+  @@index([productId])
+  @@index([observedAt])
+  @@index([scanRunId])
+  @@index([marketplace, observedAt])
+}
+
+/// Pazar tarama çalıştırması (audit) — DopigoOrderSyncRun deseniyle aynı.
+model MarketScanRun {
+  id            Int       @id @default(autoincrement())
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  status        String    @default("RUNNING") // RUNNING | SUCCESS | FAILED
+  totalQueued   Int       @default(0)
+  totalScanned  Int       @default(0)
+  totalFound    Int       @default(0)
+  totalNotFound Int       @default(0)
+  errorCount    Int       @default(0)
+  triggeredBy   String? // MANUAL | CRON | INITIAL
+  errorMessage  String?
+  notes         String?
+
+  snapshots MarketPriceSnapshot[]
+
+  @@index([startedAt])
+  @@index([status])
 }

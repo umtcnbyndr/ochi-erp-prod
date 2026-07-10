@@ -18,7 +18,9 @@
     "db:reset": "prisma migrate reset",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "worker": "tsx worker/index.ts",
+    "worker:once": "tsx worker/index.ts --once"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -62,6 +64,7 @@
     "next-auth": "5.0.0-beta.25",
     "next-themes": "^0.4.6",
     "papaparse": "^5.4.1",
+    "playwright": "^1.61.1",
     "prisma": "6.19.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

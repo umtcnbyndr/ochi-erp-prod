@@ -25,6 +25,7 @@ import {
   Archive,
   AlertTriangle,
   Edit3,
+  Radar,
 } from "lucide-react"
 
 export interface NavItem {
@@ -74,6 +75,7 @@ export const navGroups: NavGroup[] = [
       { label: "Dopigo Aktarım", href: "/dopigo-aktar", icon: Download, moduleKey: "dopigo-aktar" },
       { label: "Dopigo Yükleme", href: "/dopigo-yukle", icon: Upload, moduleKey: "dopigo-yukle" },
       { label: "Fiyat Önerileri", href: "/fiyat-onerileri", icon: Sparkles, moduleKey: "fiyat-onerileri" },
+      { label: "Pazar Fiyat Takip", href: "/pazar-takip", icon: Radar, moduleKey: "pazar-takip" },
       { label: "Fiyat Kontrol", href: "/fiyat-kontrol", icon: TrendingUp, moduleKey: "fiyat-kontrol" },
       { label: "Komisyon Tarifeleri", href: "/komisyon-tarifeleri", icon: Percent, moduleKey: "komisyon-tarifeleri" },
       // Kupon Önerileri ve Trendyol Favorilenme geçici olarak gizlendi (2026-07-02) — düzeltilene kadar menüden kaldırıldı, sayfa/servis/veri dokunulmadı
