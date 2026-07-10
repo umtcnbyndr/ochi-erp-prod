@@ -59,6 +59,20 @@ function toDecimal(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * Trendyol export'u artık aynı dosyada 2 ayrı tarife grubu içerebiliyor
+ * ("Tarih aralığı (3 Gün)" / "Tarih aralığı (4 Gün)") — ikisi de AYNI kolon
+ * isimleriyle ("1.KOMİSYON" vb.) yan yana geliyor. SheetJS aynı isimli 2.
+ * kolonu otomatik "_1" ekleyerek ayırıyor (örn. "1.KOMİSYON_1"). Hangi grup
+ * doluysa o kullanılır — hangisinin dolu olduğu satırdan satıra değişebilir,
+ * bu yüzden sabit bir grup seçmek yerine ilk BOŞ OLMAYAN değeri alıyoruz.
+ */
+function firstNonNullDecimal(row: TariffExcelRow, baseKey: string): number | null {
+  const primary = toDecimal(row[baseKey])
+  if (primary != null) return primary
+  return toDecimal(row[`${baseKey}_1`])
+}
+
 export interface ImportTariffInput {
   buffer: ArrayBuffer | Buffer
   filename: string
@@ -186,15 +200,15 @@ export async function importCommissionTariff(
       baseCommissionPrice: toDecimal(row["KOMİSYONA ESAS FİYAT"])?.toFixed(2) ?? null,
       isRecommended: false, // Excel'de bu rozet yok ama UI'da TY Excel'e bakınca eklenebilir
       tier1AltLimit: toDecimal(row["1.Fiyat Alt Limit"])?.toFixed(2) ?? null,
-      tier1CommissionPct: toDecimal(row["1.KOMİSYON"])?.toFixed(2) ?? null,
+      tier1CommissionPct: firstNonNullDecimal(row, "1.KOMİSYON")?.toFixed(2) ?? null,
       tier2UstLimit: toDecimal(row["2.Fiyat Üst Limiti"])?.toFixed(2) ?? null,
       tier2AltLimit: toDecimal(row["2.Fiyat Alt Limit"])?.toFixed(2) ?? null,
-      tier2CommissionPct: toDecimal(row["2.KOMİSYON"])?.toFixed(2) ?? null,
+      tier2CommissionPct: firstNonNullDecimal(row, "2.KOMİSYON")?.toFixed(2) ?? null,
       tier3UstLimit: toDecimal(row["3.Fiyat Üst Limiti"])?.toFixed(2) ?? null,
       tier3AltLimit: toDecimal(row["3.Fiyat Alt Limit"])?.toFixed(2) ?? null,
-      tier3CommissionPct: toDecimal(row["3.KOMİSYON"])?.toFixed(2) ?? null,
+      tier3CommissionPct: firstNonNullDecimal(row, "3.KOMİSYON")?.toFixed(2) ?? null,
       tier4UstLimit: toDecimal(row["4.Fiyat Üst Limiti"])?.toFixed(2) ?? null,
-      tier4CommissionPct: toDecimal(row["4.KOMİSYON"])?.toFixed(2) ?? null,
+      tier4CommissionPct: firstNonNullDecimal(row, "4.KOMİSYON")?.toFixed(2) ?? null,
       productId,
       // Yeni yüklemede seçim hatırlanmaz — sıfırdan başla
       selectedTier: null,
