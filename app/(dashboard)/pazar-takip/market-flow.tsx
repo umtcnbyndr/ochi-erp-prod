@@ -204,7 +204,7 @@ function RaiseTable({ rows, canEdit, onApplied }: { rows: MarketRow[]; canEdit: 
   if (rows.length === 0) return <Empty msg="Fiyat yükseltme/rekabet fırsatı yok." />
   return (
     <TableCard>
-      <TableHeader>
+      <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-background [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
         <TableRow>
           <TableHead>Ürün</TableHead>
           <TableHead className="text-right">Ana Alış</TableHead>
@@ -258,7 +258,7 @@ function ListTable({ rows }: { rows: MarketRow[] }) {
   if (rows.length === 0) return <Empty msg="Listeleme/sipariş fırsatı yok (stok var+listede yok veya katalogda kârlı ürün)." />
   return (
     <TableCard>
-      <TableHeader>
+      <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-background [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
         <TableRow>
           <TableHead>Ürün</TableHead>
           <TableHead>Kaynak</TableHead>
@@ -296,7 +296,7 @@ function AllTable({ rows }: { rows: MarketRow[] }) {
   if (rows.length === 0) return <Empty msg="Henüz taranmış ürün yok — worker turunu tamamlayınca dolacak." />
   return (
     <TableCard>
-      <TableHeader>
+      <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-background [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
         <TableRow>
           <TableHead>Ürün</TableHead>
           <TableHead className="text-right">Ana Alış</TableHead>
@@ -334,7 +334,15 @@ function AllTable({ rows }: { rows: MarketRow[] }) {
 
 function TableCard({ children }: { children: React.ReactNode }) {
   return (
-    <Card><CardContent className="p-0 overflow-x-auto"><Table>{children}</Table></CardContent></Card>
+    <Card>
+      <CardContent className="p-0">
+        <div className="max-h-[calc(100vh-19rem)] overflow-auto rounded-md">
+          <Table className="text-sm [&_td]:py-1.5 [&_th]:h-9 [&_td]:border-r [&_th]:border-r [&_td:last-child]:border-r-0 [&_th:last-child]:border-r-0">
+            {children}
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
