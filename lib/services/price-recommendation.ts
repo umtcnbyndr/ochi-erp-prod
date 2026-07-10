@@ -7,6 +7,7 @@
  */
 
 import { prisma } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 import {
   recommendPrice,
   type RecommendationResult,
@@ -427,71 +428,82 @@ export async function applyRecommendations(
   return { applied, skipped }
 }
 
+/** getLatestBuyboxMap DB satırının ham tipi (Decimal alanları number/string olabilir). */
+export interface RawBuyboxRow {
+  productId: number
+  buyboxPrice: number
+  buyboxOrder: number | null
+  hasMultipleSeller: boolean
+  ourPrice: number | null
+  observedAt: Date
+}
+
+export interface LatestBuyboxEntry {
+  productId: number
+  buyboxPrice: number
+  buyboxOrder: number | null
+  hasMultipleSeller: boolean
+  ourPrice: number | null
+  observedAt: Date
+}
+
 /**
- * Bir liste urun icin en yeni BuyBox gozlemini doner (Map).
- * `DISTINCT ON (productId)` Postgres-only — Prisma'da raw query ile yaparsak
- * en performansli olur. Simdilik findMany+groupBy kombinasyonu yeterli.
+ * Ham gözlem satırlarından ürün başına EN YENİ (max observedAt) kaydı seçer +
+ * Decimal alanları number'a çevirir. Saf fonksiyon — DB'siz test edilebilir.
+ *
+ * DB tarafında zaten DISTINCT ON ile tek satır dönüyor; bu fonksiyon giriş
+ * sırasından bağımsız çalışır (max observedAt), böylece SQL sıralaması değişse
+ * bile "en yeni kazanır" garantisi korunur.
  */
-async function getLatestBuyboxMap(
-  productIds: number[],
-): Promise<
-  Map<
-    number,
-    {
-      productId: number
-      buyboxPrice: number
-      buyboxOrder: number | null
-      hasMultipleSeller: boolean
-      ourPrice: number | null
-      observedAt: Date
-    }
-  >
-> {
-  if (productIds.length === 0) return new Map()
-
-  // Son 30 gun icindeki BuyBox observation'lari, productId basina en yenisi
-  const observations = await prisma.competitorPriceObservation.findMany({
-    where: {
-      productId: { in: productIds },
-      source: "TRENDYOL_BUYBOX",
-      observedAt: {
-        gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-      },
-    },
-    orderBy: { observedAt: "desc" },
-    select: {
-      productId: true,
-      buyboxPrice: true,
-      buyboxOrder: true,
-      hasMultipleSeller: true,
-      ourPrice: true,
-      observedAt: true,
-    },
-  })
-
-  const map = new Map<
-    number,
-    {
-      productId: number
-      buyboxPrice: number
-      buyboxOrder: number | null
-      hasMultipleSeller: boolean
-      ourPrice: number | null
-      observedAt: Date
-    }
-  >()
-  for (const obs of observations) {
-    if (map.has(obs.productId)) continue // ilk = en yeni (orderBy desc)
-    map.set(obs.productId, {
-      productId: obs.productId,
-      buyboxPrice: Number(obs.buyboxPrice),
-      buyboxOrder: obs.buyboxOrder,
-      hasMultipleSeller: obs.hasMultipleSeller,
-      ourPrice: obs.ourPrice ? Number(obs.ourPrice) : null,
-      observedAt: obs.observedAt,
+export function buildLatestBuyboxMap(
+  rows: RawBuyboxRow[],
+): Map<number, LatestBuyboxEntry> {
+  const map = new Map<number, LatestBuyboxEntry>()
+  for (const r of rows) {
+    const existing = map.get(r.productId)
+    if (existing && existing.observedAt >= r.observedAt) continue
+    map.set(r.productId, {
+      productId: r.productId,
+      buyboxPrice: Number(r.buyboxPrice),
+      buyboxOrder: r.buyboxOrder,
+      hasMultipleSeller: r.hasMultipleSeller,
+      ourPrice: r.ourPrice != null ? Number(r.ourPrice) : null,
+      observedAt: r.observedAt,
     })
   }
   return map
+}
+
+/**
+ * Bir liste urun icin en yeni BuyBox gozlemini doner (Map).
+ * `DISTINCT ON (productId)` Postgres-only — ürün başına yalnızca en yeni satır
+ * çekilir (eskiden son 30 günün TÜM satırları belleğe gelip JS'te eleniyordu;
+ * scraper devreye girince bu on binlerce satıra çıkıp sayfayı yavaşlatırdı).
+ */
+async function getLatestBuyboxMap(
+  productIds: number[],
+): Promise<Map<number, LatestBuyboxEntry>> {
+  if (productIds.length === 0) return new Map()
+
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+
+  // Ürün başına tek satır (en yeni). DISTINCT ON + ORDER BY (productId, observedAt DESC).
+  const rows = await prisma.$queryRaw<RawBuyboxRow[]>(Prisma.sql`
+    SELECT DISTINCT ON ("productId")
+      "productId",
+      "buyboxPrice",
+      "buyboxOrder",
+      "hasMultipleSeller",
+      "ourPrice",
+      "observedAt"
+    FROM "CompetitorPriceObservation"
+    WHERE "productId" IN (${Prisma.join(productIds)})
+      AND "source" = 'TRENDYOL_BUYBOX'
+      AND "observedAt" >= ${since}
+    ORDER BY "productId", "observedAt" DESC
+  `)
+
+  return buildLatestBuyboxMap(rows)
 }
 
 /** Bir urun icin en yeni Trendyol BuyBox gozlemini doner (UI badge'i icin) */
