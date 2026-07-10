@@ -55,6 +55,16 @@ describe("productMatches — YANLIŞ ürün koruması (Kural 6)", () => {
     ).toBe(false)
   })
 
+  it("aynı ürün farklı BOYUT ise reddeder (340g vs 200g → yanlış fiyat önlenir)", () => {
+    const cerave = { name: "CeraVe Nemlendirici Krem 340 g", brand: "CeraVe" }
+    expect(
+      productMatches(cerave, { name: "CeraVe Nemlendirici Krem 340 g", brand: "CeraVe", url: "/dogru" }),
+    ).toBe(true)
+    expect(
+      productMatches(cerave, { name: "CeraVe Nemlendirici Krem 200 g", brand: "CeraVe", url: "/yanlis-boyut" }),
+    ).toBe(false)
+  })
+
   it("pickBestMatch en yüksek örtüşen adayı seçer, eşleşme yoksa null", () => {
     const cands = [
       { name: "Kolajen Ve Prebiyotik Tablet", brand: "icollagen", url: "/a" },

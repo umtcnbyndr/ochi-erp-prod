@@ -16,12 +16,14 @@ import {
   extractContentId,
   extractMarketData,
   productMatches,
+  tokenize,
+  significantNumbers,
   type CandidateProduct,
   type ScrapedSeller,
 } from "./match"
 
 const BASE = "https://www.trendyol.com"
-const NAV_TIMEOUT = 25_000
+const NAV_TIMEOUT = 35_000
 
 export interface ScrapeInput {
   barcode: string
@@ -117,7 +119,17 @@ async function scrapeProductPage(
   url: string,
   erp: { name: string; brand?: string | null },
 ): Promise<ScrapeOutput | null> {
-  await page.goto(absoluteUrl(url), { waitUntil: "domcontentloaded" })
+  let navOk = false
+  for (let attempt = 0; attempt < 2 && !navOk; attempt++) {
+    try {
+      await page.goto(absoluteUrl(url), { waitUntil: "domcontentloaded" })
+      navOk = true
+    } catch {
+      // Geçici zaman aşımı → 1 kez daha dene, yine olmazsa sessizce null
+      if (attempt === 1) return null
+      await page.waitForTimeout(1500)
+    }
+  }
   const sp = await readProductSharedProps(page)
   const data = extractMarketData(sp)
   if (!data || !data.name) return null
@@ -159,17 +171,43 @@ export async function scrapeBarcode(
   }
 
   // 2) Barkodla ara
-  await page.goto(`${BASE}/sr?q=${encodeURIComponent(input.barcode)}`, {
-    waitUntil: "domcontentloaded",
-  })
-  const candidates = await readSearchCandidates(page)
-  if (candidates.length === 0) return EMPTY("arama sonucu yok")
+  let match = await searchAndMatch(page, input.barcode, erp)
 
-  const match = pickBestMatch(erp, candidates)
-  if (!match) return EMPTY("eşleşen ürün yok (barkod TY'de bulunamadı)")
+  // 3) Barkod bulamazsa AD ile ara (Trendyol barkod araması güvenilmez —
+  //    ürün TY'de olsa bile barkodla çıkmayabiliyor; ad araması çok daha isabetli).
+  if (!match && input.erpName.trim()) {
+    match = await searchAndMatch(page, buildNameQuery(input.erpName), erp)
+  }
 
-  // 3) Eşleşen ürün sayfasını oku
+  if (!match) return EMPTY("eşleşen ürün yok (barkod + ad aramasında)")
+
+  // 4) Eşleşen ürün sayfasını oku
   const res = await scrapeProductPage(page, match.url, erp)
   if (!res) return EMPTY("ürün sayfası doğrulanamadı")
   return res
+}
+
+/** Bir arama sorgusu çalıştır + ERP ile eşleşen adayı döner (yoksa null). */
+async function searchAndMatch(
+  page: Page,
+  query: string,
+  erp: { name: string; brand?: string | null },
+): Promise<CandidateProduct | null> {
+  await page.goto(`${BASE}/sr?q=${encodeURIComponent(query)}`, {
+    waitUntil: "domcontentloaded",
+  })
+  const candidates = await readSearchCandidates(page)
+  if (candidates.length === 0) return null
+  return pickBestMatch(erp, candidates)
+}
+
+/**
+ * Ad sorgusu — ürün adını arama için sadeleştirir.
+ * Marka + anlamlı ad token'ları + boyut sayısı (varsa) → makul bir arama metni.
+ * Çok uzun/gürültülü adları kısaltır (Trendyol arama isabetini artırır).
+ */
+export function buildNameQuery(name: string): string {
+  const tokens = tokenize(name).slice(0, 6)
+  const size = significantNumbers(name)[0]
+  return size ? `${tokens.join(" ")} ${size}` : tokens.join(" ")
 }

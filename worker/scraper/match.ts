@@ -35,6 +35,16 @@ export function tokenize(s: string): string[] {
     .filter((t) => t.length >= 3 && !/^\d+$/.test(t) && !UNIT_STOPWORDS.has(t))
 }
 
+/**
+ * Anlamlı sayılar (boyut/hacim): 2+ haneli sayılar (340, 200, 50, 15, 100...).
+ * Ad araması yanlış BOYUTU eşleştirmesin diye (340g vs 200g → farklı fiyat).
+ * Tek haneli sayılar (adet/versiyon) atlanır — gürültü.
+ */
+export function significantNumbers(s: string): string[] {
+  const matches = normalizeText(s).match(/\d{2,}/g)
+  return matches ? Array.from(new Set(matches)) : []
+}
+
 export interface ErpProductRef {
   name: string
   brand?: string | null
@@ -68,7 +78,19 @@ export function productMatches(erp: ErpProductRef, cand: CandidateProduct): bool
   const nameTokens = tokenize(erp.name)
   if (nameTokens.length === 0) return false
   const hits = nameTokens.filter((t) => candTokens.has(t)).length
-  return hits / nameTokens.length >= 0.4
+  if (hits / nameTokens.length < 0.4) return false
+
+  // 3) Boyut/hacim kontrolü — yanlış boyutu eşleştirme (340g vs 200g → farklı fiyat).
+  // ERP ve adayın İKİSİNDE de anlamlı sayı varsa, en az biri ortak olmalı.
+  // Birinde yoksa (ör. kofre/set) bu kontrol atlanır, ad örtüşmesine güvenilir.
+  const erpNums = significantNumbers(erp.name)
+  const candNums = significantNumbers(`${cand.name ?? ""}`)
+  if (erpNums.length > 0 && candNums.length > 0) {
+    const sizeMatch = erpNums.some((n) => candNums.includes(n))
+    if (!sizeMatch) return false
+  }
+
+  return true
 }
 
 /**
