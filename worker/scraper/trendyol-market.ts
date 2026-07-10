@@ -72,7 +72,19 @@ export async function newScrapePage(browser: Browser): Promise<Page> {
     locale: "tr-TR",
     timezoneId: "Europe/Istanbul",
     viewport: { width: 1366, height: 900 },
+    extraHTTPHeaders: { "Accept-Language": "tr-TR,tr;q=0.9" },
   })
+  // Türk vitrinini zorla — sunucu IP'si yurtdışıysa Trendyol .de/uluslararası
+  // siteye (EUR) yönlendiriyor. Bu çerezler TR vitrinini (TL) pinlemeye çalışır.
+  await context.addCookies(
+    [
+      { name: "countryCode", value: "TR" },
+      { name: "storefrontId", value: "1" },
+      { name: "language", value: "tr" },
+      { name: "LanguageCode", value: "tr" },
+      { name: "INT_SF", value: "sf=1&lng=tr" },
+    ].map((c) => ({ ...c, domain: ".trendyol.com", path: "/" })),
+  )
   const page = await context.newPage()
   page.setDefaultNavigationTimeout(NAV_TIMEOUT)
   return page
@@ -196,6 +208,9 @@ async function searchAndMatch(
   await page.goto(`${BASE}/sr?q=${encodeURIComponent(query)}`, {
     waitUntil: "domcontentloaded",
   })
+  if (process.env.SCAN_DEBUG === "1") {
+    console.log(`[geo] arama URL → ${page.url()}`)
+  }
   const candidates = await readSearchCandidates(page)
   if (candidates.length === 0) return null
   return pickBestMatch(erp, candidates)
