@@ -207,7 +207,10 @@ function RaiseTable({ rows, canEdit, onApplied }: { rows: MarketRow[]; canEdit: 
       <TableHeader>
         <TableRow>
           <TableHead>Ürün</TableHead>
-          <TableHead className="text-right">Maliyet</TableHead>
+          <TableHead className="text-right">Ana Alış</TableHead>
+          <TableHead className="text-right">Ana Stok</TableHead>
+          <TableHead className="text-right">Cadde Alış</TableHead>
+          <TableHead className="text-right">Cadde Stok</TableHead>
           <TableHead className="text-right">Bizim Fiyat</TableHead>
           <TableHead className="text-right">BuyBox</TableHead>
           <TableHead className="text-right">Rakip (en düşük)</TableHead>
@@ -223,7 +226,10 @@ function RaiseTable({ rows, canEdit, onApplied }: { rows: MarketRow[]; canEdit: 
           return (
             <TableRow key={r.productId}>
               <TableCell><ProductCell r={r} /></TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{tl(r.unitCost)}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs">{tl(r.mainPurchasePrice)}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs">{r.mainStock}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs">{tl(r.streetPurchasePrice)}</TableCell>
+              <TableCell className="text-right tabular-nums text-xs">{r.streetStock}</TableCell>
               <TableCell className="text-right tabular-nums">{tl(r.ourPrice)}{r.ownsBuybox && <span className="ml-1 text-emerald-600 text-xs">★</span>}</TableCell>
               <TableCell className="text-right tabular-nums">{tl(r.buyboxPrice)}</TableCell>
               <TableCell className="text-right tabular-nums text-xs">{tl(secondSeller)}</TableCell>
@@ -256,8 +262,11 @@ function ListTable({ rows }: { rows: MarketRow[] }) {
         <TableRow>
           <TableHead>Ürün</TableHead>
           <TableHead>Kaynak</TableHead>
-          <TableHead className="text-right">Ana / Cadde Stok</TableHead>
-          <TableHead className="text-right">Maliyet</TableHead>
+          <TableHead className="text-right">Ana Alış</TableHead>
+          <TableHead className="text-right">Ana Stok</TableHead>
+          <TableHead className="text-right">Cadde Alış</TableHead>
+          <TableHead className="text-right">Cadde Stok</TableHead>
+          <TableHead className="text-right">Kullanılan Maliyet</TableHead>
           <TableHead className="text-right">Piyasa (BuyBox)</TableHead>
           <TableHead className="text-right">Marj</TableHead>
           <TableHead>Analiz</TableHead>
@@ -268,7 +277,10 @@ function ListTable({ rows }: { rows: MarketRow[] }) {
           <TableRow key={r.productId}>
             <TableCell><ProductCell r={r} /></TableCell>
             <TableCell className="text-xs">{r.costSource === "CATALOG" ? "Katalog" : r.costSource === "STREET" ? "Cadde" : "Ana"}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{r.mainStock} / {r.streetStock}</TableCell>
+            <TableCell className="text-right tabular-nums text-xs">{tl(r.mainPurchasePrice)}</TableCell>
+            <TableCell className="text-right tabular-nums text-xs">{r.mainStock}</TableCell>
+            <TableCell className="text-right tabular-nums text-xs">{tl(r.streetPurchasePrice)}</TableCell>
+            <TableCell className="text-right tabular-nums text-xs">{r.streetStock}</TableCell>
             <TableCell className="text-right tabular-nums text-xs">{tl(r.unitCost)}</TableCell>
             <TableCell className="text-right tabular-nums">{tl(r.buyboxPrice)}</TableCell>
             <TableCell className="text-right tabular-nums">{r.opportunity.marginAtMarket != null ? `%${r.opportunity.marginAtMarket}` : "—"}</TableCell>
