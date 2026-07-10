@@ -4,6 +4,33 @@
 
 ---
 
+## 🧭 ŞU AN NEREDEYİZ (2026-07-10)
+
+> **Her oturum başı önce BURAYI oku (5 sn).** İş bitince BURAYI güncelle (CLAUDE.md Kural 6). Tarih tarih detay aşağıda.
+
+**Son durum:** Production'da canlı (14 marka / 637 ürün). Son commit 2026-07-10, proje aktif.
+
+**2026-07-02 denetiminden bu yana KAPATILAN açıklar (git log doğrulaması):**
+- ✅ F4/F5 — çoklu paket + marka-filtreli KPI'da gider hesabı düzeldi
+- ✅ F6 — stok yazımı race condition (`SELECT FOR UPDATE`) kapandı
+- ✅ F10 — Gelir/Gider aylık rapor `buildPnlCTE` ile hizalandı
+- ✅ G1 — CI eklendi (GitHub Actions: typecheck + lint + test)
+- ✅ P1/P3 (kısmen) — sku/supplierSku index + cron'da eşleşmişleri atlama
+- ✅ barkod-eslestirme orphan + komisyon çift tarife kolonu fix
+
+**HÂLÂ AÇIK (öncelik sırası):**
+- ⚠️ **Test kapsamı düşük** — 44 servisin 3'ünde test var; para-kritik yollar korumasız. Bundan sonra **Kural 6:** para-kritik koda dokunmadan önce test yaz.
+- F3 — tam-iade dışlama marketplace-scope'suz
+- Unmatched → ürün oluşturma akışı (593 eşleşmemiş kalem, çoğu katalogda yok) — FAZ 3.1
+- Çift Trendyol listing (7 ürün; Vichy net hata, gerisi TY teyidi)
+- Cron Coolify Scheduled Task kurulumu (endpoint hazır, otomatik tetik yok)
+- Güvenlik O1-O5 (AUTH_SECRET ayır, güvenlik header, login rate-limit IP)
+- ⚠️ **docs/ bayat** (SYSTEM/ENTITY_MAP/MODULE_GRAPH — 2026-05-01'den kalma, 50+ commit geçti; güncellenene kadar güvenme)
+
+**Sıradaki fikir kuyruğu:** aşağıda "🎯 Sıradaki Plan" (otomatik uyarı maili, satın alma planlama modülü, vb.)
+
+---
+
 ## 📌 GÜNCEL DURUM (2026-07-02) — Derin mimari denetim + veri tutarlılık düzeltmeleri
 
 **4 paralel salt-okunur ajan (dosya/doküman/kural, servis/veri-akışı, performans, entegrasyon/otonom-zemin) + prod SQL sondajlarıyla sistem baştan sona tarandı.** Çıktı: Sonnet 5 için "OCHI-ERP MASTER PROMPT" (bulgu kodları F1-F16 veri tutarlılığı, P1-P8 performans, G1-G10 doküman/gate, U1-U4 UI bugları, FAZ 0-7 planı — detay: memory `veri-tutarlilik-denetimi-2026-07`).

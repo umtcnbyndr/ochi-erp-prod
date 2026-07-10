@@ -189,6 +189,16 @@ Uygun anda kısa uyar: "Bu rutin iş, `/model sonnet` mantıklı" / "Bu Opus kon
 2. Onay al → çalıştır (tek satırlık bariz düzeltmelerde onay gerekmez, sonucu raporla)
 3. DROP/TRUNCATE/migration SQL: sadece açık talep üzerine; `User` + `_prisma_migrations` tablolarına dokunma
 
+### 6. Değişiklik Güvenliği (Regresyon Önleme)
+Para/stok/mutabakat/eşleştirme kodu CANLI ve para-kritik. Aynı yerlerin tekrar bozulmasını önlemek için:
+- **Önce test, sonra değişiklik.** Para-kritik mantığı (kâr/komisyon, stok yazımı, dopigo/barkod eşleştirme) değiştirmeden önce mevcut doğru davranışı kilitleyen bir test yaz (vitest). Test yeşilken değiştir.
+- **Kanıtsız "bitti" yok.** Değişiklikten sonra ilgili testi çalıştır, çıktıyı göster. Küçük dilim → test → commit.
+- **Kök neden, yama değil.** Git log'da aynı yer daha önce düzeltilmişse yüzeysel yama yapma; mantığı test edilebilir saf fonksiyona izole et.
+- **Şişkin dosyaya mantık gömme.** 800+ satır `*-flow.tsx`'e yeni hesap ekleme; hesabı `lib/pricing` veya `lib/services`'te saf fonksiyona koy, ekran onu çağırsın.
+- **Şüphede dur ve sor.** Veri kaybı / yanlış hesap riski → ilerleme, sor.
+
+Kural 1 (önce tasarım) ve Kural 5 (prod yazma) ile uyumlu; onları tamamlar.
+
 ## Sistem Aktif Durumu
 
 - Dev server: `pnpm dev` (port 3000)
@@ -236,4 +246,4 @@ Komisyon Tarifeleri artık sistemin geri kalanına bağlı. Tüm hesaplamalar **
 The user's email address is umtcnbyndr@gmail.com.
 
 ## currentDate
-Today's date is 2026-04-30.
+Today's date is 2026-07-10.
