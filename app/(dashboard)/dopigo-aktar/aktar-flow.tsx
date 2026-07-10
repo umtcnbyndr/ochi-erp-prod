@@ -485,7 +485,7 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
                     const checked = selectedIds.has(row.productId)
                     return (
                       <TableRow
-                        key={row.productId}
+                        key={`${row.productId}-${row.listingBarcode ?? row.barcode ?? ""}`}
                         className={checked ? "bg-primary/5" : ""}
                       >
                         <TableCell>
@@ -502,7 +502,15 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
                             {row.name}
                           </div>
                           <div className="text-xs text-muted-foreground tabular-nums">
-                            {row.barcode}
+                            {row.listingBarcode ?? row.barcode}
+                            {row.listingSku ? (
+                              <span className="ml-1 opacity-70">· {row.listingSku}</span>
+                            ) : null}
+                            {row.totalListingCount && row.totalListingCount > 1 ? (
+                              <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[10px] font-medium not-italic">
+                                {row.totalListingCount} TY listing
+                              </span>
+                            ) : null}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm whitespace-nowrap">
