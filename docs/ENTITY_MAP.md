@@ -2,58 +2,90 @@
 
 > Hangi tablo neyle bağlı, ne işe yarıyor, silindiğinde ne oluyor.
 > Yeni bir özellik eklerken **önce buraya bak.**
+> Son güncelleme: 2026-07-10 · 57 model (`prisma/schema.prisma`)
 
 ---
 
 ## Tabloların Sınıflandırması
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         AUTH KATMANI                                │
-│  User · UserPermission · Account · Session · VerificationToken      │
-├─────────────────────────────────────────────────────────────────────┤
-│                       MASTER DATA                                   │
-│  Pharmacy · Brand · Category · Subcategory · Marketplace · Counter  │
-├─────────────────────────────────────────────────────────────────────┤
-│                       ÜRÜN KATMANI                                  │
-│  Product · ProductBarcode · SetComponent · ProductMergeHistory      │
-├─────────────────────────────────────────────────────────────────────┤
-│                       FİYAT KATMANI                                 │
-│  ProductMarketplacePrice · PriceHistory · BrandPriceList(+Upload)   │
-├─────────────────────────────────────────────────────────────────────┤
-│                       HAREKET KATMANI (LEDGER)                      │
-│  StockMovement · EntrySession · Exchange · PharmacyDataUpload       │
-├─────────────────────────────────────────────────────────────────────┤
-│                       SİPARİŞ + KAMPANYA                            │
-│  PurchaseOrder · PurchaseOrderItem                                  │
-│  Campaign · CampaignProduct · CampaignSale                          │
-├─────────────────────────────────────────────────────────────────────┤
-│                       PAZARYERİ ENTEGRASYONU                        │
-│  TrendyolConfig · TrendyolListing · TrendyolSyncRun                 │
-│  CompetitorPriceObservation · TrendyolFavoriteSnapshot              │
-│  FavoriteUploadRun · DopigoListing · DopigoSyncRun · DopigoExportLog│
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ AUTH / YETKİ                                                             │
+│  User · UserPermission · UserAllowedBrand · PanelNote                   │
+│  Account · Session · VerificationToken                                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│ MASTER DATA                                                              │
+│  Pharmacy · Brand · Category · Subcategory · Marketplace · Counterparty │
+├─────────────────────────────────────────────────────────────────────────┤
+│ ÜRÜN KATMANI                                                             │
+│  Product · ProductBarcode · SetComponent · ProductMergeHistory          │
+├─────────────────────────────────────────────────────────────────────────┤
+│ FİYAT KATMANI                                                            │
+│  ProductMarketplacePrice · ProductMarketplaceListing                    │
+│  BrandMarketplaceFloor · PriceHistory · BrandPriceList(+Upload)         │
+├─────────────────────────────────────────────────────────────────────────┤
+│ HAREKET KATMANI (LEDGER)                                                 │
+│  StockMovement · EntrySession · Exchange · PharmacyDataUpload           │
+├─────────────────────────────────────────────────────────────────────────┤
+│ SİPARİŞ + KAMPANYA                                                       │
+│  PurchaseOrder · PurchaseOrderItem                                      │
+│  Campaign · CampaignProduct · CampaignSale · CampaignPayment            │
+├─────────────────────────────────────────────────────────────────────────┤
+│ PAZARYERİ ENTEGRASYONU (Trendyol)                                        │
+│  TrendyolConfig · TrendyolListing · TrendyolSyncRun                     │
+│  CompetitorPriceObservation · TrendyolFavoriteSnapshot                  │
+│  FavoriteUploadRun                                                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│ PAZARYERİ ENTEGRASYONU (Dopigo — GET-only, stok hariç yazma yok)         │
+│  DopigoConfig · DopigoOrder · DopigoOrderItem · DopigoOrderSyncRun       │
+│  DopigoListing · DopigoSyncRun                                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│ MUTABAKAT & GİDER                                                        │
+│  TrendyolOrderReconciliation · MarketplaceMonthlyExpense                │
+│  ManualPurchasePrice                                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│ KOMİSYON TARİFESİ                                                        │
+│  CommissionTariffUpload · CommissionTariff                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│ FİNANS (Alış Faturaları / Gider)                                         │
+│  PurchaseInvoice · PurchaseInvoicePayment · Expense · Employee          │
+│  MonthlySalesSnapshot                                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│ PRİM                                                                     │
+│  SalesBonusTier · SalesBonusConfig                                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│ AUDIT                                                                    │
+│  AuditLog                                                                │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 1. AUTH KATMANI
+## 1. AUTH / YETKİ KATMANI
 
 ### `User`
 **Ne:** Sisteme giren kişi.
-**Bağlandığı:** `UserPermission` (1-N), `Account` (1-N), `Session` (1-N)
+**Bağlandığı:** `UserPermission` (1-N), `Account` (1-N), `Session` (1-N), `PanelNote` (1-N), `UserAllowedBrand` (1-N)
 **Kritik alanlar:**
 - `username` — login key (email değil)
 - `passwordHash` — bcrypt
-- `role` — ADMIN | MANAGER | STAFF
+- `role` — ADMIN | MANAGER | STAFF | SALES
 - `pharmacyId` — multi-tenant kökü
+- `themePreference` — light/dark/system
 
-**Cascade:** User silinince Account, Session, UserPermission **silinir** (CASCADE).
+**Cascade:** User silinince Account, Session, UserPermission, PanelNote, UserAllowedBrand **silinir** (CASCADE).
 
 ### `UserPermission`
 **Ne:** Kullanıcı × modül izni (canView, canEdit).
-**Modül key'leri:** `urunler`, `urun-giris`, `urun-cikis`, `kampanyalar`, ...
-**Kullanıldığı yer:** `requirePermission(moduleKey, "view"|"edit")` server action başında.
+**Kullanıldığı yer:** `requirePermission(moduleKey, "view"|"edit")` server action başında + `middleware.ts` merkezi route gate.
+
+### `UserAllowedBrand` ⚠️ YENİ
+**Ne:** SALES rolü marka kısıtı. Kayıt yoksa → tüm markalara erişim (default davranış). Kayıt varsa → sadece o markalarla ilgili veri.
+**Uygulandığı yerler:** siparişler, ürünler, kampanyalar. **Eksik:** raporlar, fiyat-kontrol (aggregate seviyede — backlog).
+**Cascade:** User veya Brand silinince silinir.
+
+### `PanelNote` ⚠️ YENİ
+**Ne:** Panel sayfasındaki kişisel notlar/todo. `pinned` ile üste sabitlenebilir.
 
 ---
 
@@ -61,51 +93,45 @@
 
 ### `Pharmacy`
 **Ne:** Multi-tenant kökü. Şu an tek tenant (id=1).
-**Kullanım:** Tüm ana tabloların `pharmacyId` alanı buraya işaret eder ama enforce edilmez.
 
 ### `Brand` ⚠️ Çok kritik
 **Ne:** Marka — fiyat hesabının kalbinde.
-**Bağlandığı:**
-- → `Product` (1-N) — markanın ürünleri
-- → `BrandPriceList` (1-N) — markadan gelen fiyat listesi
-- → `Campaign` (1-N) — marka bazlı kampanyalar
+**Bağlandığı:** `Product` (1-N), `BrandPriceList` (1-N), `Campaign` (1-N), `BrandMarketplaceFloor` (1-N), `PurchaseInvoice` (1-N), `UserAllowedBrand` (1-N)
 
 **Önemli alanlar:**
 | Alan | Anlam |
 |------|-------|
 | `invoiceDiscount1/2/3` | Fatura altı iskontolar (ek alış indirimi) |
 | `yearEndDiscount1/2/3` | Yıl sonu iskontolar (cirosal anlaşma) |
-| `pharmacyMargin` | Eczane karı (cadde stok → ana stok çevriminde) |
+| `pharmacyMargin` | Eczane karı (cadde stok → ana stok çevriminde **ve** sipariş net alış formülünde) |
 | `pharmacyStockRule` | Eczanede minimum tutulan adet (altındaysa Dopigo'ya göndermez) |
-| `targetProfit` | Marketplace hedef karını override eder (boşsa marketplace'in kendi karı) |
-| `priceUndercutBuffer` | BuyBox altına inerken TL tampon |
-| `priceUndercutBufferPct` | BuyBox altına inerken % tampon (öncelikli) |
+| `pharmacyOpenAmount` | Açılacak max miktar — null/0 = sınırsız (tüm fazla açılır) |
+| `targetProfit` | Marketplace hedef karını override eder |
+| `priceUndercutBuffer(Pct)` | BuyBox altına inerken TL/% tampon (% öncelikli) |
 | `aliases` | Eski isimler (rename'leri excel import'unda yakala) |
 
-**Aktif marka şu an:** Sadece **Skinceuticals**. Diğerleri eklendikçe iskonto/marj tek tek girilecek.
+**Aktif markalar (2026-06-10):** La Roche Posay, Caudalie, Mustela, Vichy, Dermalogica, CeraVe, Skinceuticals, Nuxe, Filorga, Darphin, NeoStrata, Cosmed — 14 marka, 637+ ürün, sırayla ekleniyor (güncel liste `CLAUDE.md`).
 
 ### `Category` + `Subcategory`
 **Ne:** 2 seviyeli ürün taksonomisi.
 **Cascade:** Category silinince Subcategory **silinir**. Subcategory silinmek istense Product bağlıysa engellenir.
-**aliases:** Excel import'unda eski/farklı yazılışları yakalar.
 
 ### `Marketplace`
-**Ne:** Trendyol, Dopigo, Kendi Site, ... Her birinin kendi komisyon/kargo formülü.
-**Önemli alanlar:**
+**Ne:** Trendyol, Dopigo, Hepsiburada, Farmazon, N11, … Her birinin kendi komisyon/kargo formülü.
+**Bağlandığı:** `ProductMarketplacePrice`, `BrandMarketplaceFloor`, `ProductMarketplaceListing`, `DopigoOrder`, `MarketplaceMonthlyExpense` (hepsi 1-N)
+
 | Alan | Anlam |
 |------|-------|
-| `commissionRate` | Pazaryeri komisyonu % |
-| `shippingCost` | Kargo TL (formül paydasında) |
-| `extraCost` | Ambalaj/return işlem ücreti TL |
+| `commissionRate` | Pazaryeri komisyonu % — **fallback**, kademeli tarife varsa o öncelikli |
+| `shippingCost` / `extraCost` | Kargo TL / ambalaj-return TL |
 | `withholdingTax` | Stopaj % |
 | `targetProfit` | Hedef kar % (brand override edebilir) |
-| `defaultUndercutBuffer` | Brand'de yoksa kullanılır (TL) |
-| `defaultUndercutBufferPct` | Brand'de yoksa kullanılır (%) — öncelikli |
-| `minProfitFloor` | BuyBox altına inerken min kar tabanı (% — boşsa targetProfit) |
+| `defaultUndercutBuffer(Pct)` | Brand'de yoksa kullanılır |
+| `minProfitFloor` | BuyBox altına inerken min kar tabanı (boşsa targetProfit) |
 
 ### `Counterparty`
-**Ne:** Takas tarafları (eczane / distribütör / birey).
-**Bağlandığı:** `Exchange` (1-N).
+**Ne:** Takas tarafları (eczane / distribütör / birey) **ve** Alış Faturaları'ndaki aracı eczane.
+**Bağlandığı:** `Exchange` (1-N), `StockMovement` (1-N), `EntrySession` (1-N), `PurchaseInvoice` (1-N)
 
 ---
 
@@ -114,98 +140,86 @@
 ### `Product` ⚠️ EN KRİTİK TABLO
 **Ne:** Sistemin merkez tablosu. Her şey buraya bağlanır.
 
-**Alan grupları:**
-
 | Grup | Alanlar | Anlam |
 |------|---------|-------|
-| Kimlik | `name`, `primaryBarcode`, `supplierBarcode`, `trendyolBarcode`, `dopigoBarcode`, `dopigoSku`, `pharmacyProductCode`, `streetPharmacyCode` | Çoklu kanal kimliği |
-| Sınıflandırma | `brandId`, `categoryId`, `subcategoryId`, `productType` | Hangi marka/kategori/tipte (SINGLE/SET/GIFT) |
-| Ana depo | `mainStock`, `mainPurchasePrice` | Fiziksel stok + weighted avg alış (KDV dahil) |
-| Cadde (eczane) | `streetStock`, `streetPurchasePrice`, `streetPharmacyCode` | Eczane vitrini stoğu + alış (KDV hariç, fatura altı iskontolar dahil) |
+| Kimlik | `name`, `primaryBarcode`, `supplierBarcode`, `trendyolBarcode`, `dopigoBarcode`, `dopigoSku`, `pharmacyProductCode`, `streetPharmacyCode` | Çoklu kanal kimliği (Dopigo SKU + Tedarikçi Barkod artık ana formdan girilir) |
+| Sınıflandırma | `brandId`, `categoryId`, `subcategoryId`, `productType` | SINGLE/SET/GIFT |
+| Ana depo | `mainStock`, `mainPurchasePrice`, `mainPriceUpdatedAt` | Fiziksel stok + weighted avg alış (KDV dahil) |
+| Cadde (eczane) | `streetStock`, `streetPurchasePrice`, `streetPharmacyCode` | Eczane vitrini stoğu + alış (KDV hariç) |
 | Referans | `psf` | Sabit referans fiyat (kampanya + risk hesabı) |
-| Vergi | `vatRate` | %1 / %10 / %20 |
 | Set/Hediye | `setSku`, `setExtraDiscount`, `giftMinSalePrice` | Set ekstra iskonto, hediye min satış |
+| Trendyol talep | `lifetimeDemandScore`, `lifetimeDemandUpdatedAt` | Favorilenme yıllık ağırlıklı ortalama |
 | Takas | `exchangeStock` | Takasta olan miktar |
 | Meta | `manufacturer`, `minStock`, `shelf`, `status`, `nearestExpiration`, `paoMonths` | Ek bilgiler |
-| Audit | `lastBrandInvoiceNumber` | Son alınan fatura no |
 
 **Bağlandığı tüm tablolar (1-N):**
 ```
 Product
-├── ProductBarcode (primary + alternatif barkodlar)
-├── ProductMarketplacePrice (her marketplace için manuel/önerilen fiyat)
-├── PriceHistory (alış/PSF değişiklik audit)
-├── StockMovement (her hareket)
-├── Exchange (takaslar)
-├── SetComponent ("SetProduct" + "ComponentProduct" iki yön)
-├── CompetitorPriceObservation (BuyBox + rakip snapshot)
-├── ProductMergeHistory (birleştirme audit, target=this)
-├── BrandPriceList (markadan gelen fiyat satırları)
-├── PurchaseOrderItem (sipariş kalemleri)
-├── CampaignProduct (kampanya ürünleri)
-├── CampaignSale (kampanyalı satışlar)
-└── TrendyolFavoriteSnapshot (favori/görüntülenme zaman serisi) ⚠️ YENİ
+├── ProductBarcode · ProductMarketplacePrice · ProductMarketplaceListing ⚠️ YENİ
+├── PriceHistory · StockMovement · Exchange
+├── SetComponent ("SetProduct" + "ComponentProduct")
+├── CompetitorPriceObservation · ProductMergeHistory (target)
+├── BrandPriceList · PurchaseOrderItem
+├── CampaignProduct · CampaignSale
+├── TrendyolFavoriteSnapshot · TrendyolListing
+├── DopigoOrderItem ⚠️ YENİ
+└── CommissionTariff ⚠️ YENİ
 ```
 
-**Cascade:** Product silinemez doğrudan — bağlı tablolardaki kayıtlar nedeniyle FK constraint'e takılır. Soft delete için `status=PASSIVE`.
-
-**Index'ler:** brand, category, subcategory, status, primaryBarcode, supplierBarcode, trendyolBarcode, dopigoBarcode, dopigoSku, productType, pharmacyId.
+**Cascade:** Product silinemez doğrudan — bağlı tablolar FK constraint'e takılır. Soft delete için `status=PASSIVE`.
 
 ### `ProductBarcode`
 **Ne:** Bir ürünün primary + N alternatif barkodu.
-**Önemli:**
-- `barcode` global unique
-- `isPrimary` true olan tek bir tane (UI bunu enforce eder)
-- `source` enum: MANUAL | ERP_PRIMARY | TRENDYOL_AUDIT | DOPIGO_AUDIT | IMPORT
-**Cascade:** Product silinince barcode'lar silinir (CASCADE).
+- `barcode` global unique, `isPrimary` true olan tek bir tane
+- `source`: MANUAL | ERP_PRIMARY | TRENDYOL_AUDIT | DOPIGO_AUDIT | IMPORT
+**Cascade:** Product silinince barcode'lar silinir.
 
 ### `SetComponent`
-**Ne:** Set ürün × bileşen ilişkisi (n-n).
-**İki yön:** "SetProduct" (set olan) ve "ComponentProduct" (bileşen olan).
-**Önemli:** Aynı ürün bir set + başka bir setin bileşeni olabilir.
-**Cascade:** Set silinince component bağlantısı silinir (CASCADE).
+**Ne:** Set ürün × bileşen ilişkisi (n-n). "SetProduct" ve "ComponentProduct" iki yön.
+**Cascade:** Set silinince component bağlantısı silinir.
 
 ### `ProductMergeHistory`
 **Ne:** Birden fazla ürünü tek hedef'e birleştirme audit'i.
-**Veri:** `sourceSnapshot` (geri alma için), `mergedBarcodes`, `stockTransfer`.
-**Status:** ACTIVE | REVERTED.
-**Geri alma:** `revertMerge()` ile snapshot'tan kaynak ürün geri yaratılır.
+**Veri:** `sourceSnapshot` (geri alma için), `mergedBarcodes`, `stockTransfer`. Status: ACTIVE | REVERTED.
+**Not:** Merge zinciri SET/GIFT birleştiremez; `ProductMarketplaceListing` + `DopigoOrderItem` eşleşmeleri hedefe taşınır; `revertMerge()` eczane/Dopigo kimlik alanlarını geri yükler.
 
 ---
 
 ## 4. FİYAT KATMANI
 
-### `ProductMarketplacePrice` ⚠️ Fiyat motorunun çıktısı
+### `ProductMarketplacePrice`
 **Ne:** `(productId, marketplaceId)` × kombinasyonu — her ürün × her marketplace için ayrı fiyat.
-
-**Alanlar:**
 | Alan | Anlam |
 |------|-------|
 | `manualOverride` | Kullanıcı sabitledi — hiçbir şey override etmez |
-| `recommendedPrice` | BuyBox/öneri motoru sonucu |
-| `recommendationBasis` | Hangi mantıkla önerildi (NO_COMPETITION/COMPETITOR_HIGHER/...) |
-| `recommendedAt` | Öneri ne zaman hesaplandı |
+| `recommendedPrice` / `recommendationBasis` / `recommendedAt` | BuyBox/öneri motoru sonucu |
 
-**Kritik kural:** Dopigo Aktarım'da öncelik sırası:
-```
-manualOverride > recommendedPrice > calculateSalePrice(formula)
-                                  × OOS multiplier (1.5) eğer stok yok
-                                  CAMPAIGN bypass eğer aktif kampanya
-```
+**Kritik kural (öncelik):** `manualOverride > recommendedPrice > calculateSalePrice(formula, kademeli komisyon) × OOS(1.5) > BrandMarketplaceFloor`
+**Cascade:** Product veya Marketplace silinince silinir.
 
-**Cascade:** Product veya Marketplace silinince silinir (CASCADE).
+### `ProductMarketplaceListing` ⚠️ KRİTİK — 2026-07 eklendi
+**Ne:** Aynı ürünün bir marketplace'teki **çoklu listing'i**. Senaryo: Mustela aynı 50ml kremi TY'de 2 farklı barkodla listelemiş (biri eski/az yorumlu, biri yeni). Stok ve fiyat ortak (`Product`/`ProductMarketplacePrice`); listing yalnız Dopigo Excel export'ta multi-row üretmek + BuyBox'ı ayrı çekmek için.
+
+| Alan | Anlam |
+|------|-------|
+| `barcode` / `sku` / `supplierSku` | Marketplace kimliği (Dopigo Excel kolonlarına direkt karşılık gelir) |
+| `isPrimary` | Birden fazla varsa default/anchor |
+| `isActive` | false → Excel'e gitmez, silinmez (geçmiş kayıt) |
+| `shareStock` | true (default): tam stok her listing'e; false: sadece primary tam stok alır |
+
+**Kritik davranış:** Bir ürünün TÜM bilinen barkodları (primaryBarcode + ProductBarcode kayıtları) Trendyol/Dopigo'da AYRI kayıtlarla eşleşebilir — barkod eşleştirme motoru (`lib/services/barcode-match.ts`) artık **tüm** eşleşen kayıtları işaretler (2026-07-06 fix; eskiden ilk eşleşmede duruyordu, 2. kayıt yanlışlıkla "orphan" görünüyordu).
+**Unique:** `(productId, marketplaceId, barcode)` — barcode null olabilir.
+**Cascade:** Product veya Marketplace silinince silinir.
+
+### `BrandMarketplaceFloor` ⚠️ YENİ
+**Ne:** Trendyol-relative fiyat tabanı. Bir markanın bir marketplace'teki fiyatı, TY fiyatının `multiplier`'ı altına inmez (örn. 0.9375 → HB fiyatı en az TY×0.9375). Trendyol için kayıt tutulmaz (kendi referans); kayıt yoksa floor uygulanmaz.
+**Kullanım yeri:** `dopigo-sync.ts` (Dopigo Excel export).
 
 ### `PriceHistory`
-**Ne:** Fiyat değişikliği ledger.
-**Tipler:** `MAIN_PURCHASE` | `PSF` | `STREET_PURCHASE`
-**Trigger:** Her alış değiştiğinde (ürün giriş, weighted avg sonrası), her PSF değiştiğinde.
-**Kullanım:** Ürün detay sayfasında "Fiyat geçmişi" sekmesi.
+**Ne:** Fiyat değişikliği ledger. Tipler: `MAIN_PURCHASE` | `PSF` | `STREET_PURCHASE` | `SALE_CALCULATED`.
 
 ### `BrandPriceList` + `BrandPriceListUpload`
-**Ne:** Markadan gelen fiyat listesi (Excel) snapshot'ı.
-**Amaç:** Sipariş ekranında "marka şu an kaça satıyor" referansı.
-**Match:** Barkod ile Product'a bağlanır; eşleşmeyenler de saklanır.
-**Aliases mantığı:** Marka adı eski yazılım farkı varsa `Brand.aliases` ile yakalanır.
+**Ne:** Markadan gelen fiyat listesi (Excel) snapshot'ı — sipariş ekranında referans.
 
 ---
 
@@ -214,239 +228,276 @@ manualOverride > recommendedPrice > calculateSalePrice(formula)
 ### `StockMovement` ⚠️ Tek doğru kaynak
 **Ne:** Her stok değişikliği burada (immutable ledger).
 
-**Tipler (`MovementType`):**
 | Tip | Etki |
 |-----|------|
-| `IN` | mainStock + (alış girişi) |
-| `OUT` | mainStock − (satış çıkışı) |
-| `EXCHANGE_OUT` | exchangeStock + ve mainStock − (takas verildi) |
-| `EXCHANGE_IN` | mainStock + (takastan geri geldi veya kabul edildi) |
-| `EXCHANGE_COMPLETE` | exchangeStock − (takas kapandı) |
-| `ADJUSTMENT` | manuel düzeltme (sayım sonucu) |
-| `SET_CONSUMPTION` | Set satıldığında bileşenleri düşer (her bileşene 1 kayıt) |
+| `IN` | mainStock + |
+| `OUT` | mainStock − |
+| `EXCHANGE_OUT` | exchangeStock + ve mainStock − |
+| `EXCHANGE_IN` | mainStock + |
+| `EXCHANGE_COMPLETE` | exchangeStock − |
+| `ADJUSTMENT` | manuel düzeltme |
+| `SET_CONSUMPTION` | Set satıldığında bileşenleri düşer |
 
-**Önemli:** `streetStock`'a **dokunmaz** — sadece eczane Excel yüklemesi street'i değiştirir.
-
-**Bağlantılar:** `entrySessionId` (mal kabul oturumu), `counterpartyId` (takas için).
+**Kritik:** `streetStock`'a **dokunmaz**. Yazımlar artık `SELECT ... FOR UPDATE` ile lock'lu (2026-07-06, race condition kapandı — product-entry/product-exit/exchange/product.ts, çoklu-id lock'larda sıralı-id deadlock önleme).
+**Bağlantılar:** `entrySessionId`, `counterpartyId`.
 
 ### `EntrySession`
-**Ne:** Bir mal kabul oturumu — birden fazla StockMovement'i gruplar.
-**Alanlar:** `generalNote`, `source` (PURCHASE | RETURN), `userId`.
+**Ne:** Bir mal kabul oturumu — birden fazla StockMovement'i gruplar. Marka fatura + eczane fatura (autofill) alanları.
 
 ### `Exchange` + `Counterparty`
-**Ne:** Takas hareketleri.
-**Akış:**
-1. `createGivenExchanges` → cariye verildi (status=PENDING, exchangeStock+)
-2. `createReceivedExchanges` → cariden alındı (status=PENDING, ya da addedToStock=true ile direkt mainStock+)
-3. `completeExchange` → kapandı; verildi ise mainStock'a geri eklenmez (zaten satılmış sayılır), alındı ise mainStock'a geçer
-
-**Cascade:** Counterparty silinemez aktif takas varsa.
+**Ne:** Takas hareketleri (GIVEN/RECEIVED, PENDING/COMPLETED/CANCELLED). Guard'lar 2026-07'de sıkılaştırıldı (weighted-avg revert, stok 0 altına inmez).
 
 ### `PharmacyDataUpload`
-**Ne:** Eczane Excel yükleme audit'i (ne yüklendi, çakışma var mıydı).
-**Alanlar:** `rowCount`, `newProducts`, `updatedProducts`, `skippedRows`, `conflictsJson`.
-**Trigger:** `executePharmacyUpload` her başarılı yüklemede kayıt yapar.
+**Ne:** Eczane Excel yükleme audit'i. "Bakiye" kolonu tanınamazsa `streetStock`'a **dokunulmaz** (2026-07 fix — önceden sessizce 0 yazılıyordu).
 
 ---
 
 ## 6. SİPARİŞ + KAMPANYA
 
 ### `PurchaseOrder` + `PurchaseOrderItem`
-**Akış:**
-```
-DRAFT → CONFIRMED → PARTIAL → COMPLETED
-                  → CANCELLED
-```
-- DRAFT: oluşturuldu, henüz onaylanmadı
-- CONFIRMED: markaya gönderildi
-- PARTIAL: kısmen geldi (her gelen StockMovement IN ile bağlanır)
-- COMPLETED: tüm kalemler kapandı
+**Akış:** `DRAFT → CONFIRMED → PARTIAL → COMPLETED` (veya `CANCELLED`)
+- `brandDiscountPct` / `discountOverridePct` — kampanya alım indirimi (marka geneli / kalem override), formülün EN BAŞINDA uygulanır
+- `closedShort` / `closedShortQty` — `closeOrder()` ile PARTIAL kapatılırken eksik kalan miktar (bakiye buharlaşmasın diye izlenir)
+- Snapshot alanları: `mainStockSnapshot`, `streetStockSnapshot`, `totalSoldInPeriod`, `buyboxPrice`, `ourSalePrice`
 
-**Bağlantı:** `closeOrder()` PARTIAL'ı COMPLETED yapar.
-**Item:** Product × quantity × beklenen alış.
-
-### `Campaign` ⚠️ Yeni eklendi (faz 4)
-**Ne:** Marka veya ürün listesi bazlı kampanya.
-**Tip:** `BRAND` veya `PRODUCTS`.
-**İndirim:** PSF üzerinden % (örn. %10 → her ürünün PSF'i × 0.10 TL alıştan düşer).
-
-**Akış:**
-```
-ACTIVE → ENDED → COLLECTED
-       → CANCELLED
-```
-
-**Bağlantılı:**
-- `CampaignProduct` (PRODUCTS tipi için n-n)
-- `CampaignSale` (kampanya aktifken yapılan her satış — psfSnapshot, discountAmountTL)
-
-**Önemli:** Bitince fiyat **otomatik** dönmez — kullanıcı "Eski Fiyatlara Döndür Excel'i" indirip Dopigo'ya yüklemeli.
-
-**Tahsilat:** Sistem `CampaignSale`'lerden `Σ discountAmountTL` hesaplar; kullanıcı fatura no + tutar girer.
+### `Campaign`
+**Ne:** Marka veya ürün listesi bazlı, PSF üzerinden % indirim. Tip: `BRAND` veya `PRODUCTS` (PRODUCTS ezer).
+**Akış:** `ACTIVE → ENDED → COLLECTED` (veya `CANCELLED`)
+**Bağlantılı:** `CampaignProduct` (n-n), `CampaignSale` (her satış), `CampaignPayment` (parçalı tahsilat — 50K→30K+20K gibi, `Σamount >= beklenen` → otomatik COLLECTED)
 
 ### `CampaignSale`
-**Ne:** Kampanyalı satış kaydı. Bir OUT movement = bir CampaignSale (kampanya aktifse).
-**Snapshot alanlar:** `psfSnapshot`, `unitPurchaseSnapshot`, `discountAmountTL`.
-**Niye snapshot?** Kampanya geçmişe etki etmez — gelecekte PSF değişse bile geçmiş tahsilat doğru hesaplansın.
+**Ne:** Kampanyalı satış kaydı. Snapshot: `psfSnapshot`, `unitPurchaseSnapshot`, `discountAmountTL` — kampanya geçmişe etki etmesin diye.
 
 ---
 
-## 7. PAZARYERİ ENTEGRASYONU
+## 7. PAZARYERİ ENTEGRASYONU — Trendyol
 
 ### `TrendyolConfig`
-**Ne:** API key/secret/supplier ID + environment (PROD/TEST).
-**Tek satır** — system-wide config.
-**Audit fields:** `lastTestedAt`, `lastTestSuccess`, `lastErrorMessage`.
+API key/secret/supplier ID + environment (PROD/TEST). Tek satır.
 
 ### `TrendyolListing`
-**Ne:** Trendyol'daki KENDİ kataloğumuzun snapshot'ı.
-**Anahtar:** `barcode` (unique).
-**Veri:** title, price, quantity, approved/archived/rejected.
-**Niye snapshot?** Her eşleştirme kontrolü için Trendyol'a hit etmemek için.
-**Trigger:** `syncAllTrendyolListings()` (`/barkod-eslestirme` sayfasında "Trendyol'dan Çek").
+Trendyol'daki KENDİ kataloğumuzun snapshot'ı. `barcode` unique. `syncAllTrendyolListings()` ile tazelenir.
 
 ### `TrendyolSyncRun`
-**Ne:** Senkron audit log (totalFetched, totalPages, status, errorMessage).
+Senkron audit log.
 
 ### `CompetitorPriceObservation` ⚠️ BuyBox bilgisi burada
-**Ne:** Trendyol'daki rakip fiyat snapshot'ları (zaman serisi).
-**Bir ürün × birden fazla satıcı.**
-**Alanlar:**
-- `merchantId`, `merchantName`
-- `price`, `listPrice`
-- `order` (1 = BuyBox sahibi)
-- `isOurs` (biz miyiz)
-- `observedAt`
-**Trigger:** `fetchAndStoreBuyboxForProducts()` her tazeleme.
-**Kullanım:** `recommendPrice()` → en yeni gözlem alınır → öneri çıkar.
+Trendyol'daki rakip fiyat snapshot'ları (zaman serisi). `order=1` → BuyBox sahibi, `isOurs` → biz miyiz.
+`fetchAndStoreBuyboxForProducts()` ile tazelenir → `recommendPrice()` bunu kullanır.
 
-### `TrendyolFavoriteSnapshot` ⚠️ YENİ
-**Ne:** Favori/görüntülenme zaman serisi (Excel'den).
-**Anahtar:** `(productCode, reportType, periodStart, periodEnd)` unique.
-**Match:** `productCode` → `TrendyolListing.productCode` → barcode → Product.
-**Alanlar:** views, favorites, cartAdds, orders, conversion, sales, revenue, demandScore.
-**Niye productCode?** Excel'de barkod yok, Trendyol "Model Kodu" verir.
-
-### `FavoriteUploadRun` ⚠️ YENİ
-**Ne:** Bir Excel yükleme periyodu.
-**Önemli:** Aynı periyot tekrar yüklenirse upsert (eski snapshot'lar `onDelete: Cascade` ile silinir, yeni eklenir).
-
-### `DopigoListing`
-**Ne:** Dopigo Excel'inden çekilmiş ürün snapshot'ı (eşleştirme audit'i için).
-**Alanlar:** barcode, sku, merchantSku, name, brand, rawRowJson.
-
-### `DopigoSyncRun` + `DopigoExportLog`
-**Sync:** Dopigo Excel yükleme audit.
-**Export:** Dopigo'ya yüklemek için indirilen Excel audit (productCount, fields, filename, exportedAt).
+### `TrendyolFavoriteSnapshot` + `FavoriteUploadRun`
+Favori/görüntülenme zaman serisi (Excel'den). `productCode` → `TrendyolListing.productCode` → barcode → Product eşleşir. `demandScore = (cartAdds×5 + orders×20 + grossFavorites×1) / max(views,1)`.
 
 ---
 
-## 8. CASCADE DELETE HARİTASI
+## 8. PAZARYERİ ENTEGRASYONU — Dopigo (GET-only)
+
+> **Kesin kural:** Dopigo API'ye sipariş/ürün/müşteri için sadece **GET**. Yazma yalnızca `PUT /api/v1/products/bulk_update_by_foreign_sku/` ile **`stock` alanı** (Stok Uyarıları sayfasından). Fiyat/archived Excel akışıyla.
+
+### `DopigoConfig`
+API token (`Authorization: Token <token>`, DRF stili).
+
+### `DopigoOrder` + `DopigoOrderItem` ⚠️ YENİ (2026-05'ten sonra eklendi)
+**Ne:** Dopigo API'den çekilen sipariş + kalem — read-only snapshot. Sistemin **tek sipariş/satış kaynağı** (Trendyol'dan direkt çekilmez).
+- `derivedStatus`: SUCCESS (shipped+invoice_deleted=false) | CANCELLED | RETURNED (shipped+invoice_deleted=true) | WAITING | OTHER
+- `serviceValue` — Trendyol için `"11216996303-3833483689"` formatı; mutabakat eşleşmesinde ilk parça (`11216996303`) kullanılır
+- Item: `productId` eşleşmesi `matchMethod` ile audit'lenir (BARCODE_EXACT/FOREIGN_SKU_EXACT/DOPIGO_SKU/MANUAL/NONE)
+
+### `DopigoOrderSyncRun`
+Sipariş senkron audit (RUNNING/SUCCESS/FAILED, `triggeredBy`: MANUAL/CRON/INITIAL_BACKFILL).
+
+### `DopigoListing` + `DopigoSyncRun`
+Dopigo Excel'inden çekilmiş ürün snapshot'ı (eşleştirme audit'i) + Excel yükleme audit.
+
+---
+
+## 9. MUTABAKAT & GİDER
+
+### `TrendyolOrderReconciliation` ⚠️ KRİTİK — 2026-07 genelleştirildi
+**Ne:** Pazaryeri mutabakat — panelden indirilen "Sipariş Kayıtları" Excel'inin GERÇEK kesinti/komisyon/kargo/ceza değerleri. Adı Trendyol'dan gelir ama artık `marketplace` kolonuyla **tüm pazaryerlerini** tutar (Trendyol/Farmazon/Hepsiburada/N11; Amazon/Pazarama/ePttAVM Faz 2 bekliyor).
+- Eşleşme: `serviceOrderId` → `DopigoOrder.serviceValue` ilk parçası (pazaryerine göre kural değişir — parser registry)
+- `netReceived` — pazaryerinin eline geçen net tutar (mutabakatın altın değeri); `netReceived ≤ 0` → satış iptal sayılır, tüm hesaplardan çıkar
+- **Öncelik:** mutabakat > `MarketplaceMonthlyExpense` (aylık gerçek gider) > tahmin (tarife+marketplace formülü)
+- Parser registry: `lib/services/marketplace-reconciliation.ts` — yeni pazaryeri = 1 registry kaydı
+
+### `MarketplaceMonthlyExpense`
+Kullanıcının elle girdiği aylık gerçek gider — mutabakat parser'ı olmayan pazaryerleri için fallback (Faz 2 tamamlanınca kısmen ölü kod olabilir).
+
+### `ManualPurchasePrice`
+Eşleşmemiş Dopigo satışları için manuel alış (Eksik Alış sayfası). SKU/barkod bazlı, bir kez girilir, ileride de geçerli. COGS önceliği: `mainPurchasePrice` > `streetPurchasePrice` (çevrilmiş) > `ManualPurchasePrice` > 0.
+
+---
+
+## 10. KOMİSYON TARİFESİ
+
+### `CommissionTariffUpload` + `CommissionTariff` ⚠️ KRİTİK
+**Ne:** Trendyol'un haftalık (Salı 08:00 - sonraki Salı 07:59) kademeli komisyon Excel'i. Her ürün için 4 fiyat kademesi (`tier1..4AltLimit/UstLimit/CommissionPct`) + `currentCommissionPct`.
+- **Geçmiş korunur** — yeni upload eskiyi silmez, sadece dönemi çakışan upload silinir (`@@unique([marketplace, effectiveFrom])`)
+- Trendyol export'u bazen aynı dosyada 2 tarife grubu içerir ("3 Gün"/"4 Gün" teslim taahhüdü) — SheetJS 2. aynı-isimli kolonu `_1` suffix ile ayırır, importer ilk boş-olmayan değeri alır (2026-07-10 fix)
+- **Sistemdeki TÜM komisyon hesabı** buradan okur (`lib/pricing/effective-commission.ts` üzerinden): dopigo-sync, price-recommendation, sales-analytics, coupon-suggestions. Tarife yoksa `Marketplace.commissionRate` fallback.
+
+---
+
+## 11. FİNANS (Alış Faturaları / Gider)
+
+### `PurchaseInvoice` + `PurchaseInvoicePayment`
+**Ne:** Aracı eczaneden Ochi'ye gelen alış faturası (`grossAmount`, ödenecek) + marka yıl sonu iskonto alacağı (`discountAmount = gross × discountPct/100`).
+- `discountStatus`: OPEN/PARTIAL/COLLECTED — tahsilat toplamına göre otomatik
+- `PurchaseInvoicePayment` — parçalı tahsilat kayıtları (alacaktan düşülür)
+- `brandId` null → "Karışık" (yıl sonu iskonto kapsam dışı)
+
+### `Expense` + `Employee`
+**Ne:** Operasyonel giderler (kira/maaş/yazılım/pazarlama/paketleme — `ExpenseCategory` enum, 25+ kategori) + personel referansı (SALARY/BONUS/MEAL/INSURANCE için).
+**Not:** Pazaryeri brüt giderleri (komisyon/kargo/stopaj) burada DEĞİL — Dopigo siparişlerden/mutabakattan otomatik hesaplanır.
+
+### `MonthlySalesSnapshot`
+Aylık gelir/gider snapshot. Manuel (geçmiş aylar, `isManual=true`) veya otomatik (Dopigo'dan `buildPnlCTE` ile hesaplanıp kaydedilen). Alanlar: `revenue`, `cost`, `commission`, `shipping`, `withholding`, `other`.
+
+---
+
+## 12. PRİM
+
+### `SalesBonusTier` + `SalesBonusConfig`
+Aylık net ciroya (iade/iptal hariç, tüm pazaryeri) göre kademeli prim. `prim = ciro × bonusRate`. `SalesBonusConfig` tek satır (id=1) — min kâr % gösterimi, ciro kaynağı (ALL/TRENDYOL).
+
+---
+
+## 13. AUDIT
+
+### `AuditLog`
+Kritik işlem izi (`USER_CREATE`, `TRENDYOL_CONFIG_UPDATE`, `CAMPAIGN_END`, `LOGIN_FAIL`, ...). `before`/`after` JSON snapshot. Silinmemeli.
+
+---
+
+## 14. CASCADE DELETE HARİTASI
 
 | Silinen | Otomatik Silinen |
 |---------|------------------|
-| `User` | Account, Session, UserPermission |
+| `User` | Account, Session, UserPermission, PanelNote, UserAllowedBrand |
 | `Category` | Subcategory (Product engellenir) |
-| `Product` | ProductBarcode, ProductMarketplacePrice, SetComponent, CompetitorPriceObservation, BrandPriceList items, PurchaseOrderItem, CampaignProduct, CampaignSale |
-| `Marketplace` | ProductMarketplacePrice |
+| `Product` | ProductBarcode, ProductMarketplacePrice, ProductMarketplaceListing, SetComponent, CompetitorPriceObservation, PurchaseOrderItem, CampaignProduct, CampaignSale |
+| `Marketplace` | ProductMarketplacePrice, ProductMarketplaceListing, BrandMarketplaceFloor, MarketplaceMonthlyExpense |
 | `PurchaseOrder` | PurchaseOrderItem |
-| `Campaign` | CampaignProduct, CampaignSale |
+| `Campaign` | CampaignProduct, CampaignSale, CampaignPayment |
+| `PurchaseInvoice` | PurchaseInvoicePayment |
+| `CommissionTariffUpload` | CommissionTariff |
 | `FavoriteUploadRun` | TrendyolFavoriteSnapshot |
-| `Brand` | BrandPriceList items |
+| `DopigoOrder` | DopigoOrderItem, TrendyolOrderReconciliation (SetNull) |
+| `Brand` | BrandPriceList items, BrandMarketplaceFloor, UserAllowedBrand |
 
 **Hiçbir şey silmiyor:**
 - Brand silinmez (Product bağlı varsa)
 - Counterparty silinmez (Exchange bağlı varsa)
 - StockMovement asla silinmez (immutable ledger)
-- PriceHistory asla silinmez (audit)
+- PriceHistory / AuditLog asla silinmez (audit)
 
 ---
 
-## 9. UNIQUE CONSTRAINT'LER (Çakışma Engelleme)
+## 15. UNIQUE CONSTRAINT'LER (Çakışma Engelleme)
 
 | Tablo | Unique alan | Anlam |
 |-------|-------------|-------|
 | `User` | `username`, `email` | Login |
 | `Brand` | `name` | Marka adı tek |
-| `Category` | `name` | Kategori adı tek |
+| `Category` | `name` | — |
 | `Subcategory` | `(name, categoryId)` | Aynı kategoride aynı alt kategori olmaz |
-| `Marketplace` | `name` | Pazaryeri adı tek |
-| `Product` | `primaryBarcode`, `pharmacyProductCode`, `setSku` | Barkod ve eczane kodu tek |
+| `Marketplace` | `name` | — |
+| `Product` | `primaryBarcode`, `pharmacyProductCode`, `setSku` | — |
 | `ProductBarcode` | `barcode` | Aynı barkod iki üründe olamaz |
-| `ProductMarketplacePrice` | `(productId, marketplaceId)` | Bir ürünün her marketplace'te tek fiyat satırı |
-| `SetComponent` | `(setProductId, componentId)` | Aynı bileşen iki kere eklenmez |
-| `TrendyolListing` | `barcode` | Trendyol'da bir barkod tek listing |
-| `TrendyolFavoriteSnapshot` | `(productCode, reportType, periodStart, periodEnd)` | Aynı periyot için aynı ürün tek snapshot |
-| `FavoriteUploadRun` | `(reportType, periodStart, periodEnd)` | Aynı periyot tek upload run |
+| `ProductMarketplacePrice` | `(productId, marketplaceId)` | — |
+| `ProductMarketplaceListing` | `(productId, marketplaceId, barcode)` | — |
+| `BrandMarketplaceFloor` | `(brandId, marketplaceId)` | — |
+| `SetComponent` | `(setProductId, componentId)` | — |
+| `TrendyolListing` | `barcode` | — |
+| `TrendyolFavoriteSnapshot` | `(productCode, reportType, periodStart, periodEnd)` | — |
+| `FavoriteUploadRun` | `(reportType, periodStart, periodEnd)` | — |
+| `DopigoOrder` | `dopigoOrderId` | — |
+| `DopigoOrderItem` | `dopigoItemId` | — |
+| `TrendyolOrderReconciliation` | `(marketplace, serviceOrderId)` | Aynı pazaryerinde aynı sipariş 2 kez olamaz |
+| `ManualPurchasePrice` | `(sku, barcode)` | — |
+| `PurchaseOrderItem` | `(orderId, productId)` | — |
+| `CommissionTariffUpload` | `(marketplace, effectiveFrom)` | Aynı dönem 2 kez yüklenemez (upsert öncesi eski silinir) |
+| `CommissionTariff` | `(uploadId, barcode)` | — |
+| `MonthlySalesSnapshot` | `(year, month)` | — |
 
 ---
 
-## 10. ENUM REFERANSI
+## 16. ENUM REFERANSI
 
-| Enum | Değerler | Kullanım |
-|------|----------|----------|
-| `UserRole` | ADMIN, MANAGER, STAFF | Yetki kontrolü |
-| `ProductType` | SINGLE, SET, GIFT | Davranış farkı (SET satılmaz, GIFT PSF'siz) |
-| `ProductStatus` | ACTIVE, PASSIVE | Soft delete + listeleme dışı |
-| `BarcodeSource` | MANUAL, ERP_PRIMARY, TRENDYOL_AUDIT, DOPIGO_AUDIT, IMPORT | Barkod nereden geldi |
-| `MovementType` | IN, OUT, EXCHANGE_OUT, EXCHANGE_IN, EXCHANGE_COMPLETE, ADJUSTMENT, SET_CONSUMPTION | Stok hareketi |
-| `EntrySource` | PURCHASE, RETURN | Mal kabul kaynağı |
-| `PriceType` | MAIN_PURCHASE, PSF, STREET_PURCHASE | Hangi fiyat değişti |
-| `CounterpartyType` | PHARMACY, DISTRIBUTOR, INDIVIDUAL | Takas tarafı |
-| `ExchangeDirection` | GIVEN, RECEIVED | Veriliş / Alış |
-| `ExchangeStatus` | PENDING, COMPLETED | Takas durumu |
-| `PurchaseOrderStatus` | DRAFT, CONFIRMED, PARTIAL, COMPLETED, CANCELLED | Sipariş durumu |
-| `CampaignType` | BRAND, PRODUCTS | Kampanya kapsamı |
-| `CampaignStatus` | ACTIVE, ENDED, COLLECTED, CANCELLED | Kampanya durumu |
-| `MergeStatus` | ACTIVE, REVERTED | Birleştirme durumu |
-| `FavoriteReportType` | WEEKLY, MONTHLY, YEARLY, CUSTOM | Favorilenme rapor periyodu (DAILY eklenecek) |
+| Enum | Değerler |
+|------|----------|
+| `UserRole` | ADMIN, MANAGER, STAFF, **SALES** |
+| `ProductType` | SINGLE, SET, GIFT |
+| `ProductStatus` | ACTIVE, PASSIVE |
+| `BarcodeSource` | MANUAL, ERP_PRIMARY, TRENDYOL_AUDIT, DOPIGO_AUDIT, IMPORT |
+| `MovementType` | IN, OUT, EXCHANGE_OUT, EXCHANGE_IN, EXCHANGE_COMPLETE, ADJUSTMENT, SET_CONSUMPTION |
+| `EntrySource` | PURCHASE, RETURN |
+| `PriceType` | MAIN_PURCHASE, PSF, STREET_PURCHASE, SALE_CALCULATED |
+| `CounterpartyType` | PHARMACY, DISTRIBUTOR, INDIVIDUAL |
+| `ExchangeDirection` | GIVEN, RECEIVED |
+| `ExchangeStatus` | PENDING, COMPLETED, CANCELLED |
+| `PurchaseOrderStatus` | DRAFT, CONFIRMED, PARTIAL, COMPLETED, CANCELLED |
+| `CampaignType` | BRAND, PRODUCTS |
+| `CampaignStatus` | ACTIVE, ENDED, COLLECTED, CANCELLED |
+| `MergeStatus` | ACTIVE, REVERTED |
+| `FavoriteReportType` | DAILY, WEEKLY, MONTHLY, YEARLY, CUSTOM |
+| `ExpenseCategory` | SALARY, BONUS, MEAL, INSURANCE, RENT, BUILDING_FEE, ELECTRICITY, GAS, WATER, INTERNET, CLEANING, BOX, NYLON, LABEL, TAPE, OFFICE, SOFTWARE, HOSTING, DOMAIN, DOPIGO, INTEGRATION, SMS, CREDIT, ADVERTISING, CONTENT, ACCOUNTING, TAX, BANK_FEE, OTHER |
+| `ExpensePeriodicity` | ONE_TIME, MONTHLY, QUARTERLY, YEARLY |
 
 ---
 
-## 11. ZAMAN SERİSİ TABLOLARI (Büyüme Beklentisi)
+## 17. ZAMAN SERİSİ TABLOLARI (Büyüme Beklentisi)
 
 | Tablo | Yıllık Beklenen Boyut | Index |
 |-------|------------------------|-------|
 | `StockMovement` | ~20-50K satır/yıl | productId, type, createdAt |
 | `PriceHistory` | ~5-10K satır/yıl | productId, priceType |
 | `CompetitorPriceObservation` | ~50-100K satır/yıl | productId, observedAt |
-| `TrendyolFavoriteSnapshot` | ~365×1300 = 475K (günlük) | productId, periodEnd, demandScore |
+| `TrendyolFavoriteSnapshot` | günlük × ürün sayısı | productId, periodEnd, demandScore |
 | `CampaignSale` | ~2-5K satır/yıl | campaignId, productId |
+| `DopigoOrder`/`DopigoOrderItem` | sipariş hacmine bağlı, büyük | serviceCreatedAt, salesChannel, barcode |
+| `TrendyolOrderReconciliation` | aylık mutabakat hacmine bağlı | serviceOrderId, month, marketplace |
+| `CommissionTariff` | haftalık × ürün sayısı | productId+marketplace, effectiveFrom/To |
 
-**Performans notu:** TrendyolFavoriteSnapshot büyüyebilir — 2-3 yıl sonra eski veri arşivlenmeli (ayrı tablo veya partition).
+**Performans notu:** TrendyolFavoriteSnapshot ve DopigoOrder büyüyebilir — birkaç yıl sonra eski veri arşivlenmeli.
 
 ---
 
-## 12. YENİ MODÜL EKLERKEN KONTROL LİSTESİ
-
-Yeni bir özellik düşünüyorsun? Buraya bak:
+## 18. YENİ MODÜL EKLERKEN KONTROL LİSTESİ
 
 1. **Hangi mevcut tabloya bağlanır?** → Yukarıdaki katmanlardan hangisi?
 2. **Product'a bağlı mı?** → 1-N ilişki, indeksle, cascade kararı ver
 3. **Audit lazım mı?** → Tarih + değişiklik snapshot'ı (PriceHistory pattern'ı)
-4. **Stok etkiler mi?** → StockMovement satırı yaratmak zorunda
-5. **Fiyat etkiler mi?** → ProductMarketplacePrice'ı tetiklemek zorunda mı?
-6. **Excel import var mı?** → BrandPriceList/PharmacyData/Dopigo pattern'ı (parse → analyze → execute)
-7. **Yetki gerekir mi?** → moduleKey tanımla, requirePermission'a ekle, nav-items'da göster
-8. **Kampanyaya etkisi var mı?** → CampaignSale tetiklenmesi gerekiyor mu?
-9. **Trendyol/Dopigo akışına etkisi?** → dopigo-sync.ts'i okuman lazım
-10. **Yeni enum gerekiyor mu?** → schema.prisma'da tanımla, migration
+4. **Stok etkiler mi?** → StockMovement satırı yaratmak zorunda (ve `SELECT FOR UPDATE` lock'u unutma)
+5. **Fiyat etkiler mi?** → ProductMarketplacePrice'ı tetiklemek zorunda mı? Komisyon kademeli tarifeden mi okunmalı?
+6. **Excel import var mı?** → BrandPriceList/PharmacyData/Dopigo/CommissionTariff pattern'ı (parse → analyze → execute)
+7. **Yetki gerekir mi?** → moduleKey tanımla, requirePermission'a ekle, nav-items'da göster, SALES marka kısıtı gerekli mi?
+8. **Para-kritik mi?** → CLAUDE.md Kural 6: önce test yaz, sonra değiştir
+9. **Yeni enum gerekiyor mu?** → schema.prisma'da tanımla, migration
+10. **Doc güncelle** → bu dosya + MODULE_GRAPH.md + SYSTEM.md
 
 ---
 
-## 13. EN SIK ATIFTA BULUNULAN DOSYALAR
+## 19. EN SIK ATIFTA BULUNULAN DOSYALAR
 
 | Dosya | Ne için |
 |-------|---------|
 | `lib/db.ts` | Prisma client singleton |
 | `lib/auth.ts` | NextAuth config |
 | `lib/permissions.ts` | requirePermission, role check |
-| `lib/services/dopigo-sync.ts` | 3-tier price priority — Dopigo'ya gidecek fiyat |
+| `middleware.ts` | Merkezi route→izin gate |
+| `lib/services/dopigo-sync.ts` | 3-tier price priority — Dopigo'ya gidecek fiyat, çoklu listing satırı |
+| `lib/services/dopigo-api/stock-update.ts` | Dopigo'ya stok push (bulk_update_by_foreign_sku) |
 | `lib/services/price-recommendation.ts` | BuyBox bazlı öneri orchestration |
+| `lib/services/sales-analytics.ts` | buildPnlCTE — mutabakat-aware net kâr (KPI/marka/kategori/sipariş) |
+| `lib/services/trendyol-reconciliation.ts` / `marketplace-reconciliation.ts` | Mutabakat Excel import + parser registry |
+| `lib/services/barcode-match.ts` | 3-yönlü barkod eşleştirme (ERP×TY×Dopigo) |
 | `lib/services/campaign.ts` | buildActiveCampaignMap, recordCampaignSale |
 | `lib/pricing/recommendation.ts` | Saf öneri motoru (basis hesabı) |
 | `lib/pricing/sale-price.ts` | Marketplace satış formülü |
-| `lib/pricing/campaign-discount.ts` | Sanal kampanyalı alış |
+| `lib/pricing/effective-commission.ts` | Kademeli komisyon çözümleme |
+| `lib/pricing/effective-purchase-price.ts` | COGS fallback (mainPurchase>eczane>manuel) |
+| `lib/pricing/purchase-net-price.ts` | Sipariş net alış formülü |
 | `prisma/schema.prisma` | Tek schema |
 | `app/(dashboard)/layout.tsx` | Sidebar + topbar layout |
 | `components/layout/nav-items.tsx` | Sol menü itemları |
