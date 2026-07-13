@@ -128,10 +128,10 @@ function MarketTable({ rows, columns, action, defaultSort }: { rows: MarketRow[]
   if (rows.length === 0) return <Empty msg="Bu sekmede gösterilecek satır yok." />
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="max-h-[calc(100vh-15rem)] overflow-auto rounded-md">
-          <Table className="min-w-[1180px] text-[13px] [&_td]:py-3.5 [&_td]:px-4 [&_td]:whitespace-nowrap [&_th]:px-4 [&_th]:h-11">
+    <Card className="h-full flex flex-col">
+      <CardContent className="p-0 flex-1 min-h-0">
+        <div className="h-full overflow-auto rounded-md">
+          <Table className="w-full text-[13px] [&_td]:py-3.5 [&_td]:px-3 [&_td]:whitespace-nowrap [&_th]:px-3 [&_th]:h-11">
             <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-muted/80 [&_th]:backdrop-blur [&_th]:text-[11px] [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-semibold [&_th]:text-muted-foreground [&_th]:border-b [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
               <TableRow>
                 {columns.map((c) => {
@@ -238,9 +238,9 @@ export function MarketFlow({
   const allCols: Col[] = [COL.urun, COL.anaAlis, COL.anaStok, COL.caddeAlis, COL.caddeStok, COL.formul, COL.mevcut, COL.buybox, COL.s2, COL.s3, COL.analiz]
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-3 h-[calc(100dvh-10rem)]">
       {/* Filtreler + senaryo */}
-      <Card>
+      <Card className="shrink-0">
         <CardContent className="flex flex-wrap items-end gap-3 py-3">
           <FilterSelect label="Marka" value={brandId} onChange={(v) => { setBrandId(v); reload({ brandId: v }) }} options={brands} />
           <FilterSelect label="Kategori" value={categoryId} onChange={(v) => { setCategoryId(v); setSubcategoryId("all"); reload({ categoryId: v, subcategoryId: "all" }) }} options={categories} />
@@ -267,26 +267,26 @@ export function MarketFlow({
       </Card>
 
       {/* KPI */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 shrink-0">
         <Kpi title="Kaçan Kâr (aylık tahmin)" value={tl(data.kpis.moneyOnTableMonthly)} hint={`${tl(data.kpis.moneyOnTablePerUnit)}/adet · satış hızı çarpımlı`} accent="emerald" />
         <Kpi title="BuyBox Bizde / Rakipte" value={`${data.kpis.buyboxOursCount} / ${data.kpis.buyboxRivalCount}`} hint={`${data.kpis.foundCount}/${data.kpis.totalTracked} piyasada bulundu`} />
         <Kpi title="Listeleme + Sipariş Fırsatı" value={`${data.kpis.listOpportunityCount + data.kpis.orderOpportunityCount}`} hint={`${data.kpis.listOpportunityCount} listele · ${data.kpis.orderOpportunityCount} sipariş`} accent="teal" />
         <Kpi title="Zarar Riski" value={`${data.kpis.lossRiskCount}`} hint="rakip kâr tabanı altında" accent={data.kpis.lossRiskCount > 0 ? "rose" : undefined} />
       </div>
 
-      <Tabs defaultValue="raise">
-        <TabsList>
+      <Tabs defaultValue="raise" className="flex-1 flex flex-col min-h-0">
+        <TabsList className="shrink-0 w-fit">
           <TabsTrigger value="raise"><TrendingUp className="h-4 w-4 mr-1" />Fiyat Yükselt ({raiseTab.length})</TabsTrigger>
           <TabsTrigger value="list"><PlusCircle className="h-4 w-4 mr-1" />Listeleme Fırsatı ({listTab.length})</TabsTrigger>
           <TabsTrigger value="all"><ShoppingCart className="h-4 w-4 mr-1" />Tümü ({rows.length})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="raise">
+        <TabsContent value="raise" className="flex-1 min-h-0 mt-2">
           <MarketTable rows={raiseTab} columns={raiseCols}
             action={canEdit ? { label: "Uygula", disabled: (r) => !r.opportunity.recommendedPrice, onApply: (r) => applyRow(r, () => reload()) } : undefined} />
         </TabsContent>
-        <TabsContent value="list"><MarketTable rows={listTab} columns={listCols} /></TabsContent>
-        <TabsContent value="all"><MarketTable rows={rows} columns={allCols} /></TabsContent>
+        <TabsContent value="list" className="flex-1 min-h-0 mt-2"><MarketTable rows={listTab} columns={listCols} /></TabsContent>
+        <TabsContent value="all" className="flex-1 min-h-0 mt-2"><MarketTable rows={rows} columns={allCols} /></TabsContent>
       </Tabs>
     </div>
   )
