@@ -131,8 +131,8 @@ function MarketTable({ rows, columns, action, defaultSort }: { rows: MarketRow[]
     <Card>
       <CardContent className="p-0">
         <div className="max-h-[calc(100vh-15rem)] overflow-auto rounded-md">
-          <Table className="text-sm [&_td]:py-4 [&_td]:px-4 [&_th]:px-4 [&_th]:h-12 [&_td]:border-r [&_td]:border-border/30 [&_th]:border-r [&_th]:border-border/30 [&_td:last-child]:border-r-0 [&_th:last-child]:border-r-0 [&_tr]:border-border/40">
-            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-muted/60 [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
+          <Table className="min-w-[1180px] text-[13px] [&_td]:py-3.5 [&_td]:px-4 [&_td]:whitespace-nowrap [&_th]:px-4 [&_th]:h-11">
+            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-muted/80 [&_th]:backdrop-blur [&_th]:text-[11px] [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-semibold [&_th]:text-muted-foreground [&_th]:border-b [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
               <TableRow>
                 {columns.map((c) => {
                   const alignCls = c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left"
@@ -156,7 +156,7 @@ function MarketTable({ rows, columns, action, defaultSort }: { rows: MarketRow[]
                 const st = STYLE[r.opportunity.type]
                 const alignOf = (c: Col) => c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left"
                 return (
-                  <TableRow key={r.productId} className={cn("border-l-4", st.bar, !r.found && "opacity-70")}>
+                  <TableRow key={r.productId} className={cn("border-l-4 border-b border-border/40 even:bg-muted/20 hover:bg-muted/50 transition-colors", st.bar, !r.found && "opacity-60")}>
                     {columns.map((c) => (
                       <TableCell key={c.key} className={cn(alignOf(c), c.className)}>{c.render(r)}</TableCell>
                     ))}
