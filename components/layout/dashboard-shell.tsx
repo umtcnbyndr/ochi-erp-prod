@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
+import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Sidebar } from "./sidebar"
 import { Topbar } from "./topbar"
@@ -35,6 +36,9 @@ export function DashboardShell({
   permissions,
 }: DashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const pathname = usePathname()
+  // Veri-yoğun tam-genişlik sayfalar (yanlarda beyaz boşluk olmasın)
+  const fullWidth = pathname?.startsWith("/pazar-takip") ?? false
 
   // localStorage'dan oku (hydration sonrası)
   useEffect(() => {
@@ -94,7 +98,10 @@ export function DashboardShell({
           onToggleSidebar={toggleSidebar}
         />
         <main className="flex-1 overflow-x-auto">
-          <div className="mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-4 sm:py-6 lg:px-6">
+          <div className={cn(
+            "mx-auto w-full px-3 py-4 sm:px-4 sm:py-6 lg:px-6",
+            fullWidth ? "max-w-none" : "max-w-[1600px]",
+          )}>
             {children}
           </div>
         </main>
