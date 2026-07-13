@@ -52,6 +52,7 @@ import {
 } from "./actions"
 import { formatCurrency, formatNumber, cn } from "@/lib/utils"
 import { checkPsfSanity } from "@/lib/pricing"
+import { BuyboxHover } from "@/components/products/buybox-hover"
 import type { ProductSortBy, ProductListFilters } from "@/lib/services/product"
 
 interface ProductRow {
@@ -779,40 +780,38 @@ export function ProductList({
                           ? Math.abs(pct).toFixed(1).replace(".", ",")
                           : null
                         return (
-                          <div className="inline-flex flex-col items-center gap-0.5 leading-tight">
-                            <span
-                              className={cn(
-                                "font-medium",
-                                isOurs && "text-emerald-700",
-                                cheaper && "text-rose-600",
-                              )}
-                            >
-                              {formatCurrency(bb)}
-                            </span>
-                            {isOurs ? (
+                          <BuyboxHover
+                            buyboxPrice={bb}
+                            ourPrice={ourPrice}
+                            isOurs={isOurs}
+                            observedAt={p.trendyolBuybox.observedAt}
+                          >
+                            <div className="inline-flex cursor-help flex-col items-center gap-0.5 leading-tight">
                               <span
-                                className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 px-1 text-[10px] font-semibold text-emerald-700"
-                                title="BuyBox bizde"
+                                className={cn(
+                                  "font-medium",
+                                  isOurs && "text-emerald-700",
+                                  cheaper && "text-rose-600",
+                                )}
                               >
-                                <CheckCircle2 className="h-2.5 w-2.5" />
-                                Bizde
+                                {formatCurrency(bb)}
                               </span>
-                            ) : cheaper ? (
-                              <span
-                                className="rounded bg-rose-500/15 px-1 text-[10px] font-semibold text-rose-600"
-                                title="Rakip bizden ucuz — biz pahalıyız / BuyBox'ı kaybediyoruz"
-                              >
-                                ▼ %{pctLabel}
-                              </span>
-                            ) : higher ? (
-                              <span
-                                className="rounded bg-emerald-500/15 px-1 text-[10px] font-semibold text-emerald-700"
-                                title="Rakip bizden pahalı — fiyat yükseltme fırsatı"
-                              >
-                                ▲ %{pctLabel}
-                              </span>
-                            ) : null}
-                          </div>
+                              {isOurs ? (
+                                <span className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 px-1 text-[10px] font-semibold text-emerald-700">
+                                  <CheckCircle2 className="h-2.5 w-2.5" />
+                                  Bizde
+                                </span>
+                              ) : cheaper ? (
+                                <span className="rounded bg-rose-500/15 px-1 text-[10px] font-semibold text-rose-600">
+                                  ▼ %{pctLabel}
+                                </span>
+                              ) : higher ? (
+                                <span className="rounded bg-emerald-500/15 px-1 text-[10px] font-semibold text-emerald-700">
+                                  ▲ %{pctLabel}
+                                </span>
+                              ) : null}
+                            </div>
+                          </BuyboxHover>
                         )
                       })()
                     ) : (

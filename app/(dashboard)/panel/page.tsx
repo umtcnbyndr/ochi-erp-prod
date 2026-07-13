@@ -128,7 +128,7 @@ export default async function PanelPage() {
 
       {/* SECTION 2: Günün Özeti — 3 KPI MetricCard (kritik durum sayıları) */}
       <Section title="Günün Özeti" action={{ label: "Tüm raporlar", href: "/raporlar" }}>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <MetricCard
             label="Kritik Stok"
             value={criticalCount}
@@ -173,7 +173,7 @@ export default async function PanelPage() {
 
       {/* SECTION 3: Acil Eylem — detaylı widget'lar */}
       <Section title="Detay">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4 xl:grid-cols-5">
           <CriticalStockWidget data={data.criticalStock} />
           <BuyboxLostWidget data={data.buyboxLost} />
           <PendingCampaignsWidget campaigns={data.pendingCampaigns} />
@@ -187,7 +187,7 @@ export default async function PanelPage() {
 
       {/* SECTION 4: Bilgi widget'ları + Notlar (4 sütun grid) */}
       <Section title="Bilgilendirme">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <TrendingWidget items={data.trending} />
           <ExpiringWidget items={data.expiring} />
           <PassiveCandidateWidget items={data.passiveCandidates} />

@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils"
 import type { MarketAnalysisResult, MarketRow } from "@/lib/services/market-analysis"
 import type { OpportunityType } from "@/lib/pricing/market-opportunity"
 import { loadMarketAnalysisAction, applyMarketPriceAction } from "./actions"
+import { BuyboxHover } from "@/components/products/buybox-hover"
 
 type Opt = { id: number; name: string }
 type SubOpt = { id: number; name: string; categoryId: number }
@@ -81,7 +82,11 @@ const COL = {
   caddeStok: { key: "caddeStok", label: "Cadde Stok", align: "center", sort: (r) => r.streetStock, render: (r) => <span className="tabular-nums">{r.streetStock}</span> },
   formul: { key: "formul", label: "Formül Satış", align: "center", sort: (r) => num(r.formulaPrice), render: (r) => <span className="tabular-nums">{tl(r.formulaPrice)}</span> },
   mevcut: { key: "mevcut", label: "Bizim Fiyat", align: "center", sort: (r) => num(r.ourPrice), render: (r) => <span className="tabular-nums">{tl(r.ourPrice)}{r.ownsBuybox && <span className="ml-1 text-emerald-600 text-xs" title="BuyBox bizde">★</span>}</span> },
-  buybox: { key: "buybox", label: "BuyBox", align: "center", sort: (r) => num(r.buyboxPrice), render: (r) => <span className="tabular-nums">{r.found ? tl(r.buyboxPrice) : <span className="text-xs text-muted-foreground">yok</span>}</span> },
+  buybox: { key: "buybox", label: "BuyBox", align: "center", sort: (r) => num(r.buyboxPrice), render: (r) => (r.found && r.buyboxPrice != null ? (
+    <BuyboxHover buyboxPrice={r.buyboxPrice} ourPrice={r.ourPrice} isOurs={r.ownsBuybox} observedAt={r.observedAt}>
+      <span className="tabular-nums cursor-help">{tl(r.buyboxPrice)}</span>
+    </BuyboxHover>
+  ) : <span className="text-xs text-muted-foreground">yok</span>) },
   rakip: { key: "rakip", label: "Rakip (en düşük)", align: "center", sort: (r) => num(lowestRival(r)), render: (r) => <span className="tabular-nums">{tl(lowestRival(r))}</span> },
   s2: { key: "s2", label: "2", align: "center", sort: (r) => num(r.sellers[1]?.price), render: (r) => <span className="tabular-nums">{tl(r.sellers[1]?.price)}</span> },
   s3: { key: "s3", label: "3", align: "center", sort: (r) => num(r.sellers[2]?.price), render: (r) => <span className="tabular-nums">{tl(r.sellers[2]?.price)}</span> },
