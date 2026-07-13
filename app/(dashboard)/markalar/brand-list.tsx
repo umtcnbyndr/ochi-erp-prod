@@ -2,7 +2,15 @@
 
 import { useState, useTransition } from "react"
 import Link from "next/link"
-import { MoreVertical, Pencil, Trash2, Tag, FileSpreadsheet } from "lucide-react"
+import {
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Tag,
+  FileSpreadsheet,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -24,7 +32,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { BrandDialog } from "./brand-dialog"
 import { deleteBrand } from "./actions"
-import { formatNumber, formatPercent } from "@/lib/utils"
+import { formatNumber, formatPercent, formatDate, cn } from "@/lib/utils"
 import { useConfirm } from "@/components/common/confirm-provider"
 
 interface Brand {
@@ -45,7 +53,10 @@ interface Brand {
   priceUndercutBufferPct?: string | number
   distributorInfo: string | null
   contactInfo: string | null
-  _count?: { products: number }
+  _count?: { products: number; priceListItems?: number }
+  priceListCount?: number
+  lastPriceUpload?: string | null
+  priceListDaysAgo?: number | null
 }
 
 export function BrandList({ brands }: { brands: Brand[] }) {
@@ -80,6 +91,7 @@ export function BrandList({ brands }: { brands: Brand[] }) {
               <TableHead>Yıl Sonu İsk.</TableHead>
               <TableHead>Kar Marjı</TableHead>
               <TableHead>Stok Kuralı</TableHead>
+              <TableHead>Liste Fiyatı</TableHead>
               <TableHead className="text-right">Ürün</TableHead>
               <TableHead className="w-12"></TableHead>
             </TableRow>
@@ -124,6 +136,13 @@ export function BrandList({ brands }: { brands: Brand[] }) {
                   <TableCell className="text-sm tabular-nums">
                     {formatNumber(b.pharmacyStockRule)}
                   </TableCell>
+                  <TableCell>
+                    <PriceListCell
+                      count={b.priceListCount ?? 0}
+                      lastUpload={b.lastPriceUpload ?? null}
+                      daysAgo={b.priceListDaysAgo ?? null}
+                    />
+                  </TableCell>
                   <TableCell className="text-right">
                     <Badge variant={(b._count?.products ?? 0) > 0 ? "secondary" : "outline"}>
                       {b._count?.products ?? 0}
@@ -159,7 +178,7 @@ export function BrandList({ brands }: { brands: Brand[] }) {
       <div className="grid grid-cols-1 gap-3 md:hidden">
         {brands.map((b) => (
           <Card key={b.id}>
-            <CardContent className="p-4">
+            <CardContent className="p-5">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-3 min-w-0">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -194,6 +213,14 @@ export function BrandList({ brands }: { brands: Brand[] }) {
               <div className="mt-3 grid grid-cols-2 gap-2 border-t pt-3 text-xs">
                 <KV label="Kar Marjı" value={formatPercent(b.pharmacyMargin)} />
                 <KV label="Stok Kuralı" value={formatNumber(b.pharmacyStockRule)} />
+              </div>
+              <div className="mt-2 flex items-center gap-2 border-t pt-2 text-xs">
+                <span className="text-muted-foreground">Liste Fiyatı:</span>
+                <PriceListCell
+                  count={b.priceListCount ?? 0}
+                  lastUpload={b.lastPriceUpload ?? null}
+                  daysAgo={b.priceListDaysAgo ?? null}
+                />
               </div>
             </CardContent>
           </Card>
@@ -266,6 +293,49 @@ function KV({ label, value }: { label: string; value: React.ReactNode }) {
     <div>
       <p className="text-muted-foreground">{label}</p>
       <p className="font-medium">{value}</p>
+    </div>
+  )
+}
+
+/**
+ * Marka liste fiyatı durumu: kaç ürün var + en son yükleme.
+ * 30 günden eski (veya hiç) → amber "güncelle" uyarısı (aylık yenileme hatırlatması).
+ */
+function PriceListCell({
+  count,
+  lastUpload,
+  daysAgo,
+}: {
+  count: number
+  lastUpload: string | null
+  daysAgo: number | null
+}) {
+  if (count === 0) {
+    return (
+      <Badge variant="outline" className="gap-1 font-normal text-muted-foreground">
+        <FileSpreadsheet className="h-3 w-3" /> Yok
+      </Badge>
+    )
+  }
+  const stale = daysAgo == null || daysAgo > 30
+  return (
+    <div className="flex flex-col gap-0.5 text-xs leading-tight">
+      <span className="font-medium tabular-nums">{count} ürün</span>
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 text-[10px]",
+          stale ? "text-amber-600 dark:text-amber-500" : "text-muted-foreground",
+        )}
+        title={stale ? "Liste 30 günden eski — yeniden yükle" : "Liste güncel"}
+      >
+        {stale ? (
+          <AlertTriangle className="h-3 w-3" />
+        ) : (
+          <CheckCircle2 className="h-3 w-3" />
+        )}
+        {lastUpload ? formatDate(lastUpload) : "tarih yok"}
+        {stale ? " · güncelle" : ""}
+      </span>
     </div>
   )
 }

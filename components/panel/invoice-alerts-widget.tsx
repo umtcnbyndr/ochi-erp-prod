@@ -26,7 +26,7 @@ export function InvoiceAlertsWidget({ alerts }: Props) {
 
   return (
     <Card>
-      <CardContent className="p-5 space-y-3">
+      <CardContent className="p-6 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Receipt className="h-4 w-4 text-orange-500" />

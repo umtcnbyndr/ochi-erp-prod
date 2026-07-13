@@ -309,7 +309,7 @@ export function PendingList({ pending, counterparties, isAdmin = false }: Props)
 
       {/* Filter bar — cari + arama */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
             <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

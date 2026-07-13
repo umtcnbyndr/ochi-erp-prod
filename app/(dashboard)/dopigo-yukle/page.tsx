@@ -28,7 +28,7 @@ export default async function DopigoYuklePage() {
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
-          <CardContent className="p-5 space-y-2">
+          <CardContent className="flex min-h-[132px] flex-col justify-center p-6 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Mevcut Snapshot</p>
               <Database className="h-4 w-4 text-muted-foreground" />
@@ -40,7 +40,7 @@ export default async function DopigoYuklePage() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-5 space-y-2">
+          <CardContent className="flex min-h-[132px] flex-col justify-center p-6 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Barkodlu</p>
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -56,7 +56,7 @@ export default async function DopigoYuklePage() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-5 space-y-2">
+          <CardContent className="flex min-h-[132px] flex-col justify-center p-6 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Son Yükleme</p>
               <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />

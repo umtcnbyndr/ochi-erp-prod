@@ -91,7 +91,7 @@ export function SetList({ sets }: Props) {
     <div className="space-y-3">
       {/* Filtre barı */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
             <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -186,7 +186,7 @@ export function SetList({ sets }: Props) {
             {filtered.map((s) => (
               <Link key={s.id} href={`/set-urun/${s.id}`}>
                 <Card className="hover:border-primary/30 hover:shadow-md transition-all">
-                  <CardContent className="p-4 space-y-3">
+                  <CardContent className="p-5 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -243,7 +243,7 @@ export function SetList({ sets }: Props) {
           {/* Desktop: tablo görünümü */}
           <Card className="hidden md:block">
             <CardContent className="p-0">
-              <Table>
+              <Table containerClassName="max-h-[calc(100dvh-16rem)]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Set Adı</TableHead>

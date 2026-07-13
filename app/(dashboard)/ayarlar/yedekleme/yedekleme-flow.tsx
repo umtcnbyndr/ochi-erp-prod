@@ -96,7 +96,7 @@ export function YedeklemeFlow({ groups }: Props) {
     <div className="space-y-4">
       {/* Üst Banner: Tümünü İndir */}
       <Card className="border-primary/30 bg-primary/5">
-        <CardContent className="p-5">
+        <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -149,7 +149,7 @@ export function YedeklemeFlow({ groups }: Props) {
               {group.modules.map((mod) => (
                 <div
                   key={mod.key}
-                  className="flex items-start justify-between gap-3 p-4 hover:bg-accent/20 transition-colors"
+                  className="flex items-center justify-between gap-3 px-5 py-4 hover:bg-accent/20 transition-colors"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium">{mod.label}</div>
@@ -185,7 +185,7 @@ export function YedeklemeFlow({ groups }: Props) {
 
       {/* Bilgi notu */}
       <Card className="border-amber-200/40 bg-amber-50/30 dark:bg-amber-950/10">
-        <CardContent className="p-4 flex items-start gap-3">
+        <CardContent className="p-5 flex items-start gap-3">
           <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
           <div className="text-xs text-muted-foreground space-y-1">
             <p>

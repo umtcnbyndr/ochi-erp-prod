@@ -23,7 +23,7 @@ export function PendingCampaignsWidget({ campaigns }: Props) {
 
   return (
     <Card>
-      <CardContent className="p-5 space-y-3">
+      <CardContent className="p-6 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Megaphone className="h-4 w-4 text-amber-500" />

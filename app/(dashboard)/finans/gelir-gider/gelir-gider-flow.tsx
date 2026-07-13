@@ -287,7 +287,7 @@ export function GelirGiderFlow(props: Props) {
     <div className="space-y-4">
       {/* Yıl filtresi + üst özet */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
             <div className="text-sm font-medium">Yıl:</div>
             <Select value={String(props.year)} onValueChange={(v) => updateParam("year", v)}>
@@ -379,7 +379,7 @@ export function GelirGiderFlow(props: Props) {
 
       {/* Aylık Kayıt Durumu — her ay için manuel/dopigo kayıt + düzenleme */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold flex items-center gap-2">
               <Edit3 className="h-4 w-4 text-muted-foreground" />
@@ -931,14 +931,14 @@ function BigKpi({
   }
   return (
     <Card>
-      <CardContent className="p-5 space-y-2">
+      <CardContent className="flex min-h-[132px] flex-col justify-center gap-2 p-6">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-medium text-muted-foreground truncate">{label}</p>
           <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${bgClasses[accent]}`}>
             <Icon className="h-4 w-4" />
           </div>
         </div>
-        <p className="text-2xl font-bold tracking-tight tabular-nums leading-none mt-3">{value}</p>
+        <p className="text-2xl font-bold tracking-tight tabular-nums leading-none">{value}</p>
         <p className="text-[11px] text-muted-foreground">{sub}</p>
       </CardContent>
     </Card>

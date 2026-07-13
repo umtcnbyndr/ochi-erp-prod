@@ -179,7 +179,7 @@ export function TrendyolReconciliationFlow({ monthlyData }: { monthlyData: Month
 
           {/* Gider breakdown */}
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-5">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
                 Trendyol gider kalemleri ({preview.month})
               </p>
@@ -205,7 +205,7 @@ export function TrendyolReconciliationFlow({ monthlyData }: { monthlyData: Month
           {/* Kesinleşmemiş sipariş uyarısı */}
           {preview.unfinalizedCount > 0 && (
             <Card className="border-amber-300 bg-amber-50/40 dark:bg-amber-950/20">
-              <CardContent className="p-4 flex items-start gap-2">
+              <CardContent className="p-5 flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                 <div className="text-sm">
                   <p className="font-medium text-amber-700 dark:text-amber-400">
@@ -224,7 +224,7 @@ export function TrendyolReconciliationFlow({ monthlyData }: { monthlyData: Month
           {/* Eksik alış uyarısı */}
           {preview.uniqueMissingSkus > 0 && (
             <Card className="border-amber-300 bg-amber-50/40 dark:bg-amber-950/20">
-              <CardContent className="p-4 space-y-3">
+              <CardContent className="p-5 space-y-3">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                   <div className="text-sm">

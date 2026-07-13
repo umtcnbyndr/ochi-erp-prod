@@ -469,22 +469,22 @@ export function ProductList({
                 onClick={applySort}
                 className="min-w-[280px]"
               />
-              <TableHead>Marka</TableHead>
-              <TableHead>Kategori</TableHead>
-              <TableHead>Alt Kat.</TableHead>
+              <TableHead className="text-center">Marka</TableHead>
+              <TableHead className="text-center">Kategori</TableHead>
+              <TableHead className="text-center">Alt Kat.</TableHead>
               <SortHeader
                 label="Stok"
                 column="mainStock"
-                align="right"
+                align="center"
                 active={sortBy === "mainStock"}
                 dir={sortDir}
                 onClick={applySort}
               />
-              <TableHead className="text-right">Takasta</TableHead>
+              <TableHead className="text-center">Takasta</TableHead>
               <SortHeader
                 label="C.Stok"
                 column="streetStock"
-                align="right"
+                align="center"
                 active={sortBy === "streetStock"}
                 dir={sortDir}
                 onClick={applySort}
@@ -492,26 +492,26 @@ export function ProductList({
               <SortHeader
                 label="Alış"
                 column="mainPurchasePrice"
-                align="right"
+                align="center"
                 active={sortBy === "mainPurchasePrice"}
                 dir={sortDir}
                 onClick={applySort}
               />
-              <TableHead className="text-right whitespace-nowrap">C.Alış</TableHead>
+              <TableHead className="text-center whitespace-nowrap">C.Alış</TableHead>
               <SortHeader
                 label="PSF"
                 column="psf"
-                align="right"
+                align="center"
                 active={sortBy === "psf"}
                 dir={sortDir}
                 onClick={applySort}
               />
-              <TableHead className="text-right">KDV</TableHead>
-              <TableHead className="text-right whitespace-nowrap">TY</TableHead>
-              <TableHead className="text-right whitespace-nowrap">BuyBox</TableHead>
-              <TableHead>Tip</TableHead>
-              <TableHead>Raf</TableHead>
-              <TableHead>Durum</TableHead>
+              <TableHead className="text-center">KDV</TableHead>
+              <TableHead className="text-center whitespace-nowrap">TY</TableHead>
+              <TableHead className="text-center whitespace-nowrap">BuyBox</TableHead>
+              <TableHead className="text-center">Tip</TableHead>
+              <TableHead className="text-center">Raf</TableHead>
+              <TableHead className="text-center">Durum</TableHead>
               <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
@@ -578,11 +578,6 @@ export function ProductList({
                           {p.pharmacyProductCode}
                         </span>
                       )}
-                      {p.barcodes.length > 1 && (
-                        <span className="text-[10px] text-muted-foreground/70">
-                          +{p.barcodes.length - 1} barkod
-                        </span>
-                      )}
                     </div>
                   </TableCell>
                   <TableCell className="min-w-[280px]">
@@ -591,13 +586,8 @@ export function ProductList({
                         <p className="font-medium leading-tight whitespace-normal break-words">
                           {p.name}
                         </p>
-                        <div className="flex flex-wrap items-center gap-1 mt-0.5">
-                          {p.productType !== "SINGLE" && (
-                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                              {TYPE_LABEL[p.productType]}
-                            </Badge>
-                          )}
-                          {p.activeCampaign && (
+                        {p.activeCampaign && (
+                          <div className="flex flex-wrap items-center gap-1 mt-0.5">
                             <Badge
                               className="h-4 px-1 text-[10px] gap-0.5 bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300 border-pink-200"
                               variant="outline"
@@ -605,21 +595,21 @@ export function ProductList({
                               <Megaphone className="h-2.5 w-2.5" />
                               %{p.activeCampaign.discountRate}
                             </Badge>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </Link>
                   </TableCell>
-                  <TableCell>{p.brand?.name ?? "—"}</TableCell>
-                  <TableCell>{p.category?.name ?? "—"}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-center">{p.brand?.name ?? "—"}</TableCell>
+                  <TableCell className="text-center">{p.category?.name ?? "—"}</TableCell>
+                  <TableCell className="text-center">
                     {p.subcategory ? (
                       p.subcategory.name
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-center tabular-nums">
                     {p.productType === "SET" ? (
                       <span
                         title="Sanal stok — bileşenlerden hesaplandı"
@@ -650,7 +640,7 @@ export function ProductList({
                       <StockCell value={p.mainStock} min={0} />
                     )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-center tabular-nums">
                     {p.exchangeStock > 0 ? (
                       <Badge variant="warning" className="inline-flex items-center gap-1">
                         <Repeat2 className="h-3 w-3" />
@@ -660,10 +650,10 @@ export function ProductList({
                       <span className="text-muted-foreground/40">0</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-center tabular-nums">
                     {formatNumber(p.streetStock)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-center tabular-nums">
                     {displayPurchase ? (
                       <div>
                         <span
@@ -698,10 +688,10 @@ export function ProductList({
                       "—"
                     )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-center tabular-nums">
                     {p.calculatedStreetPrice ? formatCurrency(p.calculatedStreetPrice) : "—"}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-center tabular-nums">
                     <div className="inline-flex items-center gap-1">
                       {psfCheck.suspicious && (
                         <span title={psfCheck.message ?? "Şüpheli fiyat"}>
@@ -740,12 +730,12 @@ export function ProductList({
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
+                  <TableCell className="text-center tabular-nums text-muted-foreground">
                     %{Number(p.vatRate)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-center tabular-nums">
                     {p.trendyolListing ? (
-                      <div className="inline-flex flex-col items-end gap-0.5">
+                      <div className="inline-flex flex-col items-center gap-0.5">
                         <span
                           className={cn(
                             "font-medium",
@@ -772,42 +762,56 @@ export function ProductList({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-center tabular-nums">
                     {p.trendyolBuybox ? (
                       (() => {
                         const isOurs = p.trendyolBuybox.buyboxOrder === 1
-                        const competitorLower =
-                          !isOurs &&
-                          p.trendyolOurPrice != null &&
-                          p.trendyolBuybox.buyboxPrice < p.trendyolOurPrice
-                        const diffPct = competitorLower
-                          ? (((p.trendyolOurPrice! -
-                              p.trendyolBuybox.buyboxPrice) /
-                              p.trendyolOurPrice!) *
-                              100).toFixed(1)
+                        const bb = p.trendyolBuybox.buyboxPrice
+                        const ourPrice = p.trendyolOurPrice
+                        // Rakip BuyBox'ın bizim TY fiyatımıza göre yüzde farkı
+                        const pct =
+                          !isOurs && ourPrice != null && ourPrice > 0
+                            ? ((bb - ourPrice) / ourPrice) * 100
+                            : null
+                        const cheaper = pct != null && pct < -0.5 // rakip ucuz → biz pahalı
+                        const higher = pct != null && pct > 0.5 // rakip pahalı → fırsat
+                        const pctLabel = pct != null
+                          ? Math.abs(pct).toFixed(1).replace(".", ",")
                           : null
                         return (
-                          <div className="inline-flex items-center justify-end gap-1.5">
-                            {isOurs && (
-                              <span
-                                className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"
-                                title="BuyBox bizde"
-                              />
-                            )}
+                          <div className="inline-flex flex-col items-center gap-0.5 leading-tight">
                             <span
                               className={cn(
                                 "font-medium",
                                 isOurs && "text-emerald-700",
-                                competitorLower && "text-rose-600",
+                                cheaper && "text-rose-600",
                               )}
                             >
-                              {formatCurrency(p.trendyolBuybox.buyboxPrice)}
+                              {formatCurrency(bb)}
                             </span>
-                            {diffPct && (
-                              <span className="text-[10px] text-rose-600">
-                                −{diffPct}%
+                            {isOurs ? (
+                              <span
+                                className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 px-1 text-[10px] font-semibold text-emerald-700"
+                                title="BuyBox bizde"
+                              >
+                                <CheckCircle2 className="h-2.5 w-2.5" />
+                                Bizde
                               </span>
-                            )}
+                            ) : cheaper ? (
+                              <span
+                                className="rounded bg-rose-500/15 px-1 text-[10px] font-semibold text-rose-600"
+                                title="Rakip bizden ucuz — biz pahalıyız / BuyBox'ı kaybediyoruz"
+                              >
+                                ▼ %{pctLabel}
+                              </span>
+                            ) : higher ? (
+                              <span
+                                className="rounded bg-emerald-500/15 px-1 text-[10px] font-semibold text-emerald-700"
+                                title="Rakip bizden pahalı — fiyat yükseltme fırsatı"
+                              >
+                                ▲ %{pctLabel}
+                              </span>
+                            ) : null}
                           </div>
                         )
                       })()
@@ -815,7 +819,7 @@ export function ProductList({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-center">
                     <Badge
                       variant={
                         p.productType === "SINGLE"
@@ -828,8 +832,8 @@ export function ProductList({
                       {TYPE_LABEL[p.productType]}
                     </Badge>
                   </TableCell>
-                  <TableCell>{p.shelf ?? "—"}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-center">{p.shelf ?? "—"}</TableCell>
+                  <TableCell className="text-center">
                     <Badge variant={p.status === "ACTIVE" ? "success" : "outline"}>
                       {p.status === "ACTIVE" ? "Aktif" : "Pasif"}
                     </Badge>
@@ -866,7 +870,7 @@ export function ProductList({
           )
           return (
             <Card key={p.id}>
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <div className="flex items-start justify-between gap-2">
                   <input
                     type="checkbox"
@@ -1104,7 +1108,7 @@ function SortHeader({
 }: {
   label: string
   column: ProductSortBy
-  align?: "left" | "right"
+  align?: "left" | "right" | "center"
   active: boolean
   dir: "asc" | "desc"
   onClick: (col: ProductSortBy) => void
@@ -1112,7 +1116,7 @@ function SortHeader({
 }) {
   const Icon = !active ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown
   return (
-    <TableHead className={cn(align === "right" ? "text-right" : "", className)}>
+    <TableHead className={cn(align === "right" ? "text-right" : align === "center" ? "text-center" : "", className)}>
       <button
         type="button"
         onClick={() => onClick(column)}

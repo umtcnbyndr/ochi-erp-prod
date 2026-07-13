@@ -99,7 +99,7 @@ export function HedeflerFlow({ settings }: Props) {
     <div className="space-y-4 max-w-2xl">
       {/* Kademeler */}
       <Card>
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="p-5 space-y-3">
           <div className="flex items-center gap-2">
             <Target className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-semibold">Prim Kademeleri</h3>
@@ -158,7 +158,7 @@ export function HedeflerFlow({ settings }: Props) {
 
       {/* Genel ayarlar */}
       <Card>
-        <CardContent className="p-4 space-y-4">
+        <CardContent className="p-5 space-y-4">
           <h3 className="text-sm font-semibold">Genel</h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

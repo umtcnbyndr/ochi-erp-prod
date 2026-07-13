@@ -179,7 +179,7 @@ export function ExitFlow() {
 
       {/* B — Hızlı giriş satırı */}
       <Card>
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="p-5 space-y-3">
           {/* Satır 1: Barkod */}
           <div className="flex items-center gap-3">
             <Label htmlFor="barcode-input" className="shrink-0 text-sm font-medium w-16">

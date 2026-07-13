@@ -31,7 +31,7 @@ export function TopMoversTab({ data }: { data: TopMoversResult }) {
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">En Çok Satan</p>
               <TrendingUp className="h-4 w-4 text-emerald-600" />
@@ -47,7 +47,7 @@ export function TopMoversTab({ data }: { data: TopMoversResult }) {
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Toplam Satış</p>
               <Package className="h-4 w-4 text-muted-foreground" />
@@ -60,7 +60,7 @@ export function TopMoversTab({ data }: { data: TopMoversResult }) {
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Hareketli Ürün</p>
               <Package className="h-4 w-4 text-muted-foreground" />
@@ -75,7 +75,7 @@ export function TopMoversTab({ data }: { data: TopMoversResult }) {
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
                 Ortalama Stok Süresi

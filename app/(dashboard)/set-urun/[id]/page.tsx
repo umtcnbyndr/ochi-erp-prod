@@ -123,7 +123,7 @@ export default async function SetDetailPage({
       {/* Stat cards */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Bileşen Sayısı</p>
               <Boxes className="h-4 w-4 text-muted-foreground" />
@@ -134,7 +134,7 @@ export default async function SetDetailPage({
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Sanal Stok</p>
               <Package className="h-4 w-4 text-muted-foreground" />
@@ -153,7 +153,7 @@ export default async function SetDetailPage({
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <p className="text-xs text-muted-foreground">Hesaplanan Alış</p>
             <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl">
               {formatCurrency(computedPrice.toFixed(2))}
@@ -166,7 +166,7 @@ export default async function SetDetailPage({
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">PSF</p>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />

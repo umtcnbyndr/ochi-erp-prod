@@ -72,7 +72,7 @@ export function MetricCard({
   const content = (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-xl border bg-card p-5 shadow-sm transition-all",
+        "group relative flex min-h-[150px] flex-col justify-center overflow-hidden rounded-xl border bg-card p-6 shadow-sm transition-all",
         href && "hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 cursor-pointer",
         className,
       )}
@@ -146,7 +146,7 @@ export function MetricCard({
  */
 MetricCard.Skeleton = function MetricCardSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("rounded-xl border bg-card p-4", className)}>
+    <div className={cn("rounded-xl border bg-card p-5", className)}>
       <div className="flex items-start justify-between gap-2">
         <div className="h-3 w-24 animate-pulse rounded bg-muted" />
         <div className="h-7 w-7 animate-pulse rounded-lg bg-muted" />

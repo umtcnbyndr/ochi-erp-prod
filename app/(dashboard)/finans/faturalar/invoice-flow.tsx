@@ -371,7 +371,7 @@ export function InvoiceFlow(props: Props) {
 
       {/* Filtre + ekle */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
             <div className="flex items-center gap-2 sm:flex-1 min-w-[180px]">
               <div className="relative flex-1">
@@ -776,14 +776,14 @@ function KpiCard({
 }) {
   return (
     <Card>
-      <CardContent className="p-5 space-y-2">
+      <CardContent className="flex min-h-[132px] flex-col justify-center gap-2 p-6">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-medium text-muted-foreground truncate">{label}</p>
           <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${bgAccent ?? "bg-muted"}`}>
             <Icon className="h-4 w-4" />
           </div>
         </div>
-        <p className="text-2xl font-bold tracking-tight tabular-nums leading-none mt-3">{value}</p>
+        <p className="text-2xl font-bold tracking-tight tabular-nums leading-none">{value}</p>
         <p className="text-[11px] text-muted-foreground">{sub}</p>
       </CardContent>
     </Card>
@@ -900,7 +900,7 @@ function InvoiceDetailDrawer({
 
       <div className="mt-4 space-y-4">
         <Card>
-          <CardContent className="p-4 space-y-3">
+          <CardContent className="p-5 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground uppercase">Fatura Bilgileri</span>
               {canEdit && !editMode && (
@@ -1042,7 +1042,7 @@ function InvoiceDetailDrawer({
 
         {/* Tahsilat listesi */}
         <Card>
-          <CardContent className="p-4 space-y-3">
+          <CardContent className="p-5 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground uppercase">
                 Alacak Tahsilatları ({invoice.collectionCount})

@@ -28,7 +28,7 @@ export function PharmacyTab({ data }: { data: PharmacyStockReport }) {
     <>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Toplam Eczane Stok</p>
               <Package className="h-4 w-4 text-sky-600" />
@@ -41,7 +41,7 @@ export function PharmacyTab({ data }: { data: PharmacyStockReport }) {
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Toplam Değer</p>
               <Banknote className="h-4 w-4 text-amber-600" />
@@ -54,7 +54,7 @@ export function PharmacyTab({ data }: { data: PharmacyStockReport }) {
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Fazla Birikme</p>
               <AlertCircle className="h-4 w-4 text-rose-600" />

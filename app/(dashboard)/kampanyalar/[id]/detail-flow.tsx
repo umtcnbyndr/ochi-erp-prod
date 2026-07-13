@@ -308,7 +308,7 @@ export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
     <div className="space-y-6">
       {/* Üst özet */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
             <div>
               <p className="text-xs text-muted-foreground">Durum</p>
@@ -374,7 +374,7 @@ export function CampaignDetailFlow({ campaign, products, isAdmin }: Props) {
       {/* Fiyat döndürme uyarısı (kampanya bitti ama fiyatlar hâlâ kampanyalı olabilir) */}
       {campaign.status === "ENDED" && (
         <Card className="border-amber-300 bg-amber-50/50 dark:bg-amber-950/20">
-          <CardContent className="p-4 flex items-start gap-3">
+          <CardContent className="p-5 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
             <div className="flex-1 text-sm">
               <p className="font-medium text-amber-800 dark:text-amber-300">

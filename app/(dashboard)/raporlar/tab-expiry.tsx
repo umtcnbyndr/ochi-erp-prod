@@ -135,7 +135,7 @@ export function ExpiryTab({ data }: Props) {
 
       {/* Toplam etki kartı */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-rose-600" />

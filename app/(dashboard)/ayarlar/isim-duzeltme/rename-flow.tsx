@@ -133,7 +133,7 @@ export function RenameFlow() {
           {/* Özet */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   Toplam Satır
                 </p>
@@ -141,7 +141,7 @@ export function RenameFlow() {
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <p className="text-[10px] uppercase tracking-wider text-emerald-600">Eşleşti</p>
                 <p className="text-2xl font-bold tabular-nums text-emerald-600">
                   {preview.matched}
@@ -149,7 +149,7 @@ export function RenameFlow() {
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <p className="text-[10px] uppercase tracking-wider text-primary">
                   İsim Değişecek
                 </p>
@@ -159,7 +159,7 @@ export function RenameFlow() {
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <p className="text-[10px] uppercase tracking-wider text-amber-600">Bulunamadı</p>
                 <p className="text-2xl font-bold tabular-nums text-amber-600">
                   {preview.notFound}
@@ -171,7 +171,7 @@ export function RenameFlow() {
           {/* Bulunamayan barkodlar */}
           {preview.notFoundBarcodes.length > 0 && (
             <Card className="border-amber-200/40 bg-amber-50/30 dark:bg-amber-950/10">
-              <CardContent className="p-4 text-xs space-y-2">
+              <CardContent className="p-5 text-xs space-y-2">
                 <p className="font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                   <AlertCircle className="h-3.5 w-3.5" />
                   {preview.notFoundBarcodes.length} barkod sistemde bulunamadı (atlanacak):

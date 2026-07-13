@@ -17,7 +17,7 @@ interface TrendItem {
 export function TrendingWidget({ items }: { items: TrendItem[] }) {
   return (
     <Card>
-      <CardContent className="p-5 space-y-3">
+      <CardContent className="p-6 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
@@ -69,7 +69,7 @@ interface ExpiringItem {
 export function ExpiringWidget({ items }: { items: ExpiringItem[] }) {
   return (
     <Card>
-      <CardContent className="p-5 space-y-3">
+      <CardContent className="p-6 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Calendar className="h-3.5 w-3.5 text-orange-500" />
@@ -127,7 +127,7 @@ interface PassiveItem {
 export function PassiveCandidateWidget({ items }: { items: PassiveItem[] }) {
   return (
     <Card>
-      <CardContent className="p-5 space-y-3">
+      <CardContent className="p-6 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Archive className="h-3.5 w-3.5 text-slate-500" />

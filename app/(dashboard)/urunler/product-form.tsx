@@ -165,7 +165,7 @@ export function ProductForm({ brands, categories, initialData, isAdmin = false }
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
       <Card>
-        <CardContent className="p-4 sm:p-6">
+        <CardContent className="p-5 sm:p-6">
           <Tabs defaultValue="temel">
             <TabsList className="w-full sm:w-auto">
               <TabsTrigger value="temel">Temel</TabsTrigger>

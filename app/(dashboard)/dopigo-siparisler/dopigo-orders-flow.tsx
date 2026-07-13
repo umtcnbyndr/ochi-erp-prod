@@ -350,7 +350,7 @@ function KPIRow({ kpis, statusCounts }: { kpis: KPIs; statusCounts: StatusCounts
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2">
       {cards.map((c, i) => (
         <Card key={i}>
-          <CardContent className="p-4 space-y-2">
+          <CardContent className="p-5 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] text-muted-foreground truncate">{c.label}</span>
               <c.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

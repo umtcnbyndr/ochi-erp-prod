@@ -54,7 +54,7 @@ export function PerformanceSection({ data }: Props) {
 
       {/* Aylık Hedef & Prim kartı */}
       <Card className="overflow-hidden">
-        <CardContent className="p-5 space-y-4">
+        <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Target className="h-4 w-4 text-primary" />
@@ -177,13 +177,13 @@ function KpiCard({
 }) {
   return (
     <Card>
-      <CardContent className="p-5">
+      <CardContent className="flex min-h-[132px] flex-col justify-center gap-2 p-6">
         <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
           <Icon className={`h-3.5 w-3.5 ${TONE[tone]}`} />
           {label}
         </div>
-        <p className="mt-2.5 text-2xl font-bold tabular-nums leading-tight">{primary}</p>
-        <p className="mt-1 text-[11px] text-muted-foreground">{secondary}</p>
+        <p className="text-2xl font-bold tabular-nums leading-tight">{primary}</p>
+        <p className="text-[11px] text-muted-foreground">{secondary}</p>
       </CardContent>
     </Card>
   )

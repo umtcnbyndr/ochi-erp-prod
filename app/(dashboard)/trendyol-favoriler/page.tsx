@@ -32,7 +32,7 @@ export default async function TrendyolFavorilerPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
-          <CardContent className="p-5 space-y-2">
+          <CardContent className="p-6 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Yüklenen Periyot</p>
               <Database className="h-4 w-4 text-muted-foreground" />
@@ -46,7 +46,7 @@ export default async function TrendyolFavorilerPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-5 space-y-2">
+          <CardContent className="p-6 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Toplam Snapshot</p>
               <Heart className="h-4 w-4 text-pink-600" />
@@ -58,7 +58,7 @@ export default async function TrendyolFavorilerPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-5 space-y-2">
+          <CardContent className="p-6 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Köklülük Skorlu</p>
               <Trophy className="h-4 w-4 text-amber-600" />
@@ -72,7 +72,7 @@ export default async function TrendyolFavorilerPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-5 space-y-2">
+          <CardContent className="p-6 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Son Yükleme</p>
               <AlertCircle className="h-4 w-4 text-muted-foreground" />

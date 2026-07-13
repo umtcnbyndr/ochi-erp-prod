@@ -430,12 +430,12 @@ function StatCard({
         : ""
   return (
     <Card>
-      <CardContent className="p-3">
+      <CardContent className="flex min-h-[84px] flex-col justify-center gap-1.5 p-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {icon}
           {label}
         </div>
-        <div className={`text-2xl font-bold tabular-nums mt-1 ${toneCls}`}>{value}</div>
+        <div className={`text-2xl font-bold tabular-nums ${toneCls}`}>{value}</div>
       </CardContent>
     </Card>
   )

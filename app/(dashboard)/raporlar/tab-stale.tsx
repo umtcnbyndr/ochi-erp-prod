@@ -65,7 +65,7 @@ export function StaleTab({ data }: { data: StaleData }) {
     <>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Hareketsiz Ürün</p>
               <Clock className="h-4 w-4 text-muted-foreground" />
@@ -80,7 +80,7 @@ export function StaleTab({ data }: { data: StaleData }) {
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Bağlı Sermaye</p>
               <Banknote className="h-4 w-4 text-amber-600" />
@@ -93,7 +93,7 @@ export function StaleTab({ data }: { data: StaleData }) {
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">En Eski</p>
               <AlertTriangle className="h-4 w-4 text-rose-600" />

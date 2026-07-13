@@ -35,7 +35,7 @@ export function StockTab({
   return (
     <>
       {/* Üst kartlar */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <StatCard
           icon={Package}
           label="Toplam Aktif Ürün"
@@ -74,7 +74,7 @@ export function StockTab({
 
       {/* Stok kaynağı dağılımı */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <p className="text-sm font-medium mb-2">Stok Kaynağı Dağılımı</p>
           <div className="flex flex-wrap gap-3 text-xs">
             <Pill color="emerald" label="Ana depodan" value={dist.main} />
@@ -195,7 +195,7 @@ function StatCard({
           : ""
   return (
     <Card>
-      <CardContent className="p-5 space-y-2">
+      <CardContent className="flex min-h-[120px] flex-col justify-center gap-2.5 p-6">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">{label}</p>
           <Icon className={`h-4 w-4 shrink-0 ${accentClass || "text-muted-foreground"}`} />

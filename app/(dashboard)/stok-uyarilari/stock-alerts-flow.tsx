@@ -316,8 +316,7 @@ export function StockAlertsFlow({ rows, totals, generatedAt, canEdit, brands, ca
                 : "Filtreye uyan ürün yok"}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table className="text-[12px]">
+            <Table className="text-[12px]" containerClassName="max-h-[calc(100dvh-19rem)]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8">
@@ -407,8 +406,7 @@ export function StockAlertsFlow({ rows, totals, generatedAt, canEdit, brands, ca
                     )
                   })}
                 </TableBody>
-              </Table>
-            </div>
+            </Table>
           )}
         </CardContent>
       </Card>

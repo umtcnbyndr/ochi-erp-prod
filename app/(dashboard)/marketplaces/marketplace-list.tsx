@@ -70,7 +70,7 @@ export function MarketplaceList({ marketplaces }: { marketplaces: Marketplace[] 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {marketplaces.map((m) => (
           <Card key={m.id} className={m.isActive ? "" : "opacity-60"}>
-            <CardContent className="p-4 sm:p-5">
+            <CardContent className="p-5 sm:p-5">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-3 min-w-0">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

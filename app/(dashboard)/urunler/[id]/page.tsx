@@ -57,13 +57,32 @@ function StatCard({
   const colorClass = highlight === "warning" ? "text-warning" : ""
   return (
     <Card>
-      <CardContent className="p-4">
+      <CardContent className="flex min-h-[108px] flex-col justify-center gap-2 p-5">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">{label}</p>
           {Icon && <Icon className={`h-4 w-4 ${colorClass}`} />}
         </div>
-        <p className={`mt-1 text-2xl font-bold tabular-nums sm:text-3xl ${colorClass}`}>
+        <p className={`text-2xl font-bold tabular-nums sm:text-3xl ${colorClass}`}>
           {formatNumber(value)}
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function PriceStat({
+  label,
+  value,
+}: {
+  label: string
+  value: string | null
+}) {
+  return (
+    <Card>
+      <CardContent className="flex min-h-[92px] flex-col justify-center gap-1.5 p-5">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-xl font-bold tabular-nums">
+          {value != null ? formatCurrency(value) : "—"}
         </p>
       </CardContent>
     </Card>
@@ -218,7 +237,7 @@ export default async function ProductDetailPage({
               <>
                 <div className="mb-4 grid gap-3 grid-cols-2 md:grid-cols-4">
                   <Card>
-                    <CardContent className="p-4">
+                    <CardContent className="p-5">
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-muted-foreground">
                           Bileşen Sayısı
@@ -231,7 +250,7 @@ export default async function ProductDetailPage({
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="p-4">
+                    <CardContent className="p-5">
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-muted-foreground">
                           Sanal Stok
@@ -252,7 +271,7 @@ export default async function ProductDetailPage({
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="p-4">
+                    <CardContent className="p-5">
                       <p className="text-xs text-muted-foreground">
                         Hesaplanan Alış
                       </p>
@@ -274,7 +293,7 @@ export default async function ProductDetailPage({
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="p-4">
+                    <CardContent className="p-5">
                       <p className="text-xs text-muted-foreground">PSF</p>
                       <p className="mt-1 text-xl font-bold tabular-nums">
                         {product.psf
@@ -412,6 +431,13 @@ export default async function ProductDetailPage({
               icon={Repeat2}
             />
             <StatCard label="Min Stok" value={product.minStock} />
+          </div>
+
+          {/* Alış & PSF — stokların hemen altında hızlı bakış */}
+          <div className="mb-4 grid gap-3 grid-cols-2 md:grid-cols-3">
+            <PriceStat label="Ana Alış (KDV dahil)" value={product.mainPurchasePrice?.toString() ?? null} />
+            <PriceStat label="Cadde Alış (KDV hariç)" value={product.streetPurchasePrice?.toString() ?? null} />
+            <PriceStat label="PSF" value={product.psf?.toString() ?? null} />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -565,7 +591,7 @@ export default async function ProductDetailPage({
         <TabsContent value="fiyatlar" className="mt-4">
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <p className="text-xs text-muted-foreground">Ana Alış (KDV dahil)</p>
                 <p className="mt-1 text-2xl font-bold tabular-nums">
                   {formatCurrency(product.mainPurchasePrice?.toString() ?? "0")}
@@ -573,7 +599,7 @@ export default async function ProductDetailPage({
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <p className="text-xs text-muted-foreground">Cadde Alış (KDV hariç)</p>
                 <p className="mt-1 text-2xl font-bold tabular-nums">
                   {formatCurrency(product.streetPurchasePrice?.toString() ?? "0")}
@@ -581,7 +607,7 @@ export default async function ProductDetailPage({
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <p className="text-xs text-muted-foreground">PSF</p>
                 <p className="mt-1 text-2xl font-bold tabular-nums">
                   {formatCurrency(product.psf?.toString() ?? "0")}

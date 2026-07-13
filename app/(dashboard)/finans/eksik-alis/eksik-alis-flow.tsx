@@ -131,7 +131,7 @@ export function EksikAlisFlow({ items, defaultFrom, defaultTo }: Props) {
     <>
       {/* Tarih + filtre */}
       <Card>
-        <CardContent className="p-4 flex flex-wrap items-end gap-3">
+        <CardContent className="p-5 flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <Label className="text-xs">Tarih (başlangıç)</Label>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9" />
@@ -186,25 +186,25 @@ export function EksikAlisFlow({ items, defaultFrom, defaultTo }: Props) {
       {/* Özet */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="flex min-h-[92px] flex-col justify-center gap-1.5 p-5">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Toplam Ürün</p>
             <p className="text-2xl font-bold tabular-nums">{items.length}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="flex min-h-[92px] flex-col justify-center gap-1.5 p-5">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Toplam Adet</p>
             <p className="text-2xl font-bold tabular-nums">{totalUnits}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="flex min-h-[92px] flex-col justify-center gap-1.5 p-5">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Toplam Gelir</p>
             <p className="text-lg font-bold tabular-nums">{formatTL(totalRevenue, 0)}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="flex min-h-[92px] flex-col justify-center gap-1.5 p-5">
             <p className="text-[10px] uppercase tracking-wider text-amber-600">Eksik Giriş</p>
             <p className="text-2xl font-bold tabular-nums text-amber-600">{missing}</p>
           </CardContent>
@@ -325,7 +325,7 @@ export function EksikAlisFlow({ items, defaultFrom, defaultTo }: Props) {
       )}
 
       <Card className="border-amber-200/40 bg-amber-50/30 dark:bg-amber-950/10">
-        <CardContent className="p-4 text-xs space-y-1">
+        <CardContent className="p-5 text-xs space-y-1">
           <p className="font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
             <AlertCircle className="h-3.5 w-3.5" />
             Nasıl çalışır
