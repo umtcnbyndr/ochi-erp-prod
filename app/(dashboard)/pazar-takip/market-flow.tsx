@@ -52,9 +52,9 @@ const STYLE: Record<OpportunityType, { label: string; badge: string; bar: string
 function AnalizCell({ r }: { r: MarketRow }) {
   const st = STYLE[r.opportunity.type]
   return (
-    <div className="min-w-[240px]">
+    <div className="min-w-[240px] flex flex-col items-center gap-1 text-center">
       <Badge variant="outline" className={cn(st.badge, "whitespace-nowrap font-medium")}>{st.label}</Badge>
-      <div className="text-xs text-muted-foreground mt-0.5 leading-snug">{r.opportunity.label}</div>
+      <div className="text-xs text-muted-foreground leading-snug">{r.opportunity.label}</div>
     </div>
   )
 }
@@ -63,7 +63,7 @@ function AnalizCell({ r }: { r: MarketRow }) {
 interface Col {
   key: string
   label: string
-  align?: "right" | "left"
+  align?: "right" | "left" | "center"
   sort?: (r: MarketRow) => number | string
   render: (r: MarketRow) => ReactNode
   className?: string
@@ -75,26 +75,26 @@ function num(v: number | null | undefined): number {
 
 const COL = {
   urun: { key: "urun", label: "Ürün", sort: (r) => r.name, render: (r) => <ProductCell r={r} /> },
-  anaAlis: { key: "anaAlis", label: "Ana Alış", align: "right", sort: (r) => num(r.mainPurchasePrice), render: (r) => <span className="tabular-nums text-xs">{tl(r.mainPurchasePrice)}</span> },
-  anaStok: { key: "anaStok", label: "Ana Stok", align: "right", sort: (r) => r.mainStock, render: (r) => <span className="tabular-nums text-xs">{r.mainStock}</span> },
-  caddeAlis: { key: "caddeAlis", label: "Cadde Alış", align: "right", sort: (r) => num(r.streetPurchasePrice), render: (r) => <span className="tabular-nums text-xs">{tl(r.streetPurchasePrice)}</span> },
-  caddeStok: { key: "caddeStok", label: "Cadde Stok", align: "right", sort: (r) => r.streetStock, render: (r) => <span className="tabular-nums text-xs">{r.streetStock}</span> },
-  formul: { key: "formul", label: "Formül Satış", align: "right", sort: (r) => num(r.formulaPrice), render: (r) => <span className="tabular-nums text-xs">{tl(r.formulaPrice)}</span> },
-  mevcut: { key: "mevcut", label: "Bizim Fiyat", align: "right", sort: (r) => num(r.ourPrice), render: (r) => <span className="tabular-nums">{tl(r.ourPrice)}{r.ownsBuybox && <span className="ml-1 text-emerald-600 text-xs" title="BuyBox bizde">★</span>}</span> },
-  buybox: { key: "buybox", label: "BuyBox", align: "right", sort: (r) => num(r.buyboxPrice), render: (r) => <span className="tabular-nums">{r.found ? tl(r.buyboxPrice) : <span className="text-xs text-muted-foreground">yok</span>}</span> },
-  rakip: { key: "rakip", label: "Rakip (en düşük)", align: "right", sort: (r) => num(lowestRival(r)), render: (r) => <span className="tabular-nums text-xs">{tl(lowestRival(r))}</span> },
-  s2: { key: "s2", label: "2", align: "right", sort: (r) => num(r.sellers[1]?.price), render: (r) => <span className="tabular-nums text-xs">{tl(r.sellers[1]?.price)}</span> },
-  s3: { key: "s3", label: "3", align: "right", sort: (r) => num(r.sellers[2]?.price), render: (r) => <span className="tabular-nums text-xs">{tl(r.sellers[2]?.price)}</span> },
-  oneri: { key: "oneri", label: "Öneri", align: "right", sort: (r) => num(r.opportunity.recommendedPrice), render: (r) => <span className="tabular-nums font-medium">{tl(r.opportunity.recommendedPrice)}</span> },
-  kazanc: { key: "kazanc", label: "+₺ / Marj", align: "right", sort: (r) => num(r.opportunity.expectedGainPerUnit), render: (r) => (
+  anaAlis: { key: "anaAlis", label: "Ana Alış", align: "center", sort: (r) => num(r.mainPurchasePrice), render: (r) => <span className="tabular-nums">{tl(r.mainPurchasePrice)}</span> },
+  anaStok: { key: "anaStok", label: "Ana Stok", align: "center", sort: (r) => r.mainStock, render: (r) => <span className="tabular-nums">{r.mainStock}</span> },
+  caddeAlis: { key: "caddeAlis", label: "Cadde Alış", align: "center", sort: (r) => num(r.streetPurchasePrice), render: (r) => <span className="tabular-nums">{tl(r.streetPurchasePrice)}</span> },
+  caddeStok: { key: "caddeStok", label: "Cadde Stok", align: "center", sort: (r) => r.streetStock, render: (r) => <span className="tabular-nums">{r.streetStock}</span> },
+  formul: { key: "formul", label: "Formül Satış", align: "center", sort: (r) => num(r.formulaPrice), render: (r) => <span className="tabular-nums">{tl(r.formulaPrice)}</span> },
+  mevcut: { key: "mevcut", label: "Bizim Fiyat", align: "center", sort: (r) => num(r.ourPrice), render: (r) => <span className="tabular-nums">{tl(r.ourPrice)}{r.ownsBuybox && <span className="ml-1 text-emerald-600 text-xs" title="BuyBox bizde">★</span>}</span> },
+  buybox: { key: "buybox", label: "BuyBox", align: "center", sort: (r) => num(r.buyboxPrice), render: (r) => <span className="tabular-nums">{r.found ? tl(r.buyboxPrice) : <span className="text-xs text-muted-foreground">yok</span>}</span> },
+  rakip: { key: "rakip", label: "Rakip (en düşük)", align: "center", sort: (r) => num(lowestRival(r)), render: (r) => <span className="tabular-nums">{tl(lowestRival(r))}</span> },
+  s2: { key: "s2", label: "2", align: "center", sort: (r) => num(r.sellers[1]?.price), render: (r) => <span className="tabular-nums">{tl(r.sellers[1]?.price)}</span> },
+  s3: { key: "s3", label: "3", align: "center", sort: (r) => num(r.sellers[2]?.price), render: (r) => <span className="tabular-nums">{tl(r.sellers[2]?.price)}</span> },
+  oneri: { key: "oneri", label: "Öneri", align: "center", sort: (r) => num(r.opportunity.recommendedPrice), render: (r) => <span className="tabular-nums font-medium">{tl(r.opportunity.recommendedPrice)}</span> },
+  kazanc: { key: "kazanc", label: "+₺ / Marj", align: "center", sort: (r) => num(r.opportunity.expectedGainPerUnit), render: (r) => (
     <div className="text-xs">
       {r.opportunity.expectedGainPerUnit != null && r.opportunity.expectedGainPerUnit > 0 && <div className="text-emerald-600 font-medium">+{tl(r.opportunity.expectedGainPerUnit)}</div>}
       {r.opportunity.marginAtRecommended != null && <div className="text-muted-foreground tabular-nums">%{r.opportunity.marginAtRecommended}</div>}
     </div>
   ) },
   kaynak: { key: "kaynak", label: "Kaynak", sort: (r) => r.costSource, render: (r) => <span className="text-xs">{r.costSource === "CATALOG" ? "Katalog" : r.costSource === "STREET" ? "Cadde" : r.costSource === "MAIN" ? "Ana" : "—"}</span> },
-  maliyet: { key: "maliyet", label: "Kullanılan Maliyet", align: "right", sort: (r) => num(r.unitCost), render: (r) => <span className="tabular-nums text-xs">{tl(r.unitCost)}</span> },
-  marj: { key: "marj", label: "Marj", align: "right", sort: (r) => num(r.opportunity.marginAtMarket), render: (r) => <span className="tabular-nums">{r.opportunity.marginAtMarket != null ? `%${r.opportunity.marginAtMarket}` : "—"}</span> },
+  maliyet: { key: "maliyet", label: "Kullanılan Maliyet", align: "center", sort: (r) => num(r.unitCost), render: (r) => <span className="tabular-nums">{tl(r.unitCost)}</span> },
+  marj: { key: "marj", label: "Marj", align: "center", sort: (r) => num(r.opportunity.marginAtMarket), render: (r) => <span className="tabular-nums">{r.opportunity.marginAtMarket != null ? `%${r.opportunity.marginAtMarket}` : "—"}</span> },
   analiz: { key: "analiz", label: "Analiz (öneri)", sort: (r) => r.opportunity.priority, render: (r) => <AnalizCell r={r} /> },
 } satisfies Record<string, Col>
 
@@ -131,33 +131,38 @@ function MarketTable({ rows, columns, action, defaultSort }: { rows: MarketRow[]
     <Card>
       <CardContent className="p-0">
         <div className="max-h-[calc(100vh-15rem)] overflow-auto rounded-md">
-          <Table className="text-sm [&_td]:py-1.5 [&_th]:h-9 [&_td]:border-r [&_th]:border-r [&_td:last-child]:border-r-0 [&_th:last-child]:border-r-0">
-            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-background [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
+          <Table className="text-sm [&_td]:py-4 [&_td]:px-4 [&_th]:px-4 [&_th]:h-12 [&_td]:border-r [&_td]:border-border/30 [&_th]:border-r [&_th]:border-border/30 [&_td:last-child]:border-r-0 [&_th:last-child]:border-r-0 [&_tr]:border-border/40">
+            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-muted/60 [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
               <TableRow>
-                {columns.map((c) => (
-                  <TableHead key={c.key} className={cn(c.align === "right" && "text-right", "select-none")}>
-                    {c.sort ? (
-                      <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggle(c.key)}>
-                        {c.label}
-                        {sortKey === c.key ? (dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ChevronsUpDown className="h-3 w-3 opacity-40" />}
-                      </button>
-                    ) : c.label}
-                  </TableHead>
-                ))}
-                {action && <TableHead></TableHead>}
+                {columns.map((c) => {
+                  const alignCls = c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left"
+                  const justify = c.align === "right" ? "justify-end" : c.align === "center" ? "justify-center" : "justify-start"
+                  return (
+                    <TableHead key={c.key} className={cn(alignCls, "select-none font-semibold text-foreground/80")}>
+                      {c.sort ? (
+                        <button className={cn("inline-flex w-full items-center gap-1 hover:text-foreground", justify)} onClick={() => toggle(c.key)}>
+                          {c.label}
+                          {sortKey === c.key ? (dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />}
+                        </button>
+                      ) : c.label}
+                    </TableHead>
+                  )
+                })}
+                {action && <TableHead className="text-center">İşlem</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {sorted.map((r) => {
                 const st = STYLE[r.opportunity.type]
+                const alignOf = (c: Col) => c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left"
                 return (
                   <TableRow key={r.productId} className={cn("border-l-4", st.bar, !r.found && "opacity-70")}>
                     {columns.map((c) => (
-                      <TableCell key={c.key} className={cn(c.align === "right" && "text-right", c.className)}>{c.render(r)}</TableCell>
+                      <TableCell key={c.key} className={cn(alignOf(c), c.className)}>{c.render(r)}</TableCell>
                     ))}
                     {action && (
-                      <TableCell>
-                        <Button size="sm" variant="outline" className="h-7" disabled={busy === r.productId || action.disabled(r)}
+                      <TableCell className="text-center">
+                        <Button size="sm" variant="outline" className="h-8" disabled={busy === r.productId || action.disabled(r)}
                           onClick={async () => { setBusy(r.productId); await action.onApply(r); setBusy(null) }}>
                           {action.label}
                         </Button>
