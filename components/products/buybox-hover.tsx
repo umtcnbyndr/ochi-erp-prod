@@ -18,6 +18,12 @@ interface BuyboxHoverProps {
   isOurs: boolean
   /** Son gözlem tarihi */
   observedAt?: Date | string | null
+  /**
+   * Rakip (BuyBox) fiyatına satarsak net marjımız (%). Verilirse
+   * "rakip fiyatına inersen bu kadar kâr/zarar" satırı gösterilir.
+   * (komisyon + kargo + stopaj düşülmüş net)
+   */
+  marginAtMarket?: number | null
 }
 
 /**
@@ -31,6 +37,7 @@ export function BuyboxHover({
   ourPrice,
   isOurs,
   observedAt,
+  marginAtMarket,
 }: BuyboxHoverProps) {
   // Rakibin bizim fiyatımıza göre yüzde farkı
   const pct =
@@ -40,6 +47,11 @@ export function BuyboxHover({
   const cheaper = pct != null && pct < -0.5 // rakip ucuz → kaybediyoruz
   const higher = pct != null && pct > 0.5 // rakip pahalı → fırsat
   const pctLabel = pct != null ? Math.abs(pct).toFixed(1).replace(".", ",") : null
+
+  // Rakip fiyatına satarsak birim başına net kâr/zarar (₺) — marj %'den türetilir
+  const netAtMarket =
+    marginAtMarket != null ? (buyboxPrice * marginAtMarket) / 100 : null
+  const loss = netAtMarket != null && netAtMarket < 0
 
   const durum = isOurs
     ? { text: "BuyBox bizde — en iyi konumdasın", cls: "text-emerald-600 dark:text-emerald-400" }
@@ -84,6 +96,32 @@ export function BuyboxHover({
                 />
               )}
             </div>
+            {netAtMarket != null && !isOurs && (
+              <div
+                className={cn(
+                  "rounded-md border px-2 py-1.5",
+                  loss
+                    ? "border-rose-200 bg-rose-50 dark:border-rose-900/50 dark:bg-rose-950/30"
+                    : "border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30",
+                )}
+              >
+                <p className="text-[10px] text-muted-foreground">
+                  Rakip fiyatına satarsan (birim başına)
+                </p>
+                <p
+                  className={cn(
+                    "text-sm font-bold tabular-nums",
+                    loss ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400",
+                  )}
+                >
+                  {loss ? "−" : "+"}
+                  {formatCurrency(Math.abs(netAtMarket))}
+                  <span className="ml-1 text-[11px] font-medium">
+                    {loss ? "zarar" : "kâr"} · %{Math.abs(marginAtMarket!).toFixed(1).replace(".", ",")} marj
+                  </span>
+                </p>
+              </div>
+            )}
             <p className={cn("border-t pt-2 text-[11px] font-medium leading-snug", durum.cls)}>
               {durum.text}
             </p>

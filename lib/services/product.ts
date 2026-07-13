@@ -4,6 +4,7 @@ import type { ProductFormValues } from "@/lib/validators/product"
 import { recalculateMarketplacePrices } from "./marketplace-price"
 import { recalculateSetsContainingComponents } from "./set-product"
 import { syncPrimaryTrendyolListing } from "./product-marketplace-listing"
+import { calculateActualProfit } from "@/lib/pricing/sale-price"
 
 export interface ProductListFilters {
   search?: string
@@ -242,9 +243,38 @@ export async function listProducts(options: ProductListOptions = {}) {
     })
   }
 
+  // Trendyol komisyon/kargo/stopaj config — rakip fiyatına satarsak marj hesabı için
+  const tyMarketplace = await prisma.marketplace.findFirst({
+    where: { name: "Trendyol" },
+    select: {
+      commissionRate: true,
+      shippingCost: true,
+      withholdingTax: true,
+      extraCost: true,
+    },
+  })
+  const tyConfig = tyMarketplace
+    ? {
+        commissionRate: Number(tyMarketplace.commissionRate),
+        shippingCost: Number(tyMarketplace.shippingCost),
+        withholdingTax: Number(tyMarketplace.withholdingTax),
+        extraCost: Number(tyMarketplace.extraCost),
+      }
+    : null
+
   // SET tipindeki ürünler için sanal stok / PSF / alış hesapla
   const itemsWithVirtualStock = items.map((p) => {
     const buybox = buyboxByProductId.get(p.id) ?? null
+    // Rakip (BuyBox) fiyatına satarsak net marj % (base komisyonla, tooltip için)
+    const cost = p.mainPurchasePrice != null ? Number(p.mainPurchasePrice) : null
+    const trendyolBuyboxMargin =
+      buybox && tyConfig && cost != null && cost > 0
+        ? calculateActualProfit({
+            salePrice: buybox.buyboxPrice,
+            netPurchasePrice: cost,
+            marketplace: tyConfig,
+          })
+        : null
     const trendyolMp = p.marketplacePrices?.[0]
     const trendyolPrice = trendyolMp
       ? Number(trendyolMp.manualOverride ?? trendyolMp.calculatedPrice)
@@ -287,6 +317,7 @@ export async function listProducts(options: ProductListOptions = {}) {
         virtualMainPurchasePrice: null as number | null,
         trendyolBuybox: buybox,
         trendyolOurPrice: trendyolPrice,
+        trendyolBuyboxMargin,
         trendyolListing,
         stockSource,
       }
@@ -331,6 +362,7 @@ export async function listProducts(options: ProductListOptions = {}) {
       virtualMainPurchasePrice,
       trendyolBuybox: buybox,
       trendyolOurPrice: trendyolPrice,
+      trendyolBuyboxMargin,
       // stockSource bilinçli YOK: SET'te ana/eczane stok kavramı bileşenler üzerinden
       // işler, MAIN/PHARMACY/ZERO rozeti yanıltıcı olur (satır renklenmez).
       trendyolListing,

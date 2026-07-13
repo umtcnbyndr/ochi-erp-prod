@@ -83,7 +83,7 @@ const COL = {
   formul: { key: "formul", label: "Formül Satış", align: "center", sort: (r) => num(r.formulaPrice), render: (r) => <span className="tabular-nums">{tl(r.formulaPrice)}</span> },
   mevcut: { key: "mevcut", label: "Bizim Fiyat", align: "center", sort: (r) => num(r.ourPrice), render: (r) => <span className="tabular-nums">{tl(r.ourPrice)}{r.ownsBuybox && <span className="ml-1 text-emerald-600 text-xs" title="BuyBox bizde">★</span>}</span> },
   buybox: { key: "buybox", label: "BuyBox", align: "center", sort: (r) => num(r.buyboxPrice), render: (r) => (r.found && r.buyboxPrice != null ? (
-    <BuyboxHover buyboxPrice={r.buyboxPrice} ourPrice={r.ourPrice} isOurs={r.ownsBuybox} observedAt={r.observedAt}>
+    <BuyboxHover buyboxPrice={r.buyboxPrice} ourPrice={r.ourPrice} isOurs={r.ownsBuybox} observedAt={r.observedAt} marginAtMarket={r.opportunity.marginAtMarket}>
       <span className="tabular-nums cursor-help">{tl(r.buyboxPrice)}</span>
     </BuyboxHover>
   ) : <span className="text-xs text-muted-foreground">yok</span>) },

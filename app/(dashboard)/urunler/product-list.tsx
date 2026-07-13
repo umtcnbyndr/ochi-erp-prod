@@ -84,6 +84,8 @@ interface ProductRow {
     observedAt: Date | string
   } | null
   trendyolOurPrice?: number | null
+  /** Rakip (BuyBox) fiyatına satarsak net marj % (tooltip için) */
+  trendyolBuyboxMargin?: number | null
   trendyolListing?: {
     quantity: number
     approved: boolean
@@ -785,6 +787,7 @@ export function ProductList({
                             ourPrice={ourPrice}
                             isOurs={isOurs}
                             observedAt={p.trendyolBuybox.observedAt}
+                            marginAtMarket={p.trendyolBuyboxMargin}
                           >
                             <div className="inline-flex cursor-help flex-col items-center gap-0.5 leading-tight">
                               <span
