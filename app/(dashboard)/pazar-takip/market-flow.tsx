@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useMemo, useState, useTransition, type ReactNode } from "react"
 import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -22,7 +22,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { RefreshCw, TrendingUp, PlusCircle, ShoppingCart } from "lucide-react"
+import { RefreshCw, TrendingUp, PlusCircle, ShoppingCart, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react"
+import { cn } from "@/lib/utils"
 import type { MarketAnalysisResult, MarketRow } from "@/lib/services/market-analysis"
 import type { OpportunityType } from "@/lib/pricing/market-opportunity"
 import { loadMarketAnalysisAction, applyMarketPriceAction } from "./actions"
@@ -35,15 +36,142 @@ function tl(v: number | null | undefined): string {
   return `₺${v.toLocaleString("tr-TR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 }
 
-const BADGE: Record<OpportunityType, { label: string; cls: string }> = {
-  RAISE_PRICE: { label: "Fiyat Yükselt", cls: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-  COMPETE: { label: "Rekabet", cls: "bg-blue-100 text-blue-800 border-blue-300" },
-  HOLD: { label: "Koru", cls: "bg-muted text-muted-foreground" },
-  LOSS_RISK: { label: "Zarar Riski", cls: "bg-rose-100 text-rose-800 border-rose-300" },
-  LIST: { label: "Listele", cls: "bg-teal-100 text-teal-800 border-teal-300" },
-  ORDER: { label: "Sipariş Ver", cls: "bg-amber-100 text-amber-900 border-amber-300" },
-  NO_MARKET: { label: "Piyasada Yok", cls: "bg-muted text-muted-foreground" },
-  SKIP: { label: "—", cls: "bg-muted text-muted-foreground" },
+// Aksiyon rozeti + satır rengi (kolay taranabilirlik)
+const STYLE: Record<OpportunityType, { label: string; badge: string; bar: string }> = {
+  RAISE_PRICE: { label: "Fiyat Yükselt", badge: "bg-emerald-100 text-emerald-800 border-emerald-300", bar: "border-l-emerald-500" },
+  COMPETE: { label: "Rekabet Et", badge: "bg-blue-100 text-blue-800 border-blue-300", bar: "border-l-blue-500" },
+  HOLD: { label: "Koru", badge: "bg-slate-100 text-slate-700 border-slate-300", bar: "border-l-slate-300" },
+  LOSS_RISK: { label: "Zarar Riski", badge: "bg-rose-100 text-rose-800 border-rose-300", bar: "border-l-rose-500" },
+  LIST: { label: "Listele", badge: "bg-teal-100 text-teal-800 border-teal-300", bar: "border-l-teal-500" },
+  ORDER: { label: "Sipariş Ver", badge: "bg-amber-100 text-amber-900 border-amber-300", bar: "border-l-amber-500" },
+  NO_MARKET: { label: "Piyasada Yok", badge: "bg-slate-100 text-slate-500 border-slate-200", bar: "border-l-slate-200" },
+  SKIP: { label: "Yeterli Marj Yok", badge: "bg-slate-100 text-slate-500 border-slate-200", bar: "border-l-slate-200" },
+}
+
+/** Her satırda ASLA boş kalmayan, herkesin anlayacağı analiz hücresi. */
+function AnalizCell({ r }: { r: MarketRow }) {
+  const st = STYLE[r.opportunity.type]
+  return (
+    <div className="min-w-[240px]">
+      <Badge variant="outline" className={cn(st.badge, "whitespace-nowrap font-medium")}>{st.label}</Badge>
+      <div className="text-xs text-muted-foreground mt-0.5 leading-snug">{r.opportunity.label}</div>
+    </div>
+  )
+}
+
+// ---- Kolon tanımı + sıralanabilir tablo ----
+interface Col {
+  key: string
+  label: string
+  align?: "right" | "left"
+  sort?: (r: MarketRow) => number | string
+  render: (r: MarketRow) => ReactNode
+  className?: string
+}
+
+function num(v: number | null | undefined): number {
+  return v == null ? -Infinity : v
+}
+
+const COL = {
+  urun: { key: "urun", label: "Ürün", sort: (r) => r.name, render: (r) => <ProductCell r={r} /> },
+  anaAlis: { key: "anaAlis", label: "Ana Alış", align: "right", sort: (r) => num(r.mainPurchasePrice), render: (r) => <span className="tabular-nums text-xs">{tl(r.mainPurchasePrice)}</span> },
+  anaStok: { key: "anaStok", label: "Ana Stok", align: "right", sort: (r) => r.mainStock, render: (r) => <span className="tabular-nums text-xs">{r.mainStock}</span> },
+  caddeAlis: { key: "caddeAlis", label: "Cadde Alış", align: "right", sort: (r) => num(r.streetPurchasePrice), render: (r) => <span className="tabular-nums text-xs">{tl(r.streetPurchasePrice)}</span> },
+  caddeStok: { key: "caddeStok", label: "Cadde Stok", align: "right", sort: (r) => r.streetStock, render: (r) => <span className="tabular-nums text-xs">{r.streetStock}</span> },
+  formul: { key: "formul", label: "Formül Satış", align: "right", sort: (r) => num(r.formulaPrice), render: (r) => <span className="tabular-nums text-xs">{tl(r.formulaPrice)}</span> },
+  mevcut: { key: "mevcut", label: "Bizim Fiyat", align: "right", sort: (r) => num(r.ourPrice), render: (r) => <span className="tabular-nums">{tl(r.ourPrice)}{r.ownsBuybox && <span className="ml-1 text-emerald-600 text-xs" title="BuyBox bizde">★</span>}</span> },
+  buybox: { key: "buybox", label: "BuyBox", align: "right", sort: (r) => num(r.buyboxPrice), render: (r) => <span className="tabular-nums">{r.found ? tl(r.buyboxPrice) : <span className="text-xs text-muted-foreground">yok</span>}</span> },
+  rakip: { key: "rakip", label: "Rakip (en düşük)", align: "right", sort: (r) => num(lowestRival(r)), render: (r) => <span className="tabular-nums text-xs">{tl(lowestRival(r))}</span> },
+  s2: { key: "s2", label: "2", align: "right", sort: (r) => num(r.sellers[1]?.price), render: (r) => <span className="tabular-nums text-xs">{tl(r.sellers[1]?.price)}</span> },
+  s3: { key: "s3", label: "3", align: "right", sort: (r) => num(r.sellers[2]?.price), render: (r) => <span className="tabular-nums text-xs">{tl(r.sellers[2]?.price)}</span> },
+  oneri: { key: "oneri", label: "Öneri", align: "right", sort: (r) => num(r.opportunity.recommendedPrice), render: (r) => <span className="tabular-nums font-medium">{tl(r.opportunity.recommendedPrice)}</span> },
+  kazanc: { key: "kazanc", label: "+₺ / Marj", align: "right", sort: (r) => num(r.opportunity.expectedGainPerUnit), render: (r) => (
+    <div className="text-xs">
+      {r.opportunity.expectedGainPerUnit != null && r.opportunity.expectedGainPerUnit > 0 && <div className="text-emerald-600 font-medium">+{tl(r.opportunity.expectedGainPerUnit)}</div>}
+      {r.opportunity.marginAtRecommended != null && <div className="text-muted-foreground tabular-nums">%{r.opportunity.marginAtRecommended}</div>}
+    </div>
+  ) },
+  kaynak: { key: "kaynak", label: "Kaynak", sort: (r) => r.costSource, render: (r) => <span className="text-xs">{r.costSource === "CATALOG" ? "Katalog" : r.costSource === "STREET" ? "Cadde" : r.costSource === "MAIN" ? "Ana" : "—"}</span> },
+  maliyet: { key: "maliyet", label: "Kullanılan Maliyet", align: "right", sort: (r) => num(r.unitCost), render: (r) => <span className="tabular-nums text-xs">{tl(r.unitCost)}</span> },
+  marj: { key: "marj", label: "Marj", align: "right", sort: (r) => num(r.opportunity.marginAtMarket), render: (r) => <span className="tabular-nums">{r.opportunity.marginAtMarket != null ? `%${r.opportunity.marginAtMarket}` : "—"}</span> },
+  analiz: { key: "analiz", label: "Analiz (öneri)", sort: (r) => r.opportunity.priority, render: (r) => <AnalizCell r={r} /> },
+} satisfies Record<string, Col>
+
+function lowestRival(r: MarketRow): number | null {
+  const rivals = r.sellers.filter((s) => s.seller && !s.seller.toLowerCase().includes("ochi") && s.price != null && s.price > 0).map((s) => s.price as number)
+  return rivals.length ? Math.min(...rivals) : null
+}
+
+function MarketTable({ rows, columns, action, defaultSort }: { rows: MarketRow[]; columns: Col[]; action?: { label: string; onApply: (r: MarketRow) => Promise<void>; disabled: (r: MarketRow) => boolean }; defaultSort?: string }) {
+  const [sortKey, setSortKey] = useState<string>(defaultSort ?? "analiz")
+  const [dir, setDir] = useState<"asc" | "desc">("desc")
+  const [busy, setBusy] = useState<number | null>(null)
+
+  const sorted = useMemo(() => {
+    const col = columns.find((c) => c.key === sortKey)
+    if (!col?.sort) return rows
+    const arr = [...rows]
+    arr.sort((a, b) => {
+      const va = col.sort!(a), vb = col.sort!(b)
+      const cmp = typeof va === "string" || typeof vb === "string" ? String(va).localeCompare(String(vb), "tr") : (va as number) - (vb as number)
+      return dir === "asc" ? cmp : -cmp
+    })
+    return arr
+  }, [rows, columns, sortKey, dir])
+
+  function toggle(key: string) {
+    if (key === sortKey) setDir((d) => (d === "asc" ? "desc" : "asc"))
+    else { setSortKey(key); setDir("desc") }
+  }
+
+  if (rows.length === 0) return <Empty msg="Bu sekmede gösterilecek satır yok." />
+
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="max-h-[calc(100vh-15rem)] overflow-auto rounded-md">
+          <Table className="text-sm [&_td]:py-1.5 [&_th]:h-9 [&_td]:border-r [&_th]:border-r [&_td:last-child]:border-r-0 [&_th:last-child]:border-r-0">
+            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-background [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
+              <TableRow>
+                {columns.map((c) => (
+                  <TableHead key={c.key} className={cn(c.align === "right" && "text-right", "select-none")}>
+                    {c.sort ? (
+                      <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggle(c.key)}>
+                        {c.label}
+                        {sortKey === c.key ? (dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ChevronsUpDown className="h-3 w-3 opacity-40" />}
+                      </button>
+                    ) : c.label}
+                  </TableHead>
+                ))}
+                {action && <TableHead></TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sorted.map((r) => {
+                const st = STYLE[r.opportunity.type]
+                return (
+                  <TableRow key={r.productId} className={cn("border-l-4", st.bar, !r.found && "opacity-70")}>
+                    {columns.map((c) => (
+                      <TableCell key={c.key} className={cn(c.align === "right" && "text-right", c.className)}>{c.render(r)}</TableCell>
+                    ))}
+                    {action && (
+                      <TableCell>
+                        <Button size="sm" variant="outline" className="h-7" disabled={busy === r.productId || action.disabled(r)}
+                          onClick={async () => { setBusy(r.productId); await action.onApply(r); setBusy(null) }}>
+                          {action.label}
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 export function MarketFlow({
@@ -79,20 +207,30 @@ export function MarketFlow({
     const q = overrides?.search ?? search
     const m = overrides?.margin ?? margin
     startTransition(async () => {
-      const res = await loadMarketAnalysisAction({
+      setData(await loadMarketAnalysisAction({
         brandId: b === "all" ? undefined : Number(b),
         categoryId: c === "all" ? undefined : Number(c),
         subcategoryId: s === "all" ? undefined : Number(s),
         search: q.trim() || undefined,
         targetProfitOverride: m.trim() ? Number(m) : undefined,
-      })
-      setData(res)
+      }))
     })
+  }
+
+  async function applyRow(r: MarketRow, onDone: () => void) {
+    if (!r.opportunity.recommendedPrice) return
+    const res = await applyMarketPriceAction([{ productId: r.productId, price: r.opportunity.recommendedPrice }])
+    if (res.success) { toast.success(`${r.name.slice(0, 30)} → ${tl(r.opportunity.recommendedPrice)} uygulandı`); onDone() }
+    else toast.error(res.error ?? "Uygulanamadı")
   }
 
   const rows = data.rows
   const raiseTab = rows.filter((r) => r.opportunity.type === "RAISE_PRICE" || r.opportunity.type === "COMPETE")
   const listTab = rows.filter((r) => r.opportunity.type === "LIST" || r.opportunity.type === "ORDER")
+
+  const raiseCols: Col[] = [COL.urun, COL.anaAlis, COL.anaStok, COL.caddeAlis, COL.caddeStok, COL.mevcut, COL.buybox, COL.rakip, COL.oneri, COL.kazanc, COL.analiz]
+  const listCols: Col[] = [COL.urun, COL.kaynak, COL.anaAlis, COL.anaStok, COL.caddeAlis, COL.caddeStok, COL.maliyet, COL.buybox, COL.marj, COL.analiz]
+  const allCols: Col[] = [COL.urun, COL.anaAlis, COL.anaStok, COL.caddeAlis, COL.caddeStok, COL.formul, COL.mevcut, COL.buybox, COL.s2, COL.s3, COL.analiz]
 
   return (
     <div className="space-y-4">
@@ -105,17 +243,15 @@ export function MarketFlow({
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted-foreground">Ürün ara</label>
             <Input className="h-9 w-44" placeholder="ad / barkod" value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") reload() }} onBlur={() => reload()} />
+              onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") reload() }} onBlur={() => reload()} />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted-foreground">Hedef Kâr % (senaryo)</label>
             <Input className="h-9 w-32" type="number" placeholder="marka/pazar" value={margin}
-              onChange={(e) => setMargin(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") reload() }} onBlur={() => reload()} />
+              onChange={(e) => setMargin(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") reload() }} onBlur={() => reload()} />
           </div>
           <Button variant="outline" size="sm" className="h-9" onClick={() => reload()} disabled={pending}>
-            <RefreshCw className={`h-4 w-4 ${pending ? "animate-spin" : ""}`} /> Yenile
+            <RefreshCw className={cn("h-4 w-4", pending && "animate-spin")} /> Yenile
           </Button>
           {data.lastObservedAt && (
             <span className="text-xs text-muted-foreground ml-auto self-center">
@@ -127,13 +263,12 @@ export function MarketFlow({
 
       {/* KPI */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi title="Kaçan Kâr (aylık tahmin)" value={tl(data.kpis.moneyOnTableMonthly)} hint={`${tl(data.kpis.moneyOnTablePerUnit)}/adet · hız çarpımlı`} accent="emerald" />
+        <Kpi title="Kaçan Kâr (aylık tahmin)" value={tl(data.kpis.moneyOnTableMonthly)} hint={`${tl(data.kpis.moneyOnTablePerUnit)}/adet · satış hızı çarpımlı`} accent="emerald" />
         <Kpi title="BuyBox Bizde / Rakipte" value={`${data.kpis.buyboxOursCount} / ${data.kpis.buyboxRivalCount}`} hint={`${data.kpis.foundCount}/${data.kpis.totalTracked} piyasada bulundu`} />
         <Kpi title="Listeleme + Sipariş Fırsatı" value={`${data.kpis.listOpportunityCount + data.kpis.orderOpportunityCount}`} hint={`${data.kpis.listOpportunityCount} listele · ${data.kpis.orderOpportunityCount} sipariş`} accent="teal" />
         <Kpi title="Zarar Riski" value={`${data.kpis.lossRiskCount}`} hint="rakip kâr tabanı altında" accent={data.kpis.lossRiskCount > 0 ? "rose" : undefined} />
       </div>
 
-      {/* Sekmeler */}
       <Tabs defaultValue="raise">
         <TabsList>
           <TabsTrigger value="raise"><TrendingUp className="h-4 w-4 mr-1" />Fiyat Yükselt ({raiseTab.length})</TabsTrigger>
@@ -141,9 +276,12 @@ export function MarketFlow({
           <TabsTrigger value="all"><ShoppingCart className="h-4 w-4 mr-1" />Tümü ({rows.length})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="raise"><RaiseTable rows={raiseTab} canEdit={canEdit} onApplied={() => reload()} /></TabsContent>
-        <TabsContent value="list"><ListTable rows={listTab} /></TabsContent>
-        <TabsContent value="all"><AllTable rows={rows} /></TabsContent>
+        <TabsContent value="raise">
+          <MarketTable rows={raiseTab} columns={raiseCols}
+            action={canEdit ? { label: "Uygula", disabled: (r) => !r.opportunity.recommendedPrice, onApply: (r) => applyRow(r, () => reload()) } : undefined} />
+        </TabsContent>
+        <TabsContent value="list"><MarketTable rows={listTab} columns={listCols} /></TabsContent>
+        <TabsContent value="all"><MarketTable rows={rows} columns={allCols} /></TabsContent>
       </Tabs>
     </div>
   )
@@ -170,179 +308,19 @@ function Kpi({ title, value, hint, accent }: { title: string; value: string; hin
     <Card>
       <CardContent className="py-3">
         <div className="text-xs text-muted-foreground">{title}</div>
-        <div className={`text-2xl font-semibold tabular-nums ${color}`}>{value}</div>
+        <div className={cn("text-2xl font-semibold tabular-nums", color)}>{value}</div>
         {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
       </CardContent>
     </Card>
   )
 }
 
-function OppBadge({ type }: { type: OpportunityType }) {
-  const b = BADGE[type]
-  return <Badge variant="outline" className={`${b.cls} whitespace-nowrap`}>{b.label}</Badge>
-}
-
 function ProductCell({ r }: { r: MarketRow }) {
   return (
     <div>
-      <div className="truncate max-w-[260px] text-sm" title={r.name}>{r.name}</div>
+      <div className="truncate max-w-[240px] text-sm" title={r.name}>{r.name}</div>
       <div className="text-xs text-muted-foreground">{r.brandName ?? "—"} · {r.barcode}</div>
     </div>
-  )
-}
-
-function RaiseTable({ rows, canEdit, onApplied }: { rows: MarketRow[]; canEdit: boolean; onApplied: () => void }) {
-  const [busy, setBusy] = useState<number | null>(null)
-  async function apply(r: MarketRow) {
-    if (!r.opportunity.recommendedPrice) return
-    setBusy(r.productId)
-    const res = await applyMarketPriceAction([{ productId: r.productId, price: r.opportunity.recommendedPrice }])
-    setBusy(null)
-    if (res.success) { toast.success(`${r.name.slice(0, 30)} → ${tl(r.opportunity.recommendedPrice)} uygulandı`); onApplied() }
-    else toast.error(res.error ?? "Uygulanamadı")
-  }
-  if (rows.length === 0) return <Empty msg="Fiyat yükseltme/rekabet fırsatı yok." />
-  return (
-    <TableCard>
-      <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-background [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
-        <TableRow>
-          <TableHead>Ürün</TableHead>
-          <TableHead className="text-right">Ana Alış</TableHead>
-          <TableHead className="text-right">Ana Stok</TableHead>
-          <TableHead className="text-right">Cadde Alış</TableHead>
-          <TableHead className="text-right">Cadde Stok</TableHead>
-          <TableHead className="text-right">Bizim Fiyat</TableHead>
-          <TableHead className="text-right">BuyBox</TableHead>
-          <TableHead className="text-right">Rakip (en düşük)</TableHead>
-          <TableHead className="text-right">Öneri</TableHead>
-          <TableHead className="text-right">+₺ / Marj</TableHead>
-          <TableHead>Analiz</TableHead>
-          {canEdit && <TableHead></TableHead>}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((r) => {
-          const secondSeller = r.sellers.find((s) => s.seller && !s.seller.toLowerCase().includes("ochi"))?.price ?? null
-          return (
-            <TableRow key={r.productId}>
-              <TableCell><ProductCell r={r} /></TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{tl(r.mainPurchasePrice)}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{r.mainStock}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{tl(r.streetPurchasePrice)}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{r.streetStock}</TableCell>
-              <TableCell className="text-right tabular-nums">{tl(r.ourPrice)}{r.ownsBuybox && <span className="ml-1 text-emerald-600 text-xs">★</span>}</TableCell>
-              <TableCell className="text-right tabular-nums">{tl(r.buyboxPrice)}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">{tl(secondSeller)}</TableCell>
-              <TableCell className="text-right tabular-nums font-medium">{tl(r.opportunity.recommendedPrice)}</TableCell>
-              <TableCell className="text-right tabular-nums text-xs">
-                {r.opportunity.expectedGainPerUnit != null && r.opportunity.expectedGainPerUnit > 0 && <span className="text-emerald-600">+{tl(r.opportunity.expectedGainPerUnit)}</span>}
-                {r.opportunity.marginAtRecommended != null && <div className="text-muted-foreground">%{r.opportunity.marginAtRecommended}</div>}
-              </TableCell>
-              <TableCell><OppBadge type={r.opportunity.type} /></TableCell>
-              {canEdit && (
-                <TableCell>
-                  <Button size="sm" variant="outline" className="h-7" disabled={busy === r.productId || !r.opportunity.recommendedPrice} onClick={() => apply(r)}>
-                    Uygula
-                  </Button>
-                </TableCell>
-              )}
-            </TableRow>
-          )
-        })}
-      </TableBody>
-    </TableCard>
-  )
-}
-
-function ListTable({ rows }: { rows: MarketRow[] }) {
-  if (rows.length === 0) return <Empty msg="Listeleme/sipariş fırsatı yok (stok var+listede yok veya katalogda kârlı ürün)." />
-  return (
-    <TableCard>
-      <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-background [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
-        <TableRow>
-          <TableHead>Ürün</TableHead>
-          <TableHead>Kaynak</TableHead>
-          <TableHead className="text-right">Ana Alış</TableHead>
-          <TableHead className="text-right">Ana Stok</TableHead>
-          <TableHead className="text-right">Cadde Alış</TableHead>
-          <TableHead className="text-right">Cadde Stok</TableHead>
-          <TableHead className="text-right">Kullanılan Maliyet</TableHead>
-          <TableHead className="text-right">Piyasa (BuyBox)</TableHead>
-          <TableHead className="text-right">Marj</TableHead>
-          <TableHead>Analiz</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((r) => (
-          <TableRow key={r.productId}>
-            <TableCell><ProductCell r={r} /></TableCell>
-            <TableCell className="text-xs">{r.costSource === "CATALOG" ? "Katalog" : r.costSource === "STREET" ? "Cadde" : "Ana"}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{tl(r.mainPurchasePrice)}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{r.mainStock}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{tl(r.streetPurchasePrice)}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{r.streetStock}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{tl(r.unitCost)}</TableCell>
-            <TableCell className="text-right tabular-nums">{tl(r.buyboxPrice)}</TableCell>
-            <TableCell className="text-right tabular-nums">{r.opportunity.marginAtMarket != null ? `%${r.opportunity.marginAtMarket}` : "—"}</TableCell>
-            <TableCell><div className="flex items-center gap-2"><OppBadge type={r.opportunity.type} /><span className="text-xs text-muted-foreground truncate max-w-[280px]">{r.opportunity.label}</span></div></TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </TableCard>
-  )
-}
-
-function AllTable({ rows }: { rows: MarketRow[] }) {
-  if (rows.length === 0) return <Empty msg="Henüz taranmış ürün yok — worker turunu tamamlayınca dolacak." />
-  return (
-    <TableCard>
-      <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-background [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
-        <TableRow>
-          <TableHead>Ürün</TableHead>
-          <TableHead className="text-right">Ana Alış</TableHead>
-          <TableHead className="text-right">Ana Stok</TableHead>
-          <TableHead className="text-right">Cadde Alış</TableHead>
-          <TableHead className="text-right">Cadde Stok</TableHead>
-          <TableHead className="text-right">Formül Satış</TableHead>
-          <TableHead className="text-right">Mevcut</TableHead>
-          <TableHead className="text-right">1 (BB)</TableHead>
-          <TableHead className="text-right">2</TableHead>
-          <TableHead className="text-right">3</TableHead>
-          <TableHead>Analiz</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((r) => (
-          <TableRow key={r.productId} className={!r.found ? "opacity-60" : ""}>
-            <TableCell><ProductCell r={r} /></TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{tl(r.mainPurchasePrice)}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{r.mainStock}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{tl(r.streetPurchasePrice)}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{r.streetStock}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{tl(r.formulaPrice)}</TableCell>
-            <TableCell className="text-right tabular-nums">{tl(r.ourPrice)}{r.ownsBuybox && <span className="ml-1 text-emerald-600 text-xs">★</span>}</TableCell>
-            <TableCell className="text-right tabular-nums">{r.found ? tl(r.sellers[0]?.price ?? r.buyboxPrice) : <span className="text-xs text-muted-foreground">yok</span>}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{tl(r.sellers[1]?.price)}</TableCell>
-            <TableCell className="text-right tabular-nums text-xs">{tl(r.sellers[2]?.price)}</TableCell>
-            <TableCell><OppBadge type={r.opportunity.type} /></TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </TableCard>
-  )
-}
-
-function TableCard({ children }: { children: React.ReactNode }) {
-  return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="max-h-[calc(100vh-19rem)] overflow-auto rounded-md">
-          <Table className="text-sm [&_td]:py-1.5 [&_th]:h-9 [&_td]:border-r [&_th]:border-r [&_td:last-child]:border-r-0 [&_th:last-child]:border-r-0">
-            {children}
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
   )
 }
 
