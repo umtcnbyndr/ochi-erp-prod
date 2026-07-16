@@ -127,7 +127,6 @@ export async function saveTrendyolConfigAction(input: {
   })
 
   revalidatePath("/ayarlar")
-  revalidatePath("/fiyat-kontrol")
 
   return { success: true, tested: input.alsoTest, testMessage }
 }

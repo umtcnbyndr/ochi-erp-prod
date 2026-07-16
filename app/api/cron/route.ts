@@ -6,25 +6,23 @@
  *
  * İşler (?job=):
  *   dopigo   → son 2 günün Dopigo siparişlerini çek (önerilen her 20 dk)
- *   buybox   → aktif TY ürünleri için BuyBox çek (önerilen saatte 1)
  *   rematch  → eşleşmeyen DopigoOrderItem'lar için match'i yeniden dene (önerilen günde 1)
+ *
+ * NOT: buybox işi kaldırıldı — BuyBox artık Pazar Fiyat Takip scraper'ından gelir.
  *
  * Coolify Scheduled Task örneği (container içinde, wget ile):
  *   her 20 dk → /api/cron?secret=XXX&job=dopigo
- *   saatte 1  → /api/cron?secret=XXX&job=buybox
  *   gece 3'te → /api/cron?secret=XXX&job=rematch
  */
 import crypto from "node:crypto"
 import { NextResponse, type NextRequest } from "next/server"
-import { prisma } from "@/lib/db"
 import {
   syncDopigoOrders,
   rematchUnmatchedItems,
 } from "@/lib/services/dopigo-orders"
-import { refreshBuyboxForProducts } from "@/lib/services/price-recommendation"
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 300 // buybox toplu çekim uzun sürebilir
+export const maxDuration = 300
 
 /** Uzunluk sızdırmadan sabit-zamanlı karşılaştırma (sha256 digest üzerinden). */
 function safeEqual(a: string | null | undefined, b: string): boolean {
@@ -58,16 +56,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, job, startedAt, result })
     }
 
-    if (job === "buybox") {
-      const products = await prisma.product.findMany({
-        where: { status: "ACTIVE", productType: "SINGLE", trendyolBarcode: { not: null } },
-        select: { id: true },
-      })
-      const ids = products.map((p) => p.id)
-      const result =
-        ids.length > 0 ? await refreshBuyboxForProducts(ids) : { skipped: "no TY product" }
-      return NextResponse.json({ ok: true, job, startedAt, productCount: ids.length, result })
-    }
+    // job=buybox kaldırıldı: BuyBox artık Pazar Fiyat Takip scraper'ından gelir
+    // (worker → MarketPriceSnapshot → recommendedPrice). TY API buybox emekliye ayrıldı.
 
     if (job === "rematch") {
       const result = await rematchUnmatchedItems()
@@ -75,7 +65,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "unknown job", validJobs: ["dopigo", "buybox", "rematch"] },
+      { error: "unknown job", validJobs: ["dopigo", "rematch"] },
       { status: 400 },
     )
   } catch (err) {

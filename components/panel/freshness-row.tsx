@@ -65,7 +65,7 @@ export function FreshnessRow({ pharmacy, dopigo, favorite, buybox }: Props) {
         label="BuyBox Tazele"
         icon={RefreshCw}
         tone="warning"
-        href="/fiyat-onerileri"
+        href="/pazar-takip"
         value={buybox ? "Aktif" : "—"}
         subtitle={buybox ? "Trendyol API" : "henüz tazelenmedi"}
         statusDot={getStatusDot(buybox?.hoursAgo)}

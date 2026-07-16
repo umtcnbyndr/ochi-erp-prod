@@ -63,7 +63,7 @@ export function BuyboxLostWidget({ data }: Props) {
 
         {data.items.length > 0 && (
           <Link
-            href="/fiyat-onerileri"
+            href="/pazar-takip"
             className="flex items-center justify-between rounded-md border-t pt-2.5 -mx-4 px-4 -mb-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Fiyat önerileri

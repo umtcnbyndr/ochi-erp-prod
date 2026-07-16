@@ -22,6 +22,7 @@ import {
   finishScanRun,
   type ScanScope,
 } from "@/lib/services/market-scan"
+import { applyScraperRecommendations } from "@/lib/services/scraper-reprice"
 import {
   launchBrowser,
   newScrapePage,
@@ -102,6 +103,20 @@ async function runOneScan(triggeredBy: "MANUAL" | "CRON" | "INITIAL"): Promise<v
       errorCount,
     })
     console.log(`[scan] bitti: ${found} bulundu, ${notFound} yok, ${errorCount} hata`)
+
+    // Tarama sonrası: motorun COMPETE/RAISE önerilerini recommendedPrice'a yaz
+    // → Dopigo Aktarım Tier 2 otomatik BuyBox tampon fiyatını kullanır.
+    // Hata olursa taramayı düşürme (bilinçli ayrı try/catch).
+    if (found > 0) {
+      try {
+        const rep = await applyScraperRecommendations()
+        console.log(
+          `[reprice] ${rep.written}/${rep.scanned} ürün recommendedPrice güncellendi`,
+        )
+      } catch (e) {
+        console.error("[reprice] hata:", e)
+      }
+    }
   } catch (err) {
     await finishScanRun(runId, {
       status: "FAILED",

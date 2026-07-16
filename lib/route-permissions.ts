@@ -28,8 +28,6 @@ export const ALL_MODULES: ModuleDefinition[] = [
   { key: "barkod-eslestirme",label: "Barkod Eşleştirme",  routes: ["/barkod-eslestirme"] },
   { key: "dopigo-yukle",     label: "Dopigo Yükleme",     routes: ["/dopigo-yukle"] },
   { key: "dopigo-aktar",     label: "Dopigo Aktarım",     routes: ["/dopigo-aktar"] },
-  { key: "fiyat-onerileri",  label: "Fiyat Önerileri",    routes: ["/fiyat-onerileri"] },
-  { key: "fiyat-kontrol",    label: "Fiyat Kontrol",      routes: ["/fiyat-kontrol"] },
   { key: "trendyol-favoriler", label: "Trendyol Favorilenme", routes: ["/trendyol-favoriler"] },
   { key: "komisyon-tarifeleri", label: "Komisyon Tarifeleri", routes: ["/komisyon-tarifeleri"] },
   { key: "kupon-onerileri",  label: "Kupon Önerileri",   routes: ["/kupon-onerileri"] },

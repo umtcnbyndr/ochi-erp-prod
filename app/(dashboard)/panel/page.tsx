@@ -60,7 +60,7 @@ export default async function PanelPage() {
     { href: "/urun-giris", icon: PackagePlus, label: "Giriş" },
     { href: "/urun-cikis", icon: PackageMinus, label: "Çıkış" },
     { href: "/takas", icon: Repeat2, label: "Takas" },
-    { href: "/fiyat-onerileri", icon: Sparkles, label: "Fiyat" },
+    { href: "/pazar-takip", icon: Sparkles, label: "Fiyat" },
     { href: "/dopigo-aktar", icon: Download, label: "Dopigo" },
   ]
 
@@ -152,7 +152,7 @@ export default async function PanelPage() {
             }
             icon={TrendingDown}
             tone={buyboxLostCount > 0 ? "info" : "success"}
-            href="/fiyat-onerileri"
+            href="/pazar-takip"
           />
           <MetricCard
             label="Bekleyen Kampanya"

@@ -6,6 +6,11 @@ import { recalculateSetsContainingComponents } from "./set-product"
 import { syncPrimaryTrendyolListing } from "./product-marketplace-listing"
 import { calculateActualProfit } from "@/lib/pricing/sale-price"
 
+/** Scraper satıcı adı bize mi ait (BuyBox bizde) — "ochi" içerir. */
+function isOurSellerName(name: string | null | undefined): boolean {
+  return !!name && name.toLowerCase().includes("ochi")
+}
+
 export interface ProductListFilters {
   search?: string
   brandId?: number
@@ -179,23 +184,21 @@ export async function listProducts(options: ProductListOptions = {}) {
     }),
   ])
 
-  // Trendyol BuyBox son gozlemlerini productId basina getir
+  // BuyBox son gözlemleri — artık TY API değil Pazar Fiyat Takip scraper'ı
+  // (MarketPriceSnapshot) kaynaklı. Ürün başına en yeni bulunan gözlem.
   const productIds = items.map((p) => p.id)
   const latestBuyboxRows =
     productIds.length > 0
-      ? await prisma.competitorPriceObservation.findMany({
+      ? await prisma.marketPriceSnapshot.findMany({
           where: {
             productId: { in: productIds },
-            source: "TRENDYOL_BUYBOX",
-            observedAt: {
-              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-            },
+            found: true,
           },
           orderBy: { observedAt: "desc" },
           select: {
             productId: true,
             buyboxPrice: true,
-            buyboxOrder: true,
+            buyboxSeller: true,
             observedAt: true,
           },
         })
@@ -235,10 +238,12 @@ export async function listProducts(options: ProductListOptions = {}) {
     }
   >()
   for (const obs of latestBuyboxRows) {
+    if (obs.productId == null || obs.buyboxPrice == null) continue
     if (buyboxByProductId.has(obs.productId)) continue
     buyboxByProductId.set(obs.productId, {
       buyboxPrice: Number(obs.buyboxPrice),
-      buyboxOrder: obs.buyboxOrder,
+      // scraper satıcı adı "ochi" içeriyorsa BuyBox bizde → sıra 1
+      buyboxOrder: isOurSellerName(obs.buyboxSeller) ? 1 : 2,
       observedAt: obs.observedAt,
     })
   }
