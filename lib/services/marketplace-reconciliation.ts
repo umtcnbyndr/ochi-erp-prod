@@ -323,19 +323,35 @@ export function computeN11SettlementRates(buffers: Buffer[]): N11SettlementRates
   }
 }
 
-/** Ay bazlı oranları her siparişin kendi cirosuna uygular (stopaj + pazarlama + pazaryeri). */
+/**
+ * Ay bazlı oranları uygular ve kalemleri ERP cirosu bazına çevirir.
+ *
+ * Girişte (parse çıktısı): saleAmount = "Sipariş Tutarı" (indirim ÖNCESİ liste
+ * fiyatı), otherDeductions = mağaza indirimi + kupon (geçici taşıyıcı).
+ * Çıkışta: saleAmount = indirim SONRASI (müşterinin ödediği ≈ Dopigo cirosu),
+ * otherDeductions = SADECE gerçek gider (pazarlama + pazaryeri bedeli payı).
+ *
+ * Neden: ERP/Dopigo cirosu zaten indirimli. İndirim "diğer gider" olarak da
+ * düşülürse analytics indirimi ÇİFTE sayar — 2026-07-16'da tüm N11 siparişleri
+ * bu yüzden zararda göründü. netReceived değişmez: (gross−indirim)−fee =
+ * gross−(indirim+fee). Oran tabanı GROSS kalır (settlement toplamları n11'in
+ * kendi gross cirosuna göre; stopaj 308≈paid×%1 sağlaması 2026-07-16 tuttu).
+ */
 export function applyN11SettlementRates(
   rows: MarketplaceReconRow[],
   rates: N11SettlementRates,
 ): MarketplaceReconRow[] {
-  return rows.map((r) => ({
-    ...r,
-    withholding: (r.saleAmount * rates.stopajRate) / 100,
-    otherDeductions:
-      (r.otherDeductions ?? 0) +
-      (r.saleAmount * rates.marketingRate) / 100 +
-      (r.saleAmount * rates.platformFeeRate) / 100,
-  }))
+  return rows.map((r) => {
+    const gross = r.saleAmount
+    const indirimKupon = r.otherDeductions ?? 0
+    const fees = (gross * (rates.marketingRate + rates.platformFeeRate)) / 100
+    return {
+      ...r,
+      saleAmount: gross - indirimKupon,
+      withholding: (gross * rates.stopajRate) / 100,
+      otherDeductions: fees,
+    }
+  })
 }
 
 // ─── Registry ─────────────────────────────────────────────────

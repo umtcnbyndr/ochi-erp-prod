@@ -136,26 +136,55 @@ describe("N11 — settlementSummary ay-bazlı oran hesabı", () => {
   })
 })
 
-describe("N11 — applyN11SettlementRates", () => {
-  it("her siparişe kendi cirosu × oran uygular, mevcut otherDeductions korunur", () => {
+describe("N11 — applyN11SettlementRates (indirim çifte sayılmaz)", () => {
+  const rates = {
+    stopajRate: 1,
+    marketingRate: 0.5,
+    platformFeeRate: 0.3,
+    totalSaleAmount: 1000,
+    totalItemCount: 1,
+    month: "2026-06",
+    detectedMonths: [{ month: "2026-06", count: 1 }],
+  }
+
+  it("saleAmount indirim-sonrasına iner, otherDeductions SADECE oran gideri olur", () => {
     const rows = MARKETPLACE_PARSERS.N11.parse(
       itemShipmentsBuffer([
         { code: "C1", qty: 1, sale: "1000", discount: "50", coupon: "0", commission: "180" },
       ]),
     )
-    const rates = {
-      stopajRate: 1,
-      marketingRate: 0.5,
-      platformFeeRate: 0.3,
-      totalSaleAmount: 1000,
-      totalItemCount: 1,
-      month: "2026-06",
-      detectedMonths: [{ month: "2026-06", count: 1 }],
-    }
     const applied = applyN11SettlementRates(rows, rates)
-    expect(applied[0].withholding).toBeCloseTo(10, 4) // 1000 × %1
-    // otherDeductions: mevcut 50 (mağaza indirimi) + 1000×%0.5 (5) + 1000×%0.3 (3) = 58
-    expect(applied[0].otherDeductions).toBeCloseTo(58, 4)
+    // Ciro = müşterinin ödediği (Dopigo/ERP cirosuyla aynı baz): 1000 − 50 indirim
+    expect(applied[0].saleAmount).toBeCloseTo(950, 4)
+    // Oran tabanı GROSS: stopaj 1000×%1, gider 1000×(%0.5+%0.3)
+    expect(applied[0].withholding).toBeCloseTo(10, 4)
+    expect(applied[0].otherDeductions).toBeCloseTo(8, 4)
     expect(applied[0].commission).toBe(180) // değişmedi
+  })
+
+  it("netReceived eski dağılımla birebir aynı kalır (kalem taşıma, tutar değişikliği değil)", () => {
+    const rows = MARKETPLACE_PARSERS.N11.parse(
+      itemShipmentsBuffer([
+        { code: "C2", qty: 1, sale: "1000", discount: "40", coupon: "10", commission: "180" },
+      ]),
+    )
+    const [r] = applyN11SettlementRates(rows, rates)
+    // Eski: 1000 − 180 − 10 − (50+8) = 752. Yeni: 950 − 180 − 10 − 8 = 752.
+    const net = r.saleAmount - r.commission - r.withholding - (r.otherDeductions ?? 0)
+    expect(net).toBeCloseTo(752, 4)
+  })
+
+  it("REGRESYON: indirim otherDeductions içinde kalmaz (analytics çifte düşme kaynağıydı)", () => {
+    // 2026-07-16: Dopigo cirosu zaten indirimli gelirken indirim 'diğer' olarak da
+    // düşülüyordu → tüm N11 siparişleri zararda göründü (örn. 5250 liste / 3500 ödenen /
+    // diğer 1821). otherDeductions asla indirim+kupon içermemeli.
+    const rows = MARKETPLACE_PARSERS.N11.parse(
+      itemShipmentsBuffer([
+        { code: "C3", qty: 1, sale: "5.250,00", discount: "1.750,00", coupon: "0", commission: "560" },
+      ]),
+    )
+    const [r] = applyN11SettlementRates(rows, rates)
+    expect(r.saleAmount).toBeCloseTo(3500, 2) // ödenen tutar
+    expect(r.otherDeductions).toBeLessThan(100) // sadece 5250×%0.8 = 42, indirim YOK
   })
 })
