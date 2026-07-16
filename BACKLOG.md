@@ -87,7 +87,8 @@ _✅ Faz 1 tamam + canlı (Trendyol + Farmazon + Hepsiburada + N11):_
 - **Eşleşme anahtarı bug fix (2026-07-16, `0cd71bd`, deploy edildi):** analytics SQL'i sadece trendyol için serviceValue ilk parçasını alıyordu → HB 0/56, N11 0/37 recon buluyordu; sipariş tablosu/detay + marka/kategori tahmine düşerken KPI gerçek gösteriyordu. Fix: `reconMatchKeySql` + `SPLIT_MATCH_CHANNELS` (`lib/services/reconciliation-status.ts`) tek kaynak, sales-analytics'teki 5 SQL noktası oradan beslenir; TS↔SQL senkronu `tests/services/recon-match-key.test.ts` ile kilitli. **Yeni pazaryeri eklerken matchKey '-' ile bölüyorsa SPLIT_MATCH_CHANNELS'a da ekle.**
 
 _⏳ Faz 2 — sırayla eklenecek pazaryerleri (her biri = 1 parser registry kaydı):_
-Amazon · Pazarama · ePttAVM. Her biri için user o pazaryerinin ay sonu raporunu (kolon başlıkları) gösterecek → registry'ye eklenir.
+- ✅ **Pazarama** (2026-07-16): "Siparişleriniz_*.xlsx" item-bazlı; net ciro = Ürün Tutarı − Satıcı Kampanyası (Dopigo ile birebir doğrulandı), komisyon KDV dahil gerçek, Tedarik Edilemedi → net 0 → tam-iade kuralıyla düşer; stopaj raporda yok (tahmin fallback), kargo sipariş-başı input; eşleşme Sipariş Numarası birebir.
+- ⏳ Amazon · ePttAVM: user o pazaryerinin ay sonu raporunu (kolon başlıkları) gösterecek → registry'ye eklenir.
 
 _🗑️ "Ay Sonu" (MarketplaceMonthlyExpense) — kaldırma kararı beklemede:_
 - User bir kez (Mart 2026, 8 kanal) kullanıp bıraktı. Teknik olarak ölü değil: analytics'te fallback (recon yoksa) + 8 Mart kaydı. **Parser'ı olmayan 5 pazaryeri için tek gerçek-maliyet yolu.** Faz 2 bitince kaldırılabilir. Öneri: önce UI sekmesini kaldır (fallback+veri kalsın), Faz 2 sonrası tam sil.
