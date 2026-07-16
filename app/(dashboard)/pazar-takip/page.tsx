@@ -2,6 +2,7 @@ import { requirePermission } from "@/lib/permissions"
 import { prisma } from "@/lib/db"
 import { PageHeader } from "@/components/common/page-header"
 import { getMarketAnalysis } from "@/lib/services/market-analysis"
+import { getMarketPriceChanges } from "@/lib/services/market-price-changes"
 import { MarketFlow } from "./market-flow"
 
 export const dynamic = "force-dynamic"
@@ -10,8 +11,9 @@ export default async function PazarTakipPage() {
   const user = await requirePermission("pazar-takip", "view")
   const allowed = user.allowedBrandIds ?? null
 
-  const [analysis, brands, categories, subcategories] = await Promise.all([
+  const [analysis, priceChanges, brands, categories, subcategories] = await Promise.all([
     getMarketAnalysis({ allowedBrandIds: allowed }),
+    getMarketPriceChanges(5, { allowedBrandIds: allowed }),
     prisma.brand.findMany({
       where: allowed ? { id: { in: allowed } } : undefined,
       select: { id: true, name: true },
@@ -34,6 +36,7 @@ export default async function PazarTakipPage() {
       />
       <MarketFlow
         initial={analysis}
+        priceChanges={priceChanges}
         brands={brands}
         categories={categories}
         subcategories={subcategories}

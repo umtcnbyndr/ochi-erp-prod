@@ -137,13 +137,15 @@ async function main() {
     await runOneScan("MANUAL")
     process.exit(0)
   }
-  // Sürekli mod: günde 3 tur (~8 saat arayla). Basit döngü — cron gerekmez.
-  const EIGHT_HOURS = 8 * 60 * 60 * 1000
+  // Sürekli mod: ~4 saat arayla tarama (günde ~5-6 tur). Basit döngü — cron gerekmez.
+  // Env SCAN_INTERVAL_HOURS ile ayarlanabilir (default 4).
+  const intervalHours = Number(process.env.SCAN_INTERVAL_HOURS) || 4
+  const scanInterval = intervalHours * 60 * 60 * 1000
   // eslint-disable-next-line no-constant-condition
   while (true) {
     await runOneScan("CRON").catch((e) => console.error("[scan] tur hatası:", e))
-    console.log(`[scan] sonraki tur ${EIGHT_HOURS / 3_600_000} saat sonra`)
-    await sleep(EIGHT_HOURS)
+    console.log(`[scan] sonraki tur ${intervalHours} saat sonra`)
+    await sleep(scanInterval)
   }
 }
 

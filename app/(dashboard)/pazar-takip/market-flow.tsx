@@ -23,8 +23,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { RefreshCw, TrendingUp, PlusCircle, ShoppingCart, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, formatDate } from "@/lib/utils"
 import type { MarketAnalysisResult, MarketRow } from "@/lib/services/market-analysis"
+import type { MarketPriceChange } from "@/lib/services/market-price-changes"
 import type { OpportunityType } from "@/lib/pricing/market-opportunity"
 import { loadMarketAnalysisAction, applyMarketPriceAction } from "./actions"
 import { BuyboxHover } from "@/components/products/buybox-hover"
@@ -184,14 +185,79 @@ function MarketTable({ rows, columns, action, defaultSort }: { rows: MarketRow[]
   )
 }
 
+/** Fiyat Değişimleri sekmesi — son iki taramada BuyBox %5+ değişen ürünler. */
+function PriceChangesTable({ changes }: { changes: MarketPriceChange[] }) {
+  if (changes.length === 0) {
+    return (
+      <Card className="h-full flex flex-col">
+        <CardContent className="flex-1 flex items-center justify-center p-6 text-sm text-muted-foreground">
+          Son taramada %5+ piyasa fiyatı değişimi olan ürün yok.
+        </CardContent>
+      </Card>
+    )
+  }
+  return (
+    <Card className="h-full flex flex-col">
+      <CardContent className="p-0 flex-1 min-h-0">
+        <div className="h-full overflow-auto rounded-md">
+          <Table className="w-full text-[13px] [&_td]:py-3 [&_td]:px-3 [&_td]:whitespace-nowrap">
+            <TableHeader className="sticky top-0 z-10">
+              <TableRow>
+                <TableHead>Ürün</TableHead>
+                <TableHead className="text-center">Önceki</TableHead>
+                <TableHead className="text-center">Yeni</TableHead>
+                <TableHead className="text-center">Değişim</TableHead>
+                <TableHead className="text-center">Son Gözlem</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {changes.map((c) => (
+                <TableRow
+                  key={c.productId}
+                  className={cn(
+                    "even:bg-muted/20 border-l-4",
+                    c.direction === "up" ? "border-l-emerald-500" : "border-l-rose-500",
+                  )}
+                >
+                  <TableCell>
+                    <div className="max-w-[280px] truncate font-medium" title={c.name}>{c.name}</div>
+                    <div className="text-[11px] text-muted-foreground">{c.brandName ?? "—"}</div>
+                  </TableCell>
+                  <TableCell className="text-center tabular-nums text-muted-foreground">{tl(c.prevPrice)}</TableCell>
+                  <TableCell className="text-center tabular-nums font-medium">{tl(c.currentPrice)}</TableCell>
+                  <TableCell className="text-center">
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums",
+                        c.direction === "up"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                          : "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+                      )}
+                    >
+                      {c.direction === "up" ? "▲" : "▼"} %{Math.abs(c.changePct).toFixed(1).replace(".", ",")}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center text-xs text-muted-foreground">{formatDate(c.observedAt)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function MarketFlow({
   initial,
+  priceChanges,
   brands,
   categories,
   subcategories,
   canEdit,
 }: {
   initial: MarketAnalysisResult
+  priceChanges: MarketPriceChange[]
   brands: Opt[]
   categories: Opt[]
   subcategories: SubOpt[]
@@ -284,6 +350,7 @@ export function MarketFlow({
           <TabsTrigger value="raise"><TrendingUp className="h-4 w-4 mr-1" />Fiyat Yükselt ({raiseTab.length})</TabsTrigger>
           <TabsTrigger value="list"><PlusCircle className="h-4 w-4 mr-1" />Listeleme Fırsatı ({listTab.length})</TabsTrigger>
           <TabsTrigger value="all"><ShoppingCart className="h-4 w-4 mr-1" />Tümü ({rows.length})</TabsTrigger>
+          <TabsTrigger value="changes"><ArrowUp className="h-4 w-4 mr-1" />Fiyat Değişimleri ({priceChanges.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="raise" className="flex-1 min-h-0 mt-2">
@@ -292,6 +359,7 @@ export function MarketFlow({
         </TabsContent>
         <TabsContent value="list" className="flex-1 min-h-0 mt-2"><MarketTable rows={listTab} columns={listCols} /></TabsContent>
         <TabsContent value="all" className="flex-1 min-h-0 mt-2"><MarketTable rows={rows} columns={allCols} /></TabsContent>
+        <TabsContent value="changes" className="flex-1 min-h-0 mt-2"><PriceChangesTable changes={priceChanges} /></TabsContent>
       </Tabs>
     </div>
   )
