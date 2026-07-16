@@ -11,6 +11,7 @@
  *   - Sipariş önerisi = (günlük ort × hedef gün) - mevcut stok
  */
 import { prisma } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 import { calculatePurchaseNetPrice } from "@/lib/pricing/purchase-net-price"
 import { calculateSalePrice } from "@/lib/pricing/sale-price"
 import { isRecommendationStale } from "@/lib/pricing/stale-recommendation"
@@ -22,6 +23,12 @@ import {
 } from "@/lib/pricing/order-priority-score"
 import { calculateTrendScore } from "@/lib/pricing/demand-score"
 import { buildActiveCampaignMap } from "@/lib/services/campaign"
+
+/** Bizim TY satıcı adımız — BuyBox bizde mi kontrolü (market-analysis ile aynı). */
+const OUR_SELLER_HINT = "ochi"
+function isOurSeller(name: string | null | undefined): boolean {
+  return !!name && name.toLowerCase().includes(OUR_SELLER_HINT)
+}
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -231,24 +238,26 @@ export async function getSalesAnalysis(
     if (s.productId != null) salesMap.set(s.productId, s._sum.amount ?? 0)
   }
 
-  // 4. BuyBox observation'ları (son gözlem)
-  const buyboxObs = await prisma.competitorPriceObservation.findMany({
-    where: { productId: { in: productIds } },
-    select: {
-      productId: true,
-      buyboxPrice: true,
-      buyboxOrder: true,
-      observedAt: true,
-    },
-    orderBy: { observedAt: "desc" },
-  })
-
+  // 4. BuyBox — YENİ scraper kaynağı (MarketPriceSnapshot): ürün başına en yeni
+  //    BULUNMUŞ gözlem. Eski CompetitorPriceObservation (TY API) artık yazılmıyor
+  //    (fiyat sistemi Pazar Fiyat Takip'e konsolide edildi) → bayat kalıyordu.
+  //    Konum (bizde mi): buyboxSeller "ochi" içeriyorsa ranking=1, değilse 2.
   const buyboxMap = new Map<number, { price: number; ranking: number | null }>()
-  for (const obs of buyboxObs) {
-    if (!buyboxMap.has(obs.productId) && obs.buyboxPrice) {
-      buyboxMap.set(obs.productId, {
-        price: Number(obs.buyboxPrice),
-        ranking: obs.buyboxOrder ?? null,
+  if (productIds.length > 0) {
+    const buyboxSnaps = await prisma.$queryRaw<
+      Array<{ productId: number; buyboxPrice: string | null; buyboxSeller: string | null }>
+    >(Prisma.sql`
+      SELECT DISTINCT ON ("productId") "productId", "buyboxPrice", "buyboxSeller"
+      FROM "MarketPriceSnapshot"
+      WHERE "productId" IN (${Prisma.join(productIds)})
+        AND "found" = true AND "buyboxPrice" IS NOT NULL
+      ORDER BY "productId", "observedAt" DESC
+    `)
+    for (const s of buyboxSnaps) {
+      if (s.buyboxPrice == null) continue
+      buyboxMap.set(s.productId, {
+        price: Number(s.buyboxPrice),
+        ranking: isOurSeller(s.buyboxSeller) ? 1 : 2,
       })
     }
   }

@@ -9,7 +9,7 @@ import {
   ChevronDown,
   TrendingUp,
   Users,
-  Clock,
+  Sparkles,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils"
 export interface OrderOpportunity {
   productId: number
   brandId: number | null
+  barcode: string
   name: string
   brandName: string | null
   /** Birim net maliyet (marka liste fiyatından net) */
@@ -59,6 +60,9 @@ export interface OrderOpportunity {
 
 type SortKey = "margin" | "profit" | "competition" | "fresh"
 
+/** Karar zonu (öneri · birim kâr · marj) ortak tint — göz çıpası. */
+const DECISION_TINT = "bg-emerald-500/[0.05] dark:bg-emerald-400/[0.06]"
+
 const tl = (v: number | null | undefined) =>
   v == null ? "—" : `₺${v.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}`
 
@@ -68,17 +72,17 @@ function unitProfit(o: OrderOpportunity): number | null {
   return (o.recommendedPrice * o.margin) / 100
 }
 
-/** "bugün / 1g önce / Xg önce" — veri tazeliği. */
-function freshness(iso: string | null): { label: string; stale: boolean } {
-  if (!iso) return { label: "—", stale: true }
+/** "bugün / 1g / Xg" + tazelik rengi. */
+function freshness(iso: string | null): { label: string; tone: string } {
+  if (!iso) return { label: "—", tone: "bg-muted-foreground/40" }
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
-  if (days <= 0) return { label: "bugün", stale: false }
-  if (days === 1) return { label: "1g önce", stale: false }
-  return { label: `${days}g önce`, stale: days > 3 }
+  if (days <= 0) return { label: "bugün", tone: "bg-emerald-500" }
+  if (days === 1) return { label: "1g", tone: "bg-emerald-500" }
+  if (days <= 3) return { label: `${days}g`, tone: "bg-amber-500" }
+  return { label: `${days}g`, tone: "bg-rose-500" }
 }
 
 function CompetitionBadge({ count }: { count: number }) {
-  // az rakip = kolay BuyBox; kalabalık = zor
   const tone =
     count <= 2
       ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
@@ -90,6 +94,46 @@ function CompetitionBadge({ count }: { count: number }) {
       <Users className="h-3 w-3" />
       {count}
     </span>
+  )
+}
+
+function SummaryStrip({ rows }: { rows: OrderOpportunity[] }) {
+  const totalPotential = rows.reduce((s, o) => s + (unitProfit(o) ?? 0), 0)
+  const bestMargin = rows.reduce((m, o) => Math.max(m, o.margin ?? -Infinity), -Infinity)
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <Card>
+        <CardContent className="flex min-h-[84px] flex-col justify-center gap-1 p-4">
+          <span className="text-xs text-muted-foreground">Fırsat sayısı</span>
+          <span className="text-2xl font-semibold tabular-nums">{rows.length}</span>
+        </CardContent>
+      </Card>
+
+      {/* Hero: toplam potansiyel kâr */}
+      <Card className="border-emerald-500/30 bg-emerald-500/[0.04] lg:col-span-2">
+        <CardContent className="flex min-h-[84px] flex-row items-center gap-3 p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+            <Sparkles className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div className="flex flex-col justify-center gap-0.5">
+            <span className="text-xs text-muted-foreground">Toplam potansiyel birim kâr</span>
+            <span className="text-2xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+              {tl(totalPotential)}
+            </span>
+            <span className="text-[11px] text-muted-foreground">her üründen 1 adet satışta</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex min-h-[84px] flex-col justify-center gap-1 p-4">
+          <span className="text-xs text-muted-foreground">En yüksek marj</span>
+          <span className="text-2xl font-semibold tabular-nums">
+            {bestMargin > -Infinity ? `%${bestMargin.toFixed(1).replace(".", ",")}` : "—"}
+          </span>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
@@ -108,14 +152,10 @@ export function PazarFirsatiTable({ rows }: { rows: OrderOpportunity[] }) {
         return arr.sort(
           (a, b) => (b.observedAt ? new Date(b.observedAt).getTime() : 0) - (a.observedAt ? new Date(a.observedAt).getTime() : 0),
         )
-      default: // margin
+      default:
         return arr.sort((a, b) => (b.margin ?? -Infinity) - (a.margin ?? -Infinity))
     }
   }, [rows, sortKey])
-
-  // Özet şerit
-  const totalPotential = rows.reduce((s, o) => s + (unitProfit(o) ?? 0), 0)
-  const bestMargin = rows.reduce((m, o) => Math.max(m, o.margin ?? -Infinity), -Infinity)
 
   function toggle(id: number) {
     setOpen((prev) => {
@@ -142,35 +182,9 @@ export function PazarFirsatiTable({ rows }: { rows: OrderOpportunity[] }) {
 
   return (
     <div className="space-y-3">
-      {/* Özet şerit */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Card>
-          <CardContent className="flex min-h-[76px] flex-col justify-center gap-1 p-4">
-            <span className="text-xs text-muted-foreground">Fırsat sayısı</span>
-            <span className="text-2xl font-semibold tabular-nums">{rows.length}</span>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex min-h-[76px] flex-col justify-center gap-1 p-4">
-            <span className="text-xs text-muted-foreground">Toplam potansiyel birim kâr</span>
-            <span className="text-2xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
-              {tl(totalPotential)}
-            </span>
-            <span className="text-[11px] text-muted-foreground">her üründen 1 adet satışta</span>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex min-h-[76px] flex-col justify-center gap-1 p-4">
-            <span className="text-xs text-muted-foreground">En yüksek marj</span>
-            <span className="text-2xl font-semibold tabular-nums">
-              {bestMargin > -Infinity ? `%${bestMargin.toFixed(1).replace(".", ",")}` : "—"}
-            </span>
-          </CardContent>
-        </Card>
-      </div>
+      <SummaryStrip rows={rows} />
 
-      {/* Sıralama */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
           Elimizde yok, piyasada kârlı → markadan sipariş verilecek ürünler. Satıra tıkla → piyasadaki satıcıları gör.
         </p>
@@ -192,20 +206,20 @@ export function PazarFirsatiTable({ rows }: { rows: OrderOpportunity[] }) {
 
       <Card>
         <CardContent className="p-0">
-          <div className="max-h-[calc(100dvh-24rem)] overflow-auto rounded-md">
-            <Table className="w-full text-[13px] [&_td]:px-3 [&_td]:py-3 [&_td]:whitespace-nowrap [&_th]:px-3">
+          <div className="max-h-[calc(100dvh-26rem)] overflow-auto rounded-md">
+            <Table className="w-full text-[13px] [&_td]:px-3 [&_td]:py-3.5 [&_td]:align-middle [&_th]:px-3">
               <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   <TableHead className="w-8"></TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Barkod</TableHead>
                   <TableHead>Ürün</TableHead>
                   <TableHead className="text-right">Net Alış</TableHead>
-                  <TableHead className="text-right">BuyBox / Piyasa</TableHead>
-                  <TableHead className="text-right">En Düşük Rakip</TableHead>
+                  <TableHead className="border-l border-border/60 text-right">Piyasa</TableHead>
                   <TableHead className="text-center">Rakip</TableHead>
-                  <TableHead className="text-right">Öneri Satış</TableHead>
-                  <TableHead className="text-right">Birim Kâr</TableHead>
-                  <TableHead className="text-center">Marj</TableHead>
-                  <TableHead className="text-center">Son Gözlem</TableHead>
+                  <TableHead className={cn("border-l border-border/60 text-right", DECISION_TINT)}>Öneri Satış</TableHead>
+                  <TableHead className={cn("text-right", DECISION_TINT)}>Birim Kâr</TableHead>
+                  <TableHead className={cn("text-center", DECISION_TINT)}>Marj</TableHead>
+                  <TableHead className="border-l border-border/60 text-center">Gözlem</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -214,20 +228,21 @@ export function PazarFirsatiTable({ rows }: { rows: OrderOpportunity[] }) {
                   const isOpen = open.has(o.productId)
                   const profit = unitProfit(o)
                   const fresh = freshness(o.observedAt)
-                  const orderHref = o.brandId
-                    ? `/siparisler/yeni?brandId=${o.brandId}`
-                    : "/siparisler/yeni"
+                  const orderHref = o.brandId ? `/siparisler/yeni?brandId=${o.brandId}` : "/siparisler/yeni"
                   const detailSellers = [...o.sellers]
                     .filter((s) => s.price != null && s.price > 0)
                     .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))
                   return (
                     <Fragment key={o.productId}>
                       <TableRow
-                        className="cursor-pointer border-l-4 border-l-amber-500 even:bg-muted/20 hover:bg-muted/40"
+                        className="cursor-pointer even:bg-muted/20 hover:bg-muted/40"
                         onClick={() => toggle(o.productId)}
                       >
                         <TableCell className="text-muted-foreground">
                           {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {o.barcode || "—"}
                         </TableCell>
                         <TableCell>
                           <Link
@@ -235,7 +250,7 @@ export function PazarFirsatiTable({ rows }: { rows: OrderOpportunity[] }) {
                             className="font-medium hover:underline"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <span className="block max-w-[260px] truncate" title={o.name}>
+                            <span className="block max-w-[240px] truncate" title={o.name}>
                               {o.name}
                             </span>
                           </Link>
@@ -244,32 +259,27 @@ export function PazarFirsatiTable({ rows }: { rows: OrderOpportunity[] }) {
                         <TableCell className="text-right tabular-nums">
                           {tl(o.unitCost)}
                           {o.catalogListPrice != null && (
-                            <span className="block text-[11px] text-muted-foreground">
-                              liste {tl(o.catalogListPrice)}
-                            </span>
+                            <span className="block text-[11px] text-muted-foreground">liste {tl(o.catalogListPrice)}</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {tl(o.marketPrice)}
-                          {o.buyboxSeller && (
-                            <span className="block max-w-[130px] truncate text-[11px] text-muted-foreground" title={o.buyboxSeller}>
-                              {o.buyboxSeller}
-                            </span>
+                        {/* Piyasa grubu */}
+                        <TableCell className="border-l border-border/60 text-right tabular-nums">
+                          <span className="font-medium">{tl(o.marketPrice)}</span>
+                          {o.lowestCompetitor != null && (
+                            <span className="block text-[11px] text-muted-foreground">en düşük {tl(o.lowestCompetitor)}</span>
                           )}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {tl(o.lowestCompetitor)}
                         </TableCell>
                         <TableCell className="text-center">
                           <CompetitionBadge count={o.sellerCount} />
                         </TableCell>
-                        <TableCell className="text-right font-medium tabular-nums">
+                        {/* Karar zonu */}
+                        <TableCell className={cn("border-l border-border/60 text-right font-medium tabular-nums", DECISION_TINT)}>
                           {tl(o.recommendedPrice)}
                         </TableCell>
-                        <TableCell className="text-right font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                        <TableCell className={cn("text-right font-semibold tabular-nums text-emerald-600 dark:text-emerald-400", DECISION_TINT)}>
                           {profit != null ? `+${tl(profit)}` : "—"}
                         </TableCell>
-                        <TableCell className="text-center">
+                        <TableCell className={cn("text-center", DECISION_TINT)}>
                           <span
                             className={cn(
                               "inline-flex rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums",
@@ -281,20 +291,18 @@ export function PazarFirsatiTable({ rows }: { rows: OrderOpportunity[] }) {
                             %{o.margin != null ? o.margin.toFixed(1).replace(".", ",") : "—"}
                           </span>
                         </TableCell>
-                        <TableCell className="text-center">
+                        <TableCell className="border-l border-border/60 text-center">
                           <span
-                            className={cn(
-                              "inline-flex items-center gap-1 text-[11px]",
-                              fresh.stale ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground",
-                            )}
+                            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground"
+                            title={o.observedAt ? new Date(o.observedAt).toLocaleString("tr-TR") : "gözlem yok"}
                           >
-                            <Clock className="h-3 w-3" />
+                            <span className={cn("h-1.5 w-1.5 rounded-full", fresh.tone)} />
                             {fresh.label}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
                           <Link href={orderHref} onClick={(e) => e.stopPropagation()}>
-                            <Button size="sm" variant="outline" className="gap-1">
+                            <Button size="sm" className="gap-1">
                               <ExternalLink className="h-3.5 w-3.5" />
                               Sipariş
                             </Button>
@@ -303,11 +311,16 @@ export function PazarFirsatiTable({ rows }: { rows: OrderOpportunity[] }) {
                       </TableRow>
 
                       {isOpen && (
-                        <TableRow key={`${o.productId}-detail`} className="bg-muted/30">
+                        <TableRow key={`${o.productId}-detail`} className="bg-muted/30 hover:bg-muted/30">
                           <TableCell colSpan={11} className="px-4 py-3">
                             <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                               <TrendingUp className="h-3.5 w-3.5" />
                               Piyasadaki satıcılar ({detailSellers.length})
+                              {o.buyboxSeller && (
+                                <span className="ml-1 rounded bg-background px-1.5 py-0.5 text-[11px]">
+                                  BuyBox: {o.buyboxSeller}
+                                </span>
+                              )}
                             </div>
                             {detailSellers.length === 0 ? (
                               <p className="mt-2 text-xs text-muted-foreground">Satıcı detayı yok.</p>
@@ -318,9 +331,7 @@ export function PazarFirsatiTable({ rows }: { rows: OrderOpportunity[] }) {
                                     key={`${s.seller ?? "s"}-${i}`}
                                     className={cn(
                                       "inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums",
-                                      i === 0
-                                        ? "border-emerald-500/40 bg-emerald-500/10"
-                                        : "border-border bg-background",
+                                      i === 0 ? "border-emerald-500/40 bg-emerald-500/10" : "border-border bg-background",
                                     )}
                                   >
                                     <span className="max-w-[160px] truncate text-muted-foreground" title={s.seller ?? "—"}>

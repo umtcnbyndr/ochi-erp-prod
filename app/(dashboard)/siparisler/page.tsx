@@ -45,6 +45,7 @@ export default async function SiparislerPage() {
     .map((r) => ({
       productId: r.productId,
       brandId: r.brandId,
+      barcode: r.barcode,
       name: r.name,
       brandName: r.brandName,
       unitCost: r.unitCost,
