@@ -3,10 +3,12 @@ import { Plus } from "lucide-react"
 import { requirePermission } from "@/lib/permissions"
 import { listPurchaseOrders } from "@/lib/services/purchase-order"
 import { getStockAlerts } from "@/lib/services/stock-alerts"
+import { getMarketAnalysis } from "@/lib/services/market-analysis"
 import { prisma } from "@/lib/db"
 import { PageHeader } from "@/components/common/page-header"
 import { Button } from "@/components/ui/button"
-import { OrderList } from "./order-list"
+import { SiparisView } from "./siparis-view"
+import type { OrderOpportunity } from "./pazar-firsati-table"
 
 export const dynamic = "force-dynamic"
 
@@ -18,7 +20,7 @@ export default async function SiparislerPage() {
   const brandWhereFilter =
     allowedBrandIds.length > 0 ? { id: { in: allowedBrandIds } } : undefined
 
-  const [orders, brands, categories, subcategories, stockAlerts] = await Promise.all([
+  const [orders, brands, categories, subcategories, stockAlerts, marketAnalysis] = await Promise.all([
     listPurchaseOrders(),
     prisma.brand.findMany({
       where: brandWhereFilter,
@@ -34,7 +36,23 @@ export default async function SiparislerPage() {
       orderBy: { name: "asc" },
     }),
     getStockAlerts(),
+    getMarketAnalysis({ allowedBrandIds: allowedBrandIds.length > 0 ? allowedBrandIds : null }),
   ])
+
+  // Pazar Fırsatı: motorun ORDER önerileri (elimizde yok + marka liste fiyatı var + kârlı)
+  const opportunities: OrderOpportunity[] = marketAnalysis.rows
+    .filter((r) => r.opportunity.type === "ORDER")
+    .map((r) => ({
+      productId: r.productId,
+      name: r.name,
+      brandName: r.brandName,
+      unitCost: r.unitCost,
+      marketPrice: r.buyboxPrice,
+      recommendedPrice: r.opportunity.recommendedPrice,
+      margin: r.opportunity.marginAtRecommended,
+      velocity: r.velocity,
+    }))
+    .sort((a, b) => (b.margin ?? 0) - (a.margin ?? 0))
 
   // Siparişleri de marka kısıtına göre filtrele (sipariş brandIds[]: any overlap)
   const filteredOrders =
@@ -86,13 +104,14 @@ export default async function SiparislerPage() {
         }
       />
 
-      <OrderList
+      <SiparisView
         orders={serialized}
         brandMap={brandMap}
         brands={brands}
         categories={categories}
         subcategories={subcategories}
         stockAlerts={stockAlerts}
+        opportunities={opportunities}
       />
     </div>
   )
