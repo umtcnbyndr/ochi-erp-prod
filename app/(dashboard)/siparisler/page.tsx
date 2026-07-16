@@ -44,14 +44,21 @@ export default async function SiparislerPage() {
     .filter((r) => r.opportunity.type === "ORDER")
     .map((r) => ({
       productId: r.productId,
+      brandId: r.brandId,
       name: r.name,
       brandName: r.brandName,
       unitCost: r.unitCost,
+      catalogListPrice: r.catalogListPrice,
       marketPrice: r.buyboxPrice,
+      buyboxSeller: r.buyboxSeller,
+      lowestCompetitor: r.lowestCompetitor,
+      sellerCount: r.sellerCount,
+      sellers: r.sellers,
       recommendedPrice: r.opportunity.recommendedPrice,
       margin: r.opportunity.marginAtRecommended,
-      velocity: r.velocity,
+      observedAt: r.observedAt ? r.observedAt.toISOString() : null,
     }))
+    // Motorun öncelik sırası (₺ etki) korunur; tablo içinde kullanıcı yeniden sıralayabilir
     .sort((a, b) => (b.margin ?? 0) - (a.margin ?? 0))
 
   // Siparişleri de marka kısıtına göre filtrele (sipariş brandIds[]: any overlap)

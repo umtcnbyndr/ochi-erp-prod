@@ -42,6 +42,8 @@ export interface MarketRow {
   mainPurchasePrice: number | null
   streetPurchasePrice: number | null
   unitCost: number | null
+  /** Ham katalog liste fiyatı (BrandPriceList) — net alış öncesi, gösterim için */
+  catalogListPrice: number | null
   costSource: CostSource
   stockState: StockState
   // Bizim fiyat
@@ -55,6 +57,8 @@ export interface MarketRow {
   ownsBuybox: boolean
   sellerCount: number
   sellers: Array<{ seller: string | null; price: number | null }>
+  /** En düşük rakip satıcı fiyatı (bizim hariç) — undercut referansı */
+  lowestCompetitor: number | null
   observedAt: Date | null
   velocity: number
   // Motor sonucu
@@ -262,10 +266,12 @@ export async function getMarketAnalysis(
       categoryId: p.categoryId, subcategoryId: p.subcategoryId, barcode: p.primaryBarcode,
       mainStock: p.mainStock, streetStock: p.streetStock,
       mainPurchasePrice: num(p.mainPurchasePrice), streetPurchasePrice: num(p.streetPurchasePrice),
-      unitCost, costSource, stockState, ourPrice, isListed, formulaPrice: opportunity.formulaPrice,
+      unitCost, catalogListPrice: num(p.priceListItems[0]?.listPrice), costSource, stockState,
+      ourPrice, isListed, formulaPrice: opportunity.formulaPrice,
       found: snap.found, buyboxPrice: num(snap.buyboxPrice), buyboxSeller, ownsBuybox,
       sellerCount: snap.sellerCount,
       sellers: sellers.map((s) => ({ seller: s.seller ?? null, price: s.price ?? null })),
+      lowestCompetitor,
       observedAt: snap.observedAt, velocity: soldMap.get(p.id) ?? 0, opportunity,
     })
   }
