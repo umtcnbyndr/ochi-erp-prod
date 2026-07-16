@@ -32,3 +32,27 @@ export function isReconOrderStatusPending(salesChannel: string, orderStatus: str
       return false
   }
 }
+
+/**
+ * Mutabakat eşleşme anahtarı — TEK KAYNAK.
+ *
+ * recon.serviceOrderId, pazaryeri raporundaki "sipariş no"dur. DopigoOrder.serviceValue
+ * ise bazı pazaryerlerinde "siparişNo-paketNo/dopigoEk" bileşik değer taşır:
+ *   - trendyol / hepsiburada / n11 → ilk '-' öncesi parça sipariş no'dur
+ *   - farmazon (ve listede olmayan her kanal) → serviceValue birebir sipariş no'dur
+ *
+ * Aynı kural iki yerde uygulanır ve SENKRON kalmak zorundadır:
+ *   1. TS: MARKETPLACE_PARSERS[*].matchKey (import/preview eşleştirmesi)
+ *   2. SQL: sales-analytics recon join'leri (aşağıdaki reconMatchKeySql)
+ * Senkron, tests/services/recon-match-key.test.ts ile kilitlidir.
+ */
+export const SPLIT_MATCH_CHANNELS = ["trendyol", "hepsiburada", "n11"] as const
+
+/** DopigoOrder alias'ından recon."serviceOrderId" ile karşılaştırılacak SQL anahtarı. */
+export function reconMatchKeySql(orderAlias = "o"): string {
+  const channels = SPLIT_MATCH_CHANNELS.map((c) => `'${c}'`).join(", ")
+  return `CASE
+              WHEN ${orderAlias}."salesChannel" IN (${channels})
+                THEN SPLIT_PART(${orderAlias}."serviceValue", '-', 1)
+              ELSE ${orderAlias}."serviceValue" END`
+}

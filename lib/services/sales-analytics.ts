@@ -13,7 +13,7 @@
  */
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@prisma/client"
-import { isReconOrderStatusPending } from "./reconciliation-status"
+import { isReconOrderStatusPending, reconMatchKeySql } from "./reconciliation-status"
 import {
   isStoreChannel,
   NON_SALES_CHANNELS_SQL_ARRAY,
@@ -284,9 +284,7 @@ function buildPnlCTE(whereSql: string): string {
       -- Bu yüzden aynı orijinal siparişe ait TÜM paketlerin (iptal/iade hariç) cirosunu
       -- topluyoruz — recon_group_key, recon LATERAL join'deki eşleşme anahtarıyla birebir aynı.
       (SUM(CASE WHEN o."derivedStatus" NOT IN ('CANCELLED', 'RETURNED') THEN i.price ELSE 0 END)
-        OVER (PARTITION BY o."salesChannel", CASE
-          WHEN o."salesChannel" = 'trendyol' THEN SPLIT_PART(o."serviceValue", '-', 1)
-          ELSE o."serviceValue" END
+        OVER (PARTITION BY o."salesChannel", ${reconMatchKeySql("o")}
         ))::float8 AS recon_group_revenue,
       -- Mutabakat (varsa)
       recon."netReceived"::float8 AS recon_net,
@@ -321,13 +319,11 @@ function buildPnlCTE(whereSql: string): string {
       WHERE o."serviceValue" IS NOT NULL
         -- Recon o siparişin KENDİ pazaryerinden olmalı (marketplace = salesChannel)
         AND LOWER(tr."marketplace") = o."salesChannel"
-        -- Eşleşme kuralı pazaryerine göre: Trendyol serviceValue ilk parça (paket),
-        -- diğerleri (Farmazon...) tam serviceValue. DIŞ tablo (o.salesChannel) üzerinden
-        -- dallan → değer sabit → serviceOrderId index'i kullanılabilir (perf kritik).
-        AND tr."serviceOrderId" = CASE
-              WHEN o."salesChannel" = 'trendyol'
-                THEN SPLIT_PART(o."serviceValue", '-', 1)
-              ELSE o."serviceValue" END
+        -- Eşleşme kuralı pazaryerine göre (tek kaynak: reconMatchKeySql —
+        -- trendyol/hepsiburada/n11 ilk parça, diğerleri tam serviceValue).
+        -- DIŞ tablo (o.salesChannel) üzerinden dallan → değer sabit →
+        -- serviceOrderId index'i kullanılabilir (perf kritik).
+        AND tr."serviceOrderId" = ${reconMatchKeySql("o")}
       LIMIT 1
     ) recon ON true
     ${COMMISSION_TARIFF_JOIN_SQL}
@@ -1015,11 +1011,9 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       -- Çoklu paket mutabakatı: aynı orijinal siparişin TÜM paketlerinin (iptal/iade hariç)
       -- toplam cirosu — bkz. buildPnlCTE'deki recon_group_revenue ile aynı mantık.
       (SUM(CASE WHEN o."derivedStatus" NOT IN ('CANCELLED', 'RETURNED') THEN i.price ELSE 0 END)
-        OVER (PARTITION BY o."salesChannel", CASE
-          WHEN o."salesChannel" = 'trendyol' THEN SPLIT_PART(o."serviceValue", '-', 1)
-          ELSE o."serviceValue" END
+        OVER (PARTITION BY o."salesChannel", ${reconMatchKeySql("o")}
         ))::float8 AS recon_group_revenue,
-      -- Mutabakat: serviceValue ilk parça (siparişNo) = recon.serviceOrderId
+      -- Mutabakat: eşleşme anahtarı (tek kaynak: reconMatchKeySql) = recon.serviceOrderId
       recon."netReceived"::float8 AS recon_net,
       recon."commission"::float8  AS recon_commission,
       recon."withholding"::float8 AS recon_withholding,
@@ -1041,13 +1035,9 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       WHERE o."serviceValue" IS NOT NULL
         -- Recon o siparişin KENDİ pazaryerinden olmalı (marketplace = salesChannel)
         AND LOWER(tr."marketplace") = o."salesChannel"
-        -- Eşleşme kuralı pazaryerine göre: Trendyol serviceValue ilk parça (paket),
-        -- diğerleri (Farmazon...) tam serviceValue. DIŞ tablo (o.salesChannel) üzerinden
-        -- dallan → değer sabit → serviceOrderId index'i kullanılabilir (perf kritik).
-        AND tr."serviceOrderId" = CASE
-              WHEN o."salesChannel" = 'trendyol'
-                THEN SPLIT_PART(o."serviceValue", '-', 1)
-              ELSE o."serviceValue" END
+        -- Eşleşme kuralı pazaryerine göre (tek kaynak: reconMatchKeySql —
+        -- trendyol/hepsiburada/n11 ilk parça, diğerleri tam serviceValue).
+        AND tr."serviceOrderId" = ${reconMatchKeySql("o")}
       LIMIT 1
     ) recon ON true
     ${COMMISSION_TARIFF_JOIN_SQL}
@@ -1329,12 +1319,8 @@ function buildWhere(filter: SalesFilter): QueryParts {
           -- (örn. Farmazon) serviceValue'su tesadüfen bir Trendyol iade kaydına
           -- denk gelip o siparişi yanlışlıkla dışlayabilir.
           AND LOWER(tr."marketplace") = o."salesChannel"
-          -- Eşleşme anahtarı ana LATERAL join'deki (yukarıda) kuralla aynı:
-          -- Trendyol'da çoklu paket → serviceValue ilk parça, diğerlerinde tam.
-          AND tr."serviceOrderId" = CASE
-                WHEN o."salesChannel" = 'trendyol'
-                  THEN SPLIT_PART(o."serviceValue", '-', 1)
-                ELSE o."serviceValue" END
+          -- Eşleşme anahtarı ana LATERAL join'lerle aynı (tek kaynak: reconMatchKeySql).
+          AND tr."serviceOrderId" = ${reconMatchKeySql("o")}
           AND tr."netReceived" <= 0
       )
     `)
