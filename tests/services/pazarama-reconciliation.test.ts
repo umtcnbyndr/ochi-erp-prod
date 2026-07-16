@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import * as XLSX from "xlsx"
-import { MARKETPLACE_PARSERS } from "@/lib/services/marketplace-reconciliation"
+import { MARKETPLACE_PARSERS, resolveShipping } from "@/lib/services/marketplace-reconciliation"
 import { isReconOrderStatusPending } from "@/lib/services/reconciliation-status"
 
 // Gerçek dosya formatı: "Siparişleriniz_*.xlsx", header'lı item satırları
@@ -99,6 +99,18 @@ describe("Pazarama — parser", () => {
     expect(r.orderDate).not.toBeNull()
     expect(r.orderDate!.getFullYear()).toBe(2026)
     expect(r.orderDate!.getMonth()).toBe(5) // Haziran
+  })
+})
+
+describe("Pazarama — sipariş başı kargo", () => {
+  it("satışı olmayan siparişe (tümü tedarik edilemedi) sabit kargo yazılmaz", () => {
+    const [cancelled] = parse([
+      { no: "449262429", urun: 1277, saticiKampanya: 89.39, komisyonKdvli: 142.5132, durum: "1 adet Tedarik Edilemedi" },
+    ])
+    expect(resolveShipping(cancelled, true, 105)).toBe(0)
+    const [sold] = parse([{ no: "S1", urun: 500, komisyonKdvli: 60 }])
+    expect(resolveShipping(sold, true, 105)).toBe(105)
+    expect(resolveShipping(sold, false, 105)).toBe(0) // eşleşmeyene de yazılmaz
   })
 })
 

@@ -569,9 +569,12 @@ export interface MarketplacePreview {
   missingPriceItems: { sku: string | null; barcode: string | null; name: string; qty: number }[]
 }
 
-/** Rapor kendi kargosunu vermezse sipariş başı sabit input kullan; verirse onu kullan. */
-function resolveShipping(r: MarketplaceReconRow, isMatched: boolean, shippingPerOrder: number): number {
+/** Rapor kendi kargosunu vermezse sipariş başı sabit input kullan; verirse onu kullan.
+ *  Hiç satışı olmayan sipariş (saleAmount ≤ 0 — örn. Pazarama "Tedarik Edilemedi")
+ *  kargolanmamıştır → sabit kargo da yazılmaz (aylık tablo/toplamlar şişmesin). */
+export function resolveShipping(r: MarketplaceReconRow, isMatched: boolean, shippingPerOrder: number): number {
   if (r.shipping != null) return r.shipping
+  if (r.saleAmount <= 0) return 0
   return isMatched ? shippingPerOrder : 0
 }
 
