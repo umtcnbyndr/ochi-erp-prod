@@ -172,7 +172,7 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
     }
     if (brandId === "_all") {
       toast.error(
-        "Akıllı export için tek bir marka seçmelisin (BuyBox tazeleme markaya bağlı)",
+        "Akıllı export için tek bir marka seçmelisin (öneri hesaplama markaya bağlı)",
       )
       return
     }
@@ -187,7 +187,7 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
       return
     }
     startExport(async () => {
-      toast.info("BuyBox tazeleniyor + öneriler hesaplanıyor...", {
+      toast.info("Öneriler hesaplanıyor (Pazar Takip verisiyle)...", {
         duration: 3000,
       })
       const result = await refreshAndExportAction({
@@ -196,11 +196,7 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
         brandId: Number(brandId),
       })
       if (!result.success) {
-        toast.error(
-          result.step === "buybox"
-            ? `BuyBox hatası: ${result.error}`
-            : result.error,
-        )
+        toast.error(result.error)
         return
       }
       try {
@@ -210,7 +206,7 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
           result.data.rowCount,
         )
         toast.success(
-          `BuyBox: ${result.buybox.observed} ürün tazelendi · Öneri: ${result.recommendations.written} fiyat güncellendi`,
+          `Öneri: ${result.recommendations.written} fiyat güncellendi (Pazar Takip verisiyle)`,
           { duration: 6000 },
         )
         if (result.data.unmatchedDopigo > 0) {
@@ -657,7 +653,7 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
               size="sm"
               variant="default"
               className="gap-1.5 ml-auto bg-emerald-600 hover:bg-emerald-700"
-              title="Sadece Trendyol için BuyBox tazeleme + öneri hesaplama yapar, sonra Excel indirir"
+              title="Sadece Trendyol için güncel piyasa (Pazar Takip) verisiyle öneri hesaplar, sonra Excel indirir"
             >
               <Sparkles className="h-4 w-4" />
               {exporting ? "Tazeleniyor + Hazırlanıyor…" : `Akıllı: Tazele + İndir`}
@@ -669,7 +665,7 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
               size="sm"
               variant="outline"
               className="gap-1.5"
-              title="Mevcut fiyatlarla Excel indirir, BuyBox tazelemez"
+              title="Mevcut fiyatlarla Excel indirir, öneri hesaplamaz"
             >
               <Download className="h-4 w-4" />
               {exporting ? "Hazırlanıyor…" : `Sadece İndir (${selectedIds.size})`}

@@ -11,7 +11,6 @@ import {
 import {
   getRecommendations,
   persistRecommendations,
-  refreshBuyboxForProducts,
 } from "@/lib/services/price-recommendation"
 import { getCampaign, getCampaignProducts, listCampaigns } from "@/lib/services/campaign"
 import { requirePermission } from "@/lib/permissions"
@@ -111,12 +110,13 @@ export async function listLowStockAlertsCountAction() {
 }
 
 /**
- * Tek-tık akışı: önce Trendyol BuyBox'ı tazele + öneriler hesapla,
- * sonra Excel'i hazırla. Sabah rutini için hızlı yol.
+ * Tek-tık akışı: öneriler hesapla + DB'ye yaz, sonra Excel'i hazırla. Sabah rutini.
  *
- * 1. Seçili ürünlerin BuyBox'ı Trendyol'dan çekilir
- * 2. recommendedPrice DB'ye yazılır (sadece Trendyol için)
- * 3. Excel hazırlanır (snapshot preserve + 3-tier price)
+ * BuyBox artık Pazar Fiyat Takip scraper'ından (MarketPriceSnapshot) geliyor —
+ * TY API'ye GİTMİYORUZ. Öneriler scraper'ın yazdığı güncel piyasa verisiyle hesaplanır.
+ *
+ * 1. recommendedPrice DB'ye yazılır (sadece Trendyol, scraper verisiyle)
+ * 2. Excel hazırlanır (snapshot preserve + 3-tier price)
  */
 export async function refreshAndExportAction(input: {
   productIds: number[]
@@ -126,33 +126,14 @@ export async function refreshAndExportAction(input: {
   | {
       success: true
       data: Awaited<ReturnType<typeof buildExportExcel>>
-      buybox: { observed: number; errors: number }
       recommendations: { written: number }
     }
   | { success: false; error: string; step?: string }
 > {
   try {
     await requirePermission("dopigo-aktar", "edit")
-    // 1. BuyBox tazele (sadece Trendyol)
-    let buyboxResult: { observed: number; errors: number; durationMs: number } = {
-      observed: 0,
-      errors: 0,
-      durationMs: 0,
-    }
-    try {
-      buyboxResult = await refreshBuyboxForProducts(input.productIds)
-    } catch (err) {
-      return {
-        success: false as const,
-        step: "buybox",
-        error:
-          err instanceof Error
-            ? `BuyBox tazeleme hatası: ${err.message}`
-            : "BuyBox tazeleme başarısız",
-      }
-    }
 
-    // 2. Önerileri hesapla + DB'ye yaz (sadece Trendyol)
+    // 1. Önerileri hesapla + DB'ye yaz (sadece Trendyol, scraper BuyBox verisiyle)
     let recsWritten = 0
     if (input.brandId) {
       try {
@@ -171,7 +152,7 @@ export async function refreshAndExportAction(input: {
       }
     }
 
-    // 3. Excel hazırla
+    // 2. Excel hazırla
     const result = await buildExportExcel({
       productIds: input.productIds,
       fields: input.fields,
@@ -180,7 +161,6 @@ export async function refreshAndExportAction(input: {
     return {
       success: true as const,
       data: result,
-      buybox: { observed: buyboxResult.observed, errors: buyboxResult.errors },
       recommendations: { written: recsWritten },
     }
   } catch (err) {

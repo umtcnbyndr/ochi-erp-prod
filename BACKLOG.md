@@ -8,7 +8,14 @@
 
 > **Her oturum başı önce BURAYI oku (5 sn).** İş bitince BURAYI güncelle (CLAUDE.md Kural 6). Tarih tarih detay aşağıda.
 
-**Son durum:** Production'da canlı (14 marka / 637 ürün). Son commit 2026-07-10, proje aktif.
+**Son durum:** Production'da canlı (14 marka / 637 ürün). Proje aktif.
+
+**2026-07-16 yapılanlar (Pazar Fiyat Takip konsolidasyonu + entegrasyon):**
+- ✅ Tarama 4 saatte bir (worker) + Fiyat Değişimleri uyarı sekmesi (%5)
+- ✅ Siparişler → **Pazar Fırsatı** sekmesi (motorun ORDER önerileri) + barkod + tasarım revizyonu (birim kâr, rakip, satıcı detayı, sıralama)
+- ✅ Sipariş builder BuyBox kaynağı: ölü TY API (`CompetitorPriceObservation`) → canlı scraper (`MarketPriceSnapshot`) — `sales-analysis.ts`
+- ✅ **#2 Dopigo Aktarım konsolidasyonu:** `refreshAndExportAction` artık TY API'ye gitmiyor; `getRecommendations`/`getLatestBuyboxMap`/`getLatestBuyboxForProduct` scraper verisinden besleniyor. Motor/kapsam korundu (HOLD/LIST fiyatları değişmedi). Test: `snapshotToBuyboxRow` (latest-buybox.test.ts)
+- 🔲 Açık: ölü TY API buybox modülü tam silinmesi (`refreshBuyboxForProducts`, `trendyol/buybox.ts`, rapor/dashboard display okurları); Sipariş butonu tam ürün-highlight; SALES marka veri kısıtı /raporlar
 
 **2026-07-02 denetiminden bu yana KAPATILAN açıklar (git log doğrulaması):**
 - ✅ F4/F5 — çoklu paket + marka-filtreli KPI'da gider hesabı düzeldi

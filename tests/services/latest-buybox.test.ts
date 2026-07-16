@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest"
-import { buildLatestBuyboxMap, type RawBuyboxRow } from "@/lib/services/price-recommendation"
+import {
+  buildLatestBuyboxMap,
+  snapshotToBuyboxRow,
+  type RawBuyboxRow,
+} from "@/lib/services/price-recommendation"
 
 function row(partial: Partial<RawBuyboxRow> & { productId: number; observedAt: Date }): RawBuyboxRow {
   return {
@@ -10,6 +14,43 @@ function row(partial: Partial<RawBuyboxRow> & { productId: number; observedAt: D
     ...partial,
   }
 }
+
+describe("snapshotToBuyboxRow (MarketPriceSnapshot → RawBuyboxRow)", () => {
+  const base = {
+    productId: 7,
+    buyboxPrice: "1200.50" as number | string | null,
+    buyboxSeller: "Rakip Eczane" as string | null,
+    sellerCount: 3,
+    sellers: [
+      { seller: "Rakip Eczane", price: 1200.5 },
+      { seller: "OCHI HEALTH", price: 1249 },
+    ] as unknown,
+    observedAt: new Date("2026-07-16T08:00:00Z"),
+  }
+
+  it("BuyBox rakipteyse buyboxOrder=2, bizdeyse (seller ~ ochi) 1", () => {
+    expect(snapshotToBuyboxRow(base)!.buyboxOrder).toBe(2)
+    expect(snapshotToBuyboxRow({ ...base, buyboxSeller: "Ochi Health" })!.buyboxOrder).toBe(1)
+  })
+
+  it("sellerCount>1 → hasMultipleSeller true, =1 → false", () => {
+    expect(snapshotToBuyboxRow(base)!.hasMultipleSeller).toBe(true)
+    expect(snapshotToBuyboxRow({ ...base, sellerCount: 1 })!.hasMultipleSeller).toBe(false)
+  })
+
+  it("ourPrice satıcı listesinden kendi (ochi) fiyatımızı çeker", () => {
+    expect(snapshotToBuyboxRow(base)!.ourPrice).toBe(1249)
+    expect(snapshotToBuyboxRow({ ...base, sellers: [{ seller: "Rakip", price: 5 }] })!.ourPrice).toBeNull()
+  })
+
+  it("buyboxPrice null → null döner", () => {
+    expect(snapshotToBuyboxRow({ ...base, buyboxPrice: null })).toBeNull()
+  })
+
+  it("Decimal string buyboxPrice number'a çevrilir", () => {
+    expect(snapshotToBuyboxRow(base)!.buyboxPrice).toBe(1200.5)
+  })
+})
 
 describe("buildLatestBuyboxMap", () => {
   it("ürün başına EN YENİ gözlemi seçer (giriş sırasından bağımsız)", () => {

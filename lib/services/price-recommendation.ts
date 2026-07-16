@@ -474,58 +474,92 @@ export function buildLatestBuyboxMap(
   return map
 }
 
+/** Bizim TY satıcı adımız — BuyBox bizde mi (market-analysis / sales-analysis ile aynı). */
+const OUR_SELLER_HINT = "ochi"
+function isOurSeller(name: string | null | undefined): boolean {
+  return !!name && name.toLowerCase().includes(OUR_SELLER_HINT)
+}
+
+/** MarketPriceSnapshot ham satır tipi (DB → JS). */
+interface SnapshotRawRow {
+  productId: number
+  buyboxPrice: string | null
+  buyboxSeller: string | null
+  sellerCount: number
+  sellers: unknown
+  observedAt: Date
+}
+
 /**
- * Bir liste urun icin en yeni BuyBox gozlemini doner (Map).
- * `DISTINCT ON (productId)` Postgres-only — ürün başına yalnızca en yeni satır
- * çekilir (eskiden son 30 günün TÜM satırları belleğe gelip JS'te eleniyordu;
- * scraper devreye girince bu on binlerce satıra çıkıp sayfayı yavaşlatırdı).
+ * MarketPriceSnapshot ham satırını RawBuyboxRow'a çevirir. Saf fonksiyon (DB'siz test).
+ * buyboxOrder: BuyBox satıcısı "ochi" ise 1 (bizde), değilse 2.
+ * ourPrice: satıcı listesinde kendi fiyatımız (varsa), yoksa null.
+ */
+export function snapshotToBuyboxRow(s: {
+  productId: number
+  buyboxPrice: number | string | null
+  buyboxSeller: string | null
+  sellerCount: number
+  sellers: unknown
+  observedAt: Date
+}): RawBuyboxRow | null {
+  if (s.buyboxPrice == null) return null
+  const sellers = Array.isArray(s.sellers)
+    ? (s.sellers as Array<{ seller?: string | null; price?: number | null }>)
+    : []
+  const ours = sellers.find((x) => isOurSeller(x.seller))
+  return {
+    productId: s.productId,
+    buyboxPrice: Number(s.buyboxPrice),
+    buyboxOrder: isOurSeller(s.buyboxSeller) ? 1 : 2,
+    hasMultipleSeller: s.sellerCount > 1,
+    ourPrice: ours?.price != null ? Number(ours.price) : null,
+    observedAt: s.observedAt,
+  }
+}
+
+/**
+ * Bir liste ürün için en yeni BuyBox gözlemini döner (Map).
+ * Kaynak: Pazar Fiyat Takip scraper'ı (MarketPriceSnapshot) — eski TY API
+ * (CompetitorPriceObservation) DEĞİL. Ürün başına DISTINCT ON en yeni bulunmuş satır.
  */
 async function getLatestBuyboxMap(
   productIds: number[],
 ): Promise<Map<number, LatestBuyboxEntry>> {
   if (productIds.length === 0) return new Map()
 
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-
-  // Ürün başına tek satır (en yeni). DISTINCT ON + ORDER BY (productId, observedAt DESC).
-  const rows = await prisma.$queryRaw<RawBuyboxRow[]>(Prisma.sql`
+  const rows = await prisma.$queryRaw<SnapshotRawRow[]>(Prisma.sql`
     SELECT DISTINCT ON ("productId")
-      "productId",
-      "buyboxPrice",
-      "buyboxOrder",
-      "hasMultipleSeller",
-      "ourPrice",
-      "observedAt"
-    FROM "CompetitorPriceObservation"
+      "productId", "buyboxPrice", "buyboxSeller", "sellerCount", "sellers", "observedAt"
+    FROM "MarketPriceSnapshot"
     WHERE "productId" IN (${Prisma.join(productIds)})
-      AND "source" = 'TRENDYOL_BUYBOX'
-      AND "observedAt" >= ${since}
+      AND "found" = true AND "buyboxPrice" IS NOT NULL
     ORDER BY "productId", "observedAt" DESC
   `)
 
-  return buildLatestBuyboxMap(rows)
+  const mapped = rows
+    .map(snapshotToBuyboxRow)
+    .filter((r): r is RawBuyboxRow => r != null)
+  return buildLatestBuyboxMap(mapped)
 }
 
-/** Bir urun icin en yeni Trendyol BuyBox gozlemini doner (UI badge'i icin) */
+/** Bir ürün için en yeni BuyBox gözlemini döner (UI badge'i için) — scraper kaynağı. */
 export async function getLatestBuyboxForProduct(productId: number) {
-  const obs = await prisma.competitorPriceObservation.findFirst({
-    where: { productId, source: "TRENDYOL_BUYBOX" },
-    orderBy: { observedAt: "desc" },
-    select: {
-      buyboxPrice: true,
-      buyboxOrder: true,
-      hasMultipleSeller: true,
-      ourPrice: true,
-      observedAt: true,
-    },
-  })
-  if (!obs) return null
+  const rows = await prisma.$queryRaw<SnapshotRawRow[]>(Prisma.sql`
+    SELECT "productId", "buyboxPrice", "buyboxSeller", "sellerCount", "sellers", "observedAt"
+    FROM "MarketPriceSnapshot"
+    WHERE "productId" = ${productId} AND "found" = true AND "buyboxPrice" IS NOT NULL
+    ORDER BY "observedAt" DESC
+    LIMIT 1
+  `)
+  const row = rows[0] ? snapshotToBuyboxRow(rows[0]) : null
+  if (!row) return null
   return {
-    buyboxPrice: Number(obs.buyboxPrice),
-    buyboxOrder: obs.buyboxOrder,
-    hasMultipleSeller: obs.hasMultipleSeller,
-    ourPrice: obs.ourPrice ? Number(obs.ourPrice) : null,
-    observedAt: obs.observedAt,
+    buyboxPrice: row.buyboxPrice,
+    buyboxOrder: row.buyboxOrder,
+    hasMultipleSeller: row.hasMultipleSeller,
+    ourPrice: row.ourPrice,
+    observedAt: row.observedAt,
   }
 }
 

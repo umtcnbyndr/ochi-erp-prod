@@ -199,6 +199,12 @@ Para/stok/mutabakat/eşleştirme kodu CANLI ve para-kritik. Aynı yerlerin tekra
 
 Kural 1 (önce tasarım) ve Kural 5 (prod yazma) ile uyumlu; onları tamamlar.
 
+### 7. Yapılanı Kaydet (Stale Durum Önleme)
+Her anlamlı değişiklikten **sonra** ne yaptığını kalıcı olarak not et — yoksa "şunu zaten yapmıştık" stale hatası doğuyor (2026-07-16'da bir kez oldu: yapılacak listesini hafızadan çıkardım, hâlbuki iş bitmişti).
+- **Kaynak = kod, hafıza değil.** "Yapıldı mı / ne kaldı?" sorulunca önce `BACKLOG.md`'den + koddan doğrula, sonra söyle. Hafızadaki liste bayat olabilir.
+- **Bitirince yaz.** Anlamlı bir dilim bitince `BACKLOG.md`'ye tek satır ekle: `[YYYY-MM-DD] ne yapıldı — commit`. Büyük iş → `memory/` dosyası.
+- **Neden buradan doğdu:** durum takibi tek kaynağa (BACKLOG + git) bağlı olmayınca iki oturum/iki chat arası senkron kopuyor. Yaz → herkes aynı gerçeği görür.
+
 ## Sistem Aktif Durumu
 
 - Dev server: `pnpm dev` (port 3000)
