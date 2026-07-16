@@ -49,15 +49,28 @@ describe("Pazarama — parser", () => {
     expect(r.withholding).toBe(0) // raporda stopaj yok → tahmin fallback
   })
 
-  it("aynı sipariş numaralı item satırlarını toplar", () => {
+  it("aynı sipariş numaralı item satırlarını toplar (kampanya+komisyon adet başı × miktar)", () => {
     const rows = parse([
       { no: "488275662", urun: 100, saticiKampanya: 10, komisyonKdvli: 12, miktar: 1 },
       { no: "488275662", urun: 200, saticiKampanya: 20, komisyonKdvli: 24, miktar: 2 },
     ])
     expect(rows).toHaveLength(1)
-    expect(rows[0].saleAmount).toBeCloseTo(270, 2)
-    expect(rows[0].commission).toBeCloseTo(36, 2)
+    // sale = (100 − 10×1) + (200 − 20×2) = 90 + 160
+    expect(rows[0].saleAmount).toBeCloseTo(250, 2)
+    // komisyon = 12×1 + 24×2
+    expect(rows[0].commission).toBeCloseTo(60, 2)
     expect(rows[0].itemCount).toBe(3)
+  })
+
+  it("REGRESYON: çok-adetli satırda kampanya/komisyon miktarla çarpılır (gerçek sipariş 724849925)", () => {
+    // 2026-07-16: kolonlar adet başı çıktı — ×miktar yapılmayınca 2+ adetli 5 sipariş
+    // Dopigo cirosundan sapıyordu. Sağlama: İndirim Tutarı (277,28) = (100+38,64)×2.
+    const [r] = parse([
+      { no: "724849925", urun: 1104, pzKampanya: 100, saticiKampanya: 38.64, miktar: 2, komisyonKdvli: 61.6032, durum: "2 adet Teslim Edildi" },
+    ])
+    expect(r.saleAmount).toBeCloseTo(1026.72, 2) // 1104 − 38.64×2 = Dopigo cirosu
+    expect(r.commission).toBeCloseTo(123.2064, 4) // 61.6032×2
+    expect(r.itemCount).toBe(2)
   })
 
   it("'Tedarik Edilemedi' item ciro/komisyon/adede katılmaz (karışık sipariş)", () => {

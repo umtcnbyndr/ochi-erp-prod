@@ -187,10 +187,14 @@ function parseHepsiburada(buffer: Buffer): MarketplaceReconRow[] {
 // "Siparişleriniz_*.xlsx" (Sipariş Listesi sayfası) — item bazlı satırlar,
 // aynı "Sipariş Numarası" toplanır. Doğrulanmış semantik (2026-07-16, Haziran
 // dosyası Dopigo cirosuyla kuruşu kuruşuna tuttu):
-//   - Satıcı net cirosu = "Ürün Tutarı" − "Satıcının Karşıladığı Kampanya Tutarı"
+//   - ⚠️ Kampanya ve komisyon kolonları ADET BAŞI (birim) değerdir — satır
+//     toplamı için "Ürün Miktarı" ile çarpılır. Sağlama: "İndirim Tutarı" =
+//     (pzKampanya + satıcıKampanya) × miktar (5 çok-adetli siparişte doğrulandı).
+//   - Satıcı net cirosu = "Ürün Tutarı" − "Satıcının Karşıladığı Kampanya" × miktar
 //     (Dopigo/ERP cirosuyla aynı baz — indirim gider DEĞİL, bkz. N11 dersi).
 //   - "Pazarama'nın Karşıladığı Kampanya Tutarı" satıcıyı etkilemez, dahil edilmez.
-//   - Komisyon = "Komisyon Tutarı (KDV Dahil)" — gerçek değer, net ciro bazlı.
+//   - Komisyon = "Komisyon Tutarı (KDV Dahil)" × miktar — gerçek, net ciro bazlı
+//     (sağlama: komisyon ÷ oran × miktar = net satıcı bazı, kuruşu kuruşuna).
 //   - "Tedarik Edilemedi"/iptal/iade itemler satış değildir: ciro/komisyon/adede
 //     katılmaz. Siparişin TÜM itemleri böyleyse saleAmount 0 kalır → netReceived
 //     0 → tam-iade kuralı (netReceived ≤ 0) siparişi raporlardan düşürür.
@@ -213,11 +217,12 @@ function parsePazarama(buffer: Buffer): MarketplaceReconRow[] {
       .trim()
     const active = !/tedarik edilemedi|iptal|iade/i.test(status)
 
+    const rawQty = Math.max(1, Math.floor(numFlex(r["Ürün Miktarı"])))
     const sale = active
-      ? numFlex(r["Ürün Tutarı"]) - numFlex(r["Satıcının Karşıladığı Kampanya Tutarı"])
+      ? numFlex(r["Ürün Tutarı"]) - numFlex(r["Satıcının Karşıladığı Kampanya Tutarı"]) * rawQty
       : 0
-    const commission = active ? numFlex(r["Komisyon Tutarı (KDV Dahil)"]) : 0
-    const qty = active ? Math.floor(numFlex(r["Ürün Miktarı"])) : 0
+    const commission = active ? numFlex(r["Komisyon Tutarı (KDV Dahil)"]) * rawQty : 0
+    const qty = active ? rawQty : 0
 
     const existing = byOrder.get(serviceOrderId)
     if (existing) {
@@ -240,6 +245,7 @@ function parsePazarama(buffer: Buffer): MarketplaceReconRow[] {
           "Sipariş Numarası": r["Sipariş Numarası"],
           "Sipariş Tarihi": r["Sipariş Tarihi"],
           "Sipariş Ürün Durumu": r["Sipariş Ürün Durumu"],
+          "Ürün Miktarı": r["Ürün Miktarı"],
           "Ürün Tutarı": r["Ürün Tutarı"],
           "Pazarama'nın Karşıladığı Kampanya Tutarı": r["Pazarama'nın Karşıladığı Kampanya Tutarı"],
           "Satıcının Karşıladığı Kampanya Tutarı": r["Satıcının Karşıladığı Kampanya Tutarı"],
