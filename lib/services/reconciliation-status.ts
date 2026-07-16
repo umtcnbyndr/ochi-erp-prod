@@ -28,6 +28,11 @@ export function isReconOrderStatusPending(salesChannel: string, orderStatus: str
       return orderStatus === "Teslim edilecek"
     case "n11":
       return orderStatus !== "Tamamlandı"
+    case "pazarama":
+      // Doğrulanmış statüler (2026-07-16 Haziran dosyası): "Teslim Edildi",
+      // "Tedarik Edilemedi" (adet öneki parser'da temizlenir). İhtiyatlı:
+      // bu ikisi dışındaki her statü (kargoda vb.) kesinleşmemiş sayılır.
+      return orderStatus !== "Teslim Edildi" && orderStatus !== "Tedarik Edilemedi"
     default:
       return false
   }

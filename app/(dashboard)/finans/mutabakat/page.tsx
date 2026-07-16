@@ -64,6 +64,7 @@ export default async function MutabakatPage() {
           <TabsTrigger value="farmazon">Farmazon</TabsTrigger>
           <TabsTrigger value="hepsiburada">Hepsiburada</TabsTrigger>
           <TabsTrigger value="n11">N11</TabsTrigger>
+          <TabsTrigger value="pazarama">Pazarama</TabsTrigger>
           <TabsTrigger value="amazon" disabled>
             Amazon <Badge variant="outline" className="ml-1 text-[9px]">Yakında</Badge>
           </TabsTrigger>
@@ -96,6 +97,16 @@ export default async function MutabakatPage() {
 
         <TabsContent value="n11" className="space-y-4 pt-4">
           <N11ReconciliationFlow monthlyData={monthlyDataFor("N11")} />
+        </TabsContent>
+
+        <TabsContent value="pazarama" className="space-y-4 pt-4">
+          <MarketplaceReconciliationFlow
+            marketplace="Pazarama"
+            monthlyData={monthlyDataFor("Pazarama")}
+            downloadInstructions={
+              'Pazarama satıcı paneli → Siparişlerim → tarih aralığı seç → Dışarı Aktar (Siparişleriniz_*.xlsx) → burada yükle. Komisyon ve satıcı kampanyası dosyadan gerçek okunur; stopaj raporda olmadığı için tahminle (ciro × oran) devam eder, kargo sipariş başı girilir.'
+            }
+          />
         </TabsContent>
       </Tabs>
     </div>

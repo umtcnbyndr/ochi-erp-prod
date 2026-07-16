@@ -66,10 +66,21 @@ function num(v: unknown): number {
 }
 function parseTrDate(s: unknown): Date | null {
   if (s == null) return null
-  const m = String(s).trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{1,2}))?$/)
+  // Saniye kısmı opsiyonel — Pazarama "30.06.2026 08:53:50" formatı verir
+  const m = String(s).trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::\d{1,2})?)?$/)
   if (!m) return null
   const [, dd, mm, yy, hh, mi] = m
   return new Date(Number(yy), Number(mm) - 1, Number(dd), Number(hh ?? 0), Number(mi ?? 0))
+}
+// Sayı: önce direkt (1179.69), olmuyorsa Türkçe format ("1.179,69") ve "TL" soneki
+function numFlex(v: unknown): number {
+  if (typeof v === "number") return isFinite(v) ? v : 0
+  if (v == null || v === "") return 0
+  const s = String(v).trim().replace(/\s*TL$/i, "")
+  const direct = Number(s)
+  if (isFinite(direct)) return direct
+  const tr = Number(s.replace(/\./g, "").replace(",", "."))
+  return isFinite(tr) ? tr : 0
 }
 
 // ─── Farmazon parser ──────────────────────────────────────────
@@ -170,6 +181,74 @@ function parseHepsiburada(buffer: Buffer): MarketplaceReconRow[] {
     })
   }
   return out
+}
+
+// ─── Pazarama parser ────────────────────────────────────────────
+// "Siparişleriniz_*.xlsx" (Sipariş Listesi sayfası) — item bazlı satırlar,
+// aynı "Sipariş Numarası" toplanır. Doğrulanmış semantik (2026-07-16, Haziran
+// dosyası Dopigo cirosuyla kuruşu kuruşuna tuttu):
+//   - Satıcı net cirosu = "Ürün Tutarı" − "Satıcının Karşıladığı Kampanya Tutarı"
+//     (Dopigo/ERP cirosuyla aynı baz — indirim gider DEĞİL, bkz. N11 dersi).
+//   - "Pazarama'nın Karşıladığı Kampanya Tutarı" satıcıyı etkilemez, dahil edilmez.
+//   - Komisyon = "Komisyon Tutarı (KDV Dahil)" — gerçek değer, net ciro bazlı.
+//   - "Tedarik Edilemedi"/iptal/iade itemler satış değildir: ciro/komisyon/adede
+//     katılmaz. Siparişin TÜM itemleri böyleyse saleAmount 0 kalır → netReceived
+//     0 → tam-iade kuralı (netReceived ≤ 0) siparişi raporlardan düşürür.
+//   - Stopaj/kargo raporda yok → withholding 0 (analytics ciro×oran tahminine
+//     düşer, Trendyol stopajıyla aynı davranış), kargo sipariş-başı input.
+function parsePazarama(buffer: Buffer): MarketplaceReconRow[] {
+  const wb = XLSX.read(buffer)
+  const sheet = wb.Sheets[wb.SheetNames[0]]
+  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null })
+
+  const byOrder = new Map<string, MarketplaceReconRow>()
+  for (const r of raw) {
+    const id = r["Sipariş Numarası"]
+    if (id == null || String(id).trim() === "") continue
+    const serviceOrderId = String(id).trim()
+
+    // "1 adet Teslim Edildi" → "Teslim Edildi" (adet öneki statüden ayrılır)
+    const status = String(r["Sipariş Ürün Durumu"] ?? "")
+      .replace(/^\d+\s+adet\s+/i, "")
+      .trim()
+    const active = !/tedarik edilemedi|iptal|iade/i.test(status)
+
+    const sale = active
+      ? numFlex(r["Ürün Tutarı"]) - numFlex(r["Satıcının Karşıladığı Kampanya Tutarı"])
+      : 0
+    const commission = active ? numFlex(r["Komisyon Tutarı (KDV Dahil)"]) : 0
+    const qty = active ? Math.floor(numFlex(r["Ürün Miktarı"])) : 0
+
+    const existing = byOrder.get(serviceOrderId)
+    if (existing) {
+      existing.saleAmount += sale
+      existing.commission += commission
+      existing.itemCount += qty
+      // Karışık statü: satılan item varsa onun statüsü kazanır
+      if (active && status) existing.orderStatus = status
+    } else {
+      byOrder.set(serviceOrderId, {
+        serviceOrderId,
+        orderDate: parseTrDate(r["Sipariş Tarihi"]),
+        saleAmount: sale,
+        commission,
+        withholding: 0,
+        returnAmount: 0,
+        itemCount: qty,
+        orderStatus: status || null,
+        rawJson: {
+          "Sipariş Numarası": r["Sipariş Numarası"],
+          "Sipariş Tarihi": r["Sipariş Tarihi"],
+          "Sipariş Ürün Durumu": r["Sipariş Ürün Durumu"],
+          "Ürün Tutarı": r["Ürün Tutarı"],
+          "Pazarama'nın Karşıladığı Kampanya Tutarı": r["Pazarama'nın Karşıladığı Kampanya Tutarı"],
+          "Satıcının Karşıladığı Kampanya Tutarı": r["Satıcının Karşıladığı Kampanya Tutarı"],
+          "Komisyon Tutarı (KDV Dahil)": r["Komisyon Tutarı (KDV Dahil)"],
+        },
+      })
+    }
+  }
+  return [...byOrder.values()]
 }
 
 // ─── N11 parser ─────────────────────────────────────────────────
@@ -373,6 +452,12 @@ export const MARKETPLACE_PARSERS: Record<string, MarketplaceParser> = {
     salesChannel: "n11",
     parse: parseN11ItemShipments,
     matchKey: (sv) => sv.split("-")[0]!.trim(),
+    hasOwnShipping: false,
+  },
+  Pazarama: {
+    salesChannel: "pazarama",
+    parse: parsePazarama,
+    matchKey: (sv) => sv.trim(), // serviceValue = "Sipariş Numarası" birebir
     hasOwnShipping: false,
   },
 }
