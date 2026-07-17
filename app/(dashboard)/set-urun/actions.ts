@@ -88,7 +88,7 @@ export async function deleteSet(id: number): Promise<ActionResult> {
 
 export async function recalculateSetPrice(
   id: number
-): Promise<ActionResult<{ oldPrice: number; newPrice: number; changed: boolean }>> {
+): Promise<ActionResult<{ oldPrice: number; newPrice: number | null; changed: boolean }>> {
   try {
     await requirePermission("set-urun", "edit")
     const result = await recalculateSetPriceSvc(id)

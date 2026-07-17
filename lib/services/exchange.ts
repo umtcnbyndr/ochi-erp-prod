@@ -20,7 +20,7 @@
  *         EXCHANGE_IN movement + weighted avg alış güncellenir.
  */
 import { prisma } from "@/lib/db"
-import { weightedAveragePrice } from "@/lib/pricing"
+import { weightedAveragePrice, purchasePriceChanged } from "@/lib/pricing"
 import { recalculateMarketplacePrices } from "./marketplace-price"
 import { recalculateSetsContainingComponents } from "./set-product"
 
@@ -141,12 +141,15 @@ export async function createReceivedExchanges(
           newStock: line.quantityToStock,
           newPrice: line.unitPrice,
         })
+        const priceChanged = purchasePriceChanged(oldPrice, newAvgPrice)
 
         await tx.product.update({
           where: { id: product.id },
           data: {
             mainStock: oldStock + line.quantityToStock,
             mainPurchasePrice: newAvgPrice,
+            // Alış fiyatı değiştiyse mainPriceUpdatedAt = now() → bayat öneri kontrolü için referans
+            ...(priceChanged ? { mainPriceUpdatedAt: new Date() } : {}),
           },
         })
 
@@ -161,7 +164,7 @@ export async function createReceivedExchanges(
           },
         })
 
-        if (Math.abs(newAvgPrice - oldPrice) > 0.0001) {
+        if (priceChanged) {
           await tx.priceHistory.create({
             data: {
               productId: product.id,
@@ -449,12 +452,15 @@ export async function completeExchange(input: CompleteExchangeInput): Promise<vo
               newPrice: newUnitPrice,
             })
           : oldPrice || null
+      const returnedPriceChanged = newUnitPrice != null && purchasePriceChanged(oldPrice, newAvgPrice)
 
       await tx.product.update({
         where: { id: returned.id },
         data: {
           mainStock: oldStock + input.returnedQuantity,
           mainPurchasePrice: newAvgPrice,
+          // Alış fiyatı değiştiyse mainPriceUpdatedAt = now() → bayat öneri kontrolü için referans
+          ...(returnedPriceChanged ? { mainPriceUpdatedAt: new Date() } : {}),
         },
       })
 
@@ -469,7 +475,7 @@ export async function completeExchange(input: CompleteExchangeInput): Promise<vo
         },
       })
 
-      if (newUnitPrice != null && newAvgPrice != null && Math.abs(newAvgPrice - oldPrice) > 0.0001) {
+      if (returnedPriceChanged && newAvgPrice != null) {
         await tx.priceHistory.create({
           data: {
             productId: returned.id,

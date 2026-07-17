@@ -8,6 +8,7 @@ import {
   loadCommissionTariffsForProducts,
   resolveMarginAtMarket,
 } from "@/lib/pricing/effective-commission"
+import { calculateSetPurchasePrice, purchasePriceChanged } from "@/lib/pricing"
 
 /** Scraper satıcı adı bize mi ait (BuyBox bizde) — "ochi" içerir. */
 function isOurSellerName(name: string | null | undefined): boolean {
@@ -170,7 +171,17 @@ export async function listProducts(options: ProductListOptions = {}) {
               select: {
                 mainStock: true,
                 mainPurchasePrice: true,
+                streetPurchasePrice: true,
+                vatRate: true,
                 psf: true,
+                brand: {
+                  select: {
+                    yearEndDiscount1: true,
+                    yearEndDiscount2: true,
+                    yearEndDiscount3: true,
+                    pharmacyMargin: true,
+                  },
+                },
               },
             },
           },
@@ -358,21 +369,21 @@ export async function listProducts(options: ProductListOptions = {}) {
         )
       : null
 
-    // Sanal alış: tüm bileşenlerin alış fiyatı varsa (alış × adet) − ek indirim
-    const allPurchasePresent = p.setComponents.every(
-      (sc) => sc.component.mainPurchasePrice != null
+    // Sanal alış: tek kaynak calculateSetPurchasePrice — ana alış eksikse eczane
+    // fallback dener, o da yoksa bloke eder (sessizce 0 saymaz)
+    const virtualMainPurchasePrice = calculateSetPurchasePrice(
+      p.setComponents.map((sc) => ({
+        quantity: sc.quantity,
+        product: {
+          mainStock: sc.component.mainStock,
+          mainPurchasePrice: sc.component.mainPurchasePrice,
+          streetPurchasePrice: sc.component.streetPurchasePrice,
+          vatRate: sc.component.vatRate,
+          brand: sc.component.brand,
+        },
+      })),
+      p.setExtraDiscount,
     )
-    const extraDiscount = p.setExtraDiscount ? Number(p.setExtraDiscount) : 0
-    const virtualMainPurchasePrice = allPurchasePresent
-      ? Math.max(
-          0,
-          p.setComponents.reduce(
-            (sum, sc) =>
-              sum + Number(sc.component.mainPurchasePrice) * sc.quantity,
-            0
-          ) - extraDiscount
-        )
-      : null
 
     return {
       ...pWithoutMp,
@@ -416,8 +427,18 @@ export async function getProductById(id: number) {
               primaryBarcode: true,
               mainStock: true,
               mainPurchasePrice: true,
+              streetPurchasePrice: true,
+              vatRate: true,
               psf: true,
               status: true,
+              brand: {
+                select: {
+                  yearEndDiscount1: true,
+                  yearEndDiscount2: true,
+                  yearEndDiscount3: true,
+                  pharmacyMargin: true,
+                },
+              },
             },
           },
         },
@@ -426,23 +447,27 @@ export async function getProductById(id: number) {
   })
   if (!product) return null
 
-  // SET ürün için sanal stok ve hesaplanan alış
+  // SET ürün için sanal stok ve hesaplanan alış (tek kaynak: calculateSetPurchasePrice —
+  // ana alış eksikse eczane fallback dener, o da yoksa bloke eder — sessizce 0 saymaz)
   if (product.productType === "SET" && product.setComponents.length > 0) {
     const virtualStock = Math.min(
       ...product.setComponents.map((sc) =>
         Math.floor(sc.component.mainStock / sc.quantity)
       )
     )
-    const componentsTotal = product.setComponents.reduce((sum, sc) => {
-      const price = sc.component.mainPurchasePrice
-        ? Number(sc.component.mainPurchasePrice)
-        : 0
-      return sum + price * sc.quantity
-    }, 0)
-    const extraDiscount = product.setExtraDiscount
-      ? Number(product.setExtraDiscount)
-      : 0
-    const computedPurchasePrice = Math.max(0, componentsTotal - extraDiscount)
+    const computedPurchasePrice = calculateSetPurchasePrice(
+      product.setComponents.map((sc) => ({
+        quantity: sc.quantity,
+        product: {
+          mainStock: sc.component.mainStock,
+          mainPurchasePrice: sc.component.mainPurchasePrice,
+          streetPurchasePrice: sc.component.streetPurchasePrice,
+          vatRate: sc.component.vatRate,
+          brand: sc.component.brand,
+        },
+      })),
+      product.setExtraDiscount,
+    )
     return { ...product, virtualStock, computedPurchasePrice }
   }
 
@@ -476,6 +501,8 @@ export async function createProduct(data: ProductFormValues) {
       ...productData,
       subcategoryId: productData.subcategoryId || null,
       paoMonths: productData.paoMonths ?? null,
+      // İlk alış fiyatı girildiyse referans zaman damgası da baştan doğru olsun
+      ...(productData.mainPurchasePrice != null ? { mainPriceUpdatedAt: new Date() } : {}),
       barcodes: {
         create: [
           { barcode: productData.primaryBarcode, isPrimary: true },
@@ -537,6 +564,14 @@ export async function updateProduct(id: number, data: ProductFormValues) {
     throw new Error(`Bu barkod${existing.length > 1 ? "lar" : ""} başka üründe: ${existing.map((e) => e.barcode).join(", ")}`)
   }
 
+  // Fiyat değişti mi? (bayat öneri kontrolü referansı — mainPriceUpdatedAt)
+  const priceChanged =
+    productData.mainPurchasePrice != null &&
+    purchasePriceChanged(
+      current.mainPurchasePrice ? Number(current.mainPurchasePrice) : null,
+      Number(productData.mainPurchasePrice),
+    )
+
   await prisma.$transaction(async (tx) => {
     await tx.product.update({
       where: { id },
@@ -544,6 +579,9 @@ export async function updateProduct(id: number, data: ProductFormValues) {
         ...productData,
         subcategoryId: productData.subcategoryId || null,
         paoMonths: productData.paoMonths ?? null,
+        // Alış fiyatı değiştiyse mainPriceUpdatedAt = now() → bayat öneri kontrolü için referans
+        // (product-entry.ts/mal kabul zaten yapıyor; ürün formundan direkt düzenleme eskiden yapmıyordu)
+        ...(priceChanged ? { mainPriceUpdatedAt: new Date() } : {}),
       },
     })
 
@@ -575,10 +613,7 @@ export async function updateProduct(id: number, data: ProductFormValues) {
     }
 
     // Fiyat geçmişi
-    if (
-      productData.mainPurchasePrice != null &&
-      Number(current.mainPurchasePrice ?? 0) !== Number(productData.mainPurchasePrice)
-    ) {
+    if (priceChanged && productData.mainPurchasePrice != null) {
       await tx.priceHistory.create({
         data: {
           productId: id,

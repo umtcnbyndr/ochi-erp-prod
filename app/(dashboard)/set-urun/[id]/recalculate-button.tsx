@@ -26,9 +26,15 @@ export function RecalculateButton({
         return
       }
       if (r.data?.changed) {
-        toast.success(
-          `Fiyat güncellendi: ${formatCurrency(r.data.oldPrice.toFixed(2))} → ${formatCurrency(r.data.newPrice.toFixed(2))}`
-        )
+        if (r.data.newPrice != null) {
+          toast.success(
+            `Fiyat güncellendi: ${formatCurrency(r.data.oldPrice.toFixed(2))} → ${formatCurrency(r.data.newPrice.toFixed(2))}`
+          )
+        } else {
+          toast.warning(
+            `Fiyat hesaplanamıyor — bir bileşenin ana ve eczane alışı eksik. Önceki fiyat: ${formatCurrency(r.data.oldPrice.toFixed(2))}`
+          )
+        }
       } else {
         toast.success("Fiyat zaten güncel")
       }

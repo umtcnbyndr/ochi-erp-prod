@@ -3,9 +3,39 @@ import { prisma } from "@/lib/db"
 import {
   calculateSetPurchasePrice,
   calculateSetAvailableStock,
-} from "@/lib/pricing/set-product"
+  purchasePriceChanged,
+  type SetComponentInput,
+} from "@/lib/pricing"
 import { recalculateMarketplacePrices } from "./marketplace-price"
 import type { SetProductFormValues } from "@/lib/validators/set-product"
+
+/** Bileşen DB satırını hesap girdisine çevirir (ana + eczane alış fallback dahil) */
+function toCalcComponent(
+  quantity: number,
+  c: SetComponentInput["product"],
+): SetComponentInput {
+  return { quantity, product: c }
+}
+
+/** Set alış fiyatı gerçekten değişti mi? (null-aware — hesap bloke olduysa da "değişti" sayılır) */
+function setPriceChanged(oldPrice: number, newPrice: number | null): boolean {
+  if (newPrice == null) return oldPrice > 0
+  return purchasePriceChanged(oldPrice, newPrice)
+}
+
+/** Bileşen select'lerinde ortak alan seti (ana + eczane alış fallback için) */
+const componentCostFields = {
+  streetPurchasePrice: true,
+  vatRate: true,
+  brand: {
+    select: {
+      yearEndDiscount1: true,
+      yearEndDiscount2: true,
+      yearEndDiscount3: true,
+      pharmacyMargin: true,
+    },
+  },
+} satisfies Prisma.ProductSelect
 
 /**
  * Set Ürün Servisi — Virtual/Sanal set
@@ -32,8 +62,8 @@ const setWithComponentsInclude = {
           mainStock: true,
           mainPurchasePrice: true,
           psf: true,
-          vatRate: true,
           status: true,
+          ...componentCostFields,
         },
       },
     },
@@ -77,6 +107,7 @@ export async function listSets() {
               name: true,
               mainStock: true,
               mainPurchasePrice: true,
+              ...componentCostFields,
             },
           },
         },
@@ -86,13 +117,9 @@ export async function listSets() {
   })
 
   return sets.map((s) => {
-    const components = s.setComponents.map((sc) => ({
-      quantity: sc.quantity,
-      product: {
-        mainStock: sc.component.mainStock,
-        mainPurchasePrice: sc.component.mainPurchasePrice,
-      },
-    }))
+    const components = s.setComponents.map((sc) =>
+      toCalcComponent(sc.quantity, sc.component),
+    )
     const computedPrice = calculateSetPurchasePrice(
       components,
       s.setExtraDiscount
@@ -114,13 +141,9 @@ export async function getSetById(id: number) {
   })
   if (!set || set.productType !== "SET") return null
 
-  const components = set.setComponents.map((sc) => ({
-    quantity: sc.quantity,
-    product: {
-      mainStock: sc.component.mainStock,
-      mainPurchasePrice: sc.component.mainPurchasePrice,
-    },
-  }))
+  const components = set.setComponents.map((sc) =>
+    toCalcComponent(sc.quantity, sc.component),
+  )
   const computedPurchasePrice = calculateSetPurchasePrice(
     components,
     set.setExtraDiscount
@@ -172,6 +195,7 @@ export async function createSet(data: SetProductFormValues) {
       mainStock: true,
       mainPurchasePrice: true,
       productType: true,
+      ...componentCostFields,
     },
   })
   if (components.length !== componentIds.length) {
@@ -185,13 +209,7 @@ export async function createSet(data: SetProductFormValues) {
   // Alış fiyatı hesapla
   const componentsForCalc = data.components.map((c) => {
     const comp = components.find((x) => x.id === c.componentId)!
-    return {
-      quantity: c.quantity,
-      product: {
-        mainStock: comp.mainStock,
-        mainPurchasePrice: comp.mainPurchasePrice,
-      },
-    }
+    return toCalcComponent(c.quantity, comp)
   })
   const computedPurchasePrice = calculateSetPurchasePrice(
     componentsForCalc,
@@ -215,7 +233,10 @@ export async function createSet(data: SetProductFormValues) {
         setExtraDiscount: data.setExtraDiscount ?? 0,
         psf: data.psf ?? null,
         mainStock: 0, // virtual
-        mainPurchasePrice: computedPurchasePrice > 0 ? computedPurchasePrice : null,
+        mainPurchasePrice:
+          computedPurchasePrice != null && computedPurchasePrice > 0
+            ? computedPurchasePrice
+            : null,
         minStock: 0,
         manufacturer: data.manufacturer ?? null,
         shelf: data.shelf ?? null,
@@ -243,7 +264,7 @@ export async function createSet(data: SetProductFormValues) {
     })
 
     // Fiyat geçmişi
-    if (computedPurchasePrice > 0) {
+    if (computedPurchasePrice != null && computedPurchasePrice > 0) {
       await tx.priceHistory.create({
         data: {
           productId: set.id,
@@ -309,6 +330,7 @@ export async function updateSet(id: number, data: SetProductFormValues) {
       mainStock: true,
       mainPurchasePrice: true,
       productType: true,
+      ...componentCostFields,
     },
   })
   if (components.length !== componentIds.length) {
@@ -320,13 +342,7 @@ export async function updateSet(id: number, data: SetProductFormValues) {
 
   const componentsForCalc = data.components.map((c) => {
     const comp = components.find((x) => x.id === c.componentId)!
-    return {
-      quantity: c.quantity,
-      product: {
-        mainStock: comp.mainStock,
-        mainPurchasePrice: comp.mainPurchasePrice,
-      },
-    }
+    return toCalcComponent(c.quantity, comp)
   })
   const computedPurchasePrice = calculateSetPurchasePrice(
     componentsForCalc,
@@ -351,7 +367,9 @@ export async function updateSet(id: number, data: SetProductFormValues) {
         setExtraDiscount: data.setExtraDiscount ?? 0,
         psf: data.psf ?? null,
         mainPurchasePrice:
-          computedPurchasePrice > 0 ? computedPurchasePrice : null,
+          computedPurchasePrice != null && computedPurchasePrice > 0
+            ? computedPurchasePrice
+            : null,
         manufacturer: data.manufacturer ?? null,
         shelf: data.shelf ?? null,
         notes: data.notes ?? null,
@@ -383,8 +401,8 @@ export async function updateSet(id: number, data: SetProductFormValues) {
       })),
     })
 
-    // Fiyat değiştiyse geçmişe ekle
-    if (Math.abs(computedPurchasePrice - oldPrice) > 0.0001) {
+    // Fiyat değiştiyse geçmişe ekle (hesap bloke olduysa — null — yazacak yeni değer yok)
+    if (computedPurchasePrice != null && setPriceChanged(oldPrice, computedPurchasePrice)) {
       await tx.priceHistory.create({
         data: {
           productId: id,
@@ -434,7 +452,7 @@ export async function recalculateSetPrice(setId: number) {
       setComponents: {
         include: {
           component: {
-            select: { mainStock: true, mainPurchasePrice: true },
+            select: { mainStock: true, mainPurchasePrice: true, ...componentCostFields },
           },
         },
       },
@@ -442,37 +460,36 @@ export async function recalculateSetPrice(setId: number) {
   })
   if (!set || set.productType !== "SET") throw new Error("Set bulunamadı")
 
-  const components = set.setComponents.map((sc) => ({
-    quantity: sc.quantity,
-    product: {
-      mainStock: sc.component.mainStock,
-      mainPurchasePrice: sc.component.mainPurchasePrice,
-    },
-  }))
+  const components = set.setComponents.map((sc) =>
+    toCalcComponent(sc.quantity, sc.component),
+  )
   const newPrice = calculateSetPurchasePrice(components, set.setExtraDiscount)
   const oldPrice = set.mainPurchasePrice ? Number(set.mainPurchasePrice) : 0
+  const changed = setPriceChanged(oldPrice, newPrice)
 
-  if (Math.abs(newPrice - oldPrice) > 0.0001) {
+  if (changed) {
     await prisma.$transaction(async (tx) => {
       await tx.product.update({
         where: { id: setId },
-        data: { mainPurchasePrice: newPrice > 0 ? newPrice : null },
+        data: { mainPurchasePrice: newPrice != null && newPrice > 0 ? newPrice : null },
       })
-      await tx.priceHistory.create({
-        data: {
-          productId: setId,
-          priceType: "MAIN_PURCHASE",
-          oldValue: oldPrice > 0 ? oldPrice : null,
-          newValue: newPrice,
-          enteredValue: newPrice,
-          reason: "Bileşen fiyatı güncellendi (manuel tetikleme)",
-        },
-      })
+      if (newPrice != null) {
+        await tx.priceHistory.create({
+          data: {
+            productId: setId,
+            priceType: "MAIN_PURCHASE",
+            oldValue: oldPrice > 0 ? oldPrice : null,
+            newValue: newPrice,
+            enteredValue: newPrice,
+            reason: "Bileşen fiyatı güncellendi (manuel tetikleme)",
+          },
+        })
+      }
     })
     await recalculateMarketplacePrices(setId)
   }
 
-  return { oldPrice, newPrice, changed: Math.abs(newPrice - oldPrice) > 0.0001 }
+  return { oldPrice, newPrice, changed }
 }
 
 /**
@@ -501,7 +518,7 @@ export async function recalculateSetsContainingComponents(
       setComponents: {
         include: {
           component: {
-            select: { mainStock: true, mainPurchasePrice: true },
+            select: { mainStock: true, mainPurchasePrice: true, ...componentCostFields },
           },
         },
       },
@@ -516,35 +533,33 @@ export async function recalculateSetsContainingComponents(
   const changedIds: number[] = []
 
   for (const set of sets) {
-    const componentsForCalc = set.setComponents.map((sc) => ({
-      quantity: sc.quantity,
-      product: {
-        mainStock: sc.component.mainStock,
-        mainPurchasePrice: sc.component.mainPurchasePrice,
-      },
-    }))
+    const componentsForCalc = set.setComponents.map((sc) =>
+      toCalcComponent(sc.quantity, sc.component),
+    )
     const newPrice = calculateSetPurchasePrice(
       componentsForCalc,
       set.setExtraDiscount
     )
     const oldPrice = set.mainPurchasePrice ? Number(set.mainPurchasePrice) : 0
 
-    if (Math.abs(newPrice - oldPrice) > 0.0001) {
+    if (setPriceChanged(oldPrice, newPrice)) {
       await prisma.$transaction(async (tx) => {
         await tx.product.update({
           where: { id: set.id },
-          data: { mainPurchasePrice: newPrice > 0 ? newPrice : null },
+          data: { mainPurchasePrice: newPrice != null && newPrice > 0 ? newPrice : null },
         })
-        await tx.priceHistory.create({
-          data: {
-            productId: set.id,
-            priceType: "MAIN_PURCHASE",
-            oldValue: oldPrice > 0 ? oldPrice : null,
-            newValue: newPrice,
-            enteredValue: newPrice,
-            reason: "Otomatik: bileşen fiyatı güncellendi",
-          },
-        })
+        if (newPrice != null) {
+          await tx.priceHistory.create({
+            data: {
+              productId: set.id,
+              priceType: "MAIN_PURCHASE",
+              oldValue: oldPrice > 0 ? oldPrice : null,
+              newValue: newPrice,
+              enteredValue: newPrice,
+              reason: "Otomatik: bileşen fiyatı güncellendi",
+            },
+          })
+        }
       })
       changedCount++
       changedIds.push(set.id)

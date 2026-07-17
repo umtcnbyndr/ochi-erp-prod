@@ -31,11 +31,13 @@
 - [ ] SET ürün BuyBox kartında marj (sanal maliyet bağlanacak)
 - [ ] Test kapsamı büyütme (para-kritik yollar — Kural 6 sürekli)
 - [ ] Kesin ölü kod sil (user onaylı): `components/common/coming-soon.tsx` · `app/api/admin/debug/cerave/route.ts`
+- [ ] [kozmetik, düşük] Set detay bileşen tablosu satır bazlı "Birim Alış"ı eksikte ₺0 gösteriyor (olması gereken "—") — set-urun/[id]/page.tsx satır ~234, 2026-07-17 denetiminde görüldü, kâr hesabını etkilemiyor
 
 ## 🧠 Fikir Havuzu (2026-07-17 beyin fırtınası — önceliklendirilecek)
 
 *Denetim turu (modül modül, çoğu salt-okunur — `/denetim` skill'i ile):*
-Dopigo Aktarım hesap anlatımı+doğrulama · SET ürünler · Kampanyalar (bu/gelecek ay kullanılacak) · Barkod eşleştirme mantığı · Raporlar · Markalar (satıcı iletişim alanları + liste yükleme) · Pazar Yerleri (veri doğru mu) · Cariler · Ayarlar
+Kampanyalar (bu/gelecek ay kullanılacak) · Barkod eşleştirme mantığı · Raporlar · Markalar (satıcı iletişim alanları + liste yükleme) · Pazar Yerleri (veri doğru mu) · Cariler · Ayarlar
+~~Dopigo Aktarım~~ ✅ 2026-07-17 (madde 3 — bayatlık kontrolü + SET fiyat hesabı 2 bug bulundu/düzeltildi, bkz. CHANGELOG) · ~~SET ürünler~~ ✅ aynı tur (5 kopya SET fiyat mantığı tek kaynağa indirildi)
 
 *Özellikler (tasarım → kod, Kural 1):*
 - Takas "Direkt Çıkış" tipi: eczaneden alıp direkt sipariş çıkışı ("stoğa gir/girme" toggle yerine)

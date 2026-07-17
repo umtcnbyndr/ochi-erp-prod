@@ -25,3 +25,20 @@ export function round4(value: number): number {
 export function round2(value: number): number {
   return Math.round(value * 100) / 100
 }
+
+/**
+ * Alış fiyatı anlamlı ölçüde değişti mi? (float epsilon toleranslı)
+ * null/undefined → 0 sayılır (yoktan bir fiyata geçiş de "değişti" sayılır).
+ * Weighted-average hesaplarında (mal kabul, takas) ve doğrudan form
+ * düzenlemesinde ortak kullanılır — "bayat öneri" referans zaman damgasının
+ * (Product.mainPriceUpdatedAt) ne zaman güncelleneceğini belirler.
+ */
+export function purchasePriceChanged(
+  oldPrice: number | null | undefined,
+  newPrice: number | null | undefined,
+  epsilon = 0.0001,
+): boolean {
+  const old = oldPrice ?? 0
+  const next = newPrice ?? 0
+  return Math.abs(next - old) > epsilon
+}

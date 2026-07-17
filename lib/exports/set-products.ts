@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx"
 import { prisma } from "@/lib/db"
+import { calculateSetPurchasePrice } from "@/lib/pricing"
 import { fmtDate, makeSheet, num } from "./index"
 
 export async function buildSetProductsWorkbook(): Promise<XLSX.WorkBook> {
@@ -17,6 +18,16 @@ export async function buildSetProductsWorkbook(): Promise<XLSX.WorkBook> {
               primaryBarcode: true,
               mainStock: true,
               mainPurchasePrice: true,
+              streetPurchasePrice: true,
+              vatRate: true,
+              brand: {
+                select: {
+                  yearEndDiscount1: true,
+                  yearEndDiscount2: true,
+                  yearEndDiscount3: true,
+                  pharmacyMargin: true,
+                },
+              },
             },
           },
         },
@@ -25,10 +36,20 @@ export async function buildSetProductsWorkbook(): Promise<XLSX.WorkBook> {
   })
 
   const setRows = sets.map((s) => {
-    const totalCost = s.setComponents.reduce((acc, sc) => {
-      const unit = sc.component.mainPurchasePrice ? Number(sc.component.mainPurchasePrice) : 0
-      return acc + unit * sc.quantity
-    }, 0)
+    const componentsForCalc = s.setComponents.map((sc) => ({
+      quantity: sc.quantity,
+      product: {
+        mainStock: sc.component.mainStock,
+        mainPurchasePrice: sc.component.mainPurchasePrice,
+        streetPurchasePrice: sc.component.streetPurchasePrice,
+        vatRate: sc.component.vatRate,
+        brand: sc.component.brand,
+      },
+    }))
+    // Tek kaynak: calculateSetPurchasePrice — ana alış eksikse eczane fallback dener,
+    // o da yoksa bloke eder (sessizce 0 saymaz). Ham toplam = indirimsiz çağrı.
+    const totalCost = calculateSetPurchasePrice(componentsForCalc, 0)
+    const netCost = totalCost != null ? Math.max(0, totalCost - Number(s.setExtraDiscount ?? 0)) : null
     const minProducible =
       s.setComponents.length > 0
         ? Math.min(
@@ -43,9 +64,9 @@ export async function buildSetProductsWorkbook(): Promise<XLSX.WorkBook> {
       "Kategori": s.category.name,
       "Bileşen Sayısı": s.setComponents.length,
       "Sanal Stok": minProducible,
-      "Hesaplanan Alış (TL)": Math.round(totalCost * 100) / 100,
+      "Hesaplanan Alış (TL)": totalCost != null ? Math.round(totalCost * 100) / 100 : "",
       "Ek İndirim (TL)": num(s.setExtraDiscount) ?? "",
-      "Net Alış (TL)": Math.round((totalCost - Number(s.setExtraDiscount ?? 0)) * 100) / 100,
+      "Net Alış (TL)": netCost != null ? Math.round(netCost * 100) / 100 : "",
       "PSF (TL)": num(s.psf) ?? "",
       "Durum": s.status,
       "Oluşturulma": fmtDate(s.createdAt),

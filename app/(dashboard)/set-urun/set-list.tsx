@@ -34,7 +34,7 @@ export interface SetListItem {
   category: { id: number; name: string }
   componentCount: number
   availableStock: number
-  computedPurchasePrice: number
+  computedPurchasePrice: number | null
   psf: string | null
 }
 
@@ -228,7 +228,7 @@ export function SetList({ sets }: Props) {
                       <div>
                         <div className="text-[10px] text-muted-foreground">Alış</div>
                         <div className="text-sm font-semibold tabular-nums">
-                          {s.computedPurchasePrice > 0
+                          {s.computedPurchasePrice != null && s.computedPurchasePrice > 0
                             ? formatCurrency(s.computedPurchasePrice.toFixed(2))
                             : "—"}
                         </div>
@@ -293,7 +293,7 @@ export function SetList({ sets }: Props) {
                         </span>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {s.computedPurchasePrice > 0
+                        {s.computedPurchasePrice != null && s.computedPurchasePrice > 0
                           ? formatCurrency(s.computedPurchasePrice.toFixed(2))
                           : "—"}
                       </TableCell>

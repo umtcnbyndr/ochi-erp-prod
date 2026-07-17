@@ -65,7 +65,10 @@ export default async function SetDetailPage({
   // Kayıtlı alış ve hesaplanmış alış farkı (stale detection)
   const storedPrice = set.mainPurchasePrice ? Number(set.mainPurchasePrice) : 0
   const computedPrice = set.computedPurchasePrice
-  const isPriceStale = Math.abs(storedPrice - computedPrice) > 0.01
+  // null = bir bileşenin ana VE eczane alışı eksik, hesap bloke (sessizce 0 sayılmaz)
+  const isPriceUnavailable = computedPrice == null
+  const isPriceStale = computedPrice != null && Math.abs(storedPrice - computedPrice) > 0.01
+  const computedPriceLabel = computedPrice != null ? formatCurrency(computedPrice.toFixed(2)) : "—"
 
   return (
     <div className="space-y-6">
@@ -92,7 +95,7 @@ export default async function SetDetailPage({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <RecalculateButton id={set.id} stale={isPriceStale} />
+            <RecalculateButton id={set.id} stale={isPriceStale || isPriceUnavailable} />
             <Button variant="outline" asChild>
               <Link href={`/set-urun/${set.id}/duzenle`}>
                 <Pencil className="h-4 w-4" /> Düzenle
@@ -103,6 +106,22 @@ export default async function SetDetailPage({
         </div>
       </div>
 
+      {/* Fiyat hesaplanamıyor (bir bileşenin ana + eczane alışı eksik) */}
+      {isPriceUnavailable && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <div className="flex-1">
+            <p className="font-medium">Set fiyatı hesaplanamıyor</p>
+            <p className="text-muted-foreground">
+              Bileşenlerden en az birinin hem ana depo hem eczane alışı boş — set
+              fiyatsız kalıyor (kayıtlı{" "}
+              {storedPrice > 0 ? formatCurrency(storedPrice.toFixed(2)) : "—"} eski
+              değer). Eksik bileşene alış gir, sonra &quot;Yeniden Hesapla&quot;ya bas.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Stale warning */}
       {isPriceStale && (
         <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
@@ -112,7 +131,7 @@ export default async function SetDetailPage({
             <p className="text-muted-foreground">
               Kayıtlı alış fiyatı <strong>{formatCurrency(storedPrice.toFixed(2))}</strong> iken
               bileşenlerden hesaplanan değer{" "}
-              <strong>{formatCurrency(computedPrice.toFixed(2))}</strong>. Bileşen
+              <strong>{computedPriceLabel}</strong>. Bileşen
               fiyatları değişmiş olabilir — &quot;Yeniden Hesapla&quot; butonuna basarak
               güncelleyin (marketplace fiyatları da yeniden hesaplanır).
             </p>
@@ -156,7 +175,7 @@ export default async function SetDetailPage({
           <CardContent className="p-5">
             <p className="text-xs text-muted-foreground">Hesaplanan Alış</p>
             <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl">
-              {formatCurrency(computedPrice.toFixed(2))}
+              {computedPriceLabel}
             </p>
             {Number(set.setExtraDiscount ?? 0) > 0 && (
               <p className="mt-1 text-xs text-muted-foreground">
@@ -298,11 +317,11 @@ export default async function SetDetailPage({
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Bileşenler Toplamı</span>
                   <span className="tabular-nums">
-                    {formatCurrency(
-                      (
-                        computedPrice + Number(set.setExtraDiscount ?? 0)
-                      ).toFixed(2)
-                    )}
+                    {computedPrice != null
+                      ? formatCurrency(
+                          (computedPrice + Number(set.setExtraDiscount ?? 0)).toFixed(2)
+                        )
+                      : "—"}
                   </span>
                 </div>
                 {Number(set.setExtraDiscount ?? 0) > 0 && (
@@ -316,7 +335,7 @@ export default async function SetDetailPage({
                 <div className="flex justify-between border-t pt-2 text-base font-semibold">
                   <span>Set Alış Fiyatı</span>
                   <span className="tabular-nums">
-                    {formatCurrency(computedPrice.toFixed(2))}
+                    {computedPriceLabel}
                   </span>
                 </div>
               </CardContent>
@@ -435,7 +454,7 @@ export default async function SetDetailPage({
                           : undefined
                       }
                     >
-                      {formatCurrency(computedPrice.toFixed(2))}
+                      {computedPriceLabel}
                     </span>
                   }
                 />

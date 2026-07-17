@@ -31,6 +31,7 @@ import {
   loadCommissionTariffsForProducts,
   isRecommendationStale,
   resolveProductUnitCost,
+  calculateSetPurchasePrice,
   type TariffMap,
 } from "@/lib/pricing"
 import { TRENDYOL_NAME } from "@/lib/services/brand-marketplace-floor"
@@ -277,12 +278,20 @@ interface ProductForCalc {
   }>
   // Bayat öneri (stale recommendation) kontrolü için referans tarih
   mainPriceUpdatedAt?: Date | null
-  // Set ürün için bileşen bilgisi
+  // Set ürün için bileşen bilgisi (eczane fallback için streetPurchasePrice/vatRate/brand da taşır)
   setComponents?: Array<{
     quantity: number
     component: {
       mainStock: number
       mainPurchasePrice: import("@prisma/client/runtime/library").Decimal | string | number | null
+      streetPurchasePrice?: import("@prisma/client/runtime/library").Decimal | string | number | null
+      vatRate?: import("@prisma/client/runtime/library").Decimal | string | number
+      brand?: {
+        yearEndDiscount1: import("@prisma/client/runtime/library").Decimal | string | number
+        yearEndDiscount2: import("@prisma/client/runtime/library").Decimal | string | number
+        yearEndDiscount3: import("@prisma/client/runtime/library").Decimal | string | number
+        pharmacyMargin: import("@prisma/client/runtime/library").Decimal | string | number
+      } | null
     }
   }>
   setExtraDiscount?: import("@prisma/client/runtime/library").Decimal | string | number | null
@@ -348,20 +357,22 @@ function getManualOverrideFor(
  *   - yoksa cadde alış'tan formülle hesapla
  */
 export function calculateEffectivePurchasePrice(p: ProductForCalc): number | null {
-  // Set ürün: bileşenlerden hesapla
+  // Set ürün: bileşenlerden hesapla (tek kaynak: calculateSetPurchasePrice —
+  // ana alış eksikse eczane fallback dener, o da yoksa bloke eder — sessizce 0 saymaz)
   if (p.productType === "SET" && p.setComponents && p.setComponents.length > 0) {
-    const allHavePrice = p.setComponents.every(
-      (sc) =>
-        sc.component.mainPurchasePrice != null &&
-        Number(sc.component.mainPurchasePrice) > 0,
+    return calculateSetPurchasePrice(
+      p.setComponents.map((sc) => ({
+        quantity: sc.quantity,
+        product: {
+          mainStock: sc.component.mainStock,
+          mainPurchasePrice: sc.component.mainPurchasePrice,
+          streetPurchasePrice: sc.component.streetPurchasePrice,
+          vatRate: sc.component.vatRate,
+          brand: sc.component.brand,
+        },
+      })),
+      p.setExtraDiscount,
     )
-    if (!allHavePrice) return null
-    const sum = p.setComponents.reduce(
-      (acc, sc) => acc + Number(sc.component.mainPurchasePrice) * sc.quantity,
-      0,
-    )
-    const discount = p.setExtraDiscount ? Number(p.setExtraDiscount) : 0
-    return Math.max(0, sum - discount)
   }
   return resolveProductUnitCost({
     mainPurchasePrice: p.mainPurchasePrice,
@@ -897,6 +908,16 @@ export async function buildExportPreview(
               select: {
                 mainStock: true,
                 mainPurchasePrice: true,
+                streetPurchasePrice: true,
+                vatRate: true,
+                brand: {
+                  select: {
+                    yearEndDiscount1: true,
+                    yearEndDiscount2: true,
+                    yearEndDiscount3: true,
+                    pharmacyMargin: true,
+                  },
+                },
               },
             },
           },
@@ -1077,6 +1098,16 @@ export async function buildExportExcel(
               select: {
                 mainStock: true,
                 mainPurchasePrice: true,
+                streetPurchasePrice: true,
+                vatRate: true,
+                brand: {
+                  select: {
+                    yearEndDiscount1: true,
+                    yearEndDiscount2: true,
+                    yearEndDiscount3: true,
+                    pharmacyMargin: true,
+                  },
+                },
               },
             },
           },
