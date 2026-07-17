@@ -40,7 +40,7 @@ interface StatusCounts { SUCCESS: number; CANCELLED: number; RETURNED: number; W
 interface BrandRow { brandId: number | null; brandName: string; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; productCount: number; commission: number; shipping: number; other: number; netProfit: number; netMarginPct: number }
 interface CategoryRow { categoryId: number | null; categoryName: string; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; commission: number; shipping: number; other: number; netProfit: number; netMarginPct: number }
 interface SubcategoryRow { subcategoryId: number | null; subcategoryName: string; categoryName: string | null; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; commission: number; shipping: number; other: number; netProfit: number; netMarginPct: number }
-interface ChannelRow { salesChannel: string; marketplaceId: number | null; marketplaceName: string | null; orderCount: number; unitCount: number; revenue: number; estCommission: number; estShipping: number; estWithholding: number; estProfit: number; marginPct: number; isActual: boolean }
+interface ChannelRow { salesChannel: string; marketplaceId: number | null; marketplaceName: string | null; orderCount: number; unitCount: number; revenue: number; estCommission: number; estShipping: number; estWithholding: number; estOther: number; estProfit: number; marginPct: number; isActual: boolean }
 interface TopProductRow { productId: number | null; productName: string; brandName: string | null; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; commission: number; shipping: number; other: number; netProfit: number; netMarginPct: number }
 interface UnmatchedItem { itemId: number; orderId: number; salesChannel: string; productName: string; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; price: number; serviceCreatedAt: string }
 interface SyncRun { id: number; startedAt: string; finishedAt: string | null; totalFetched: number; totalCreated: number; totalUpdated: number; totalMatched: number; status: string; errorMessage: string | null; rangeFrom: string | null; rangeTo: string | null }
@@ -1270,6 +1270,7 @@ function ChannelTab({ rows }: { rows: ChannelRow[] }) {
           <TableHead className="text-right">Sipariş</TableHead><TableHead className="text-right">Adet</TableHead>
           <TableHead className="text-right">Ciro</TableHead><TableHead className="text-right">Komisyon</TableHead>
           <TableHead className="text-right">Kargo</TableHead><TableHead className="text-right">Stopaj</TableHead>
+          <TableHead className="text-right">Diğer</TableHead>
           <TableHead className="text-right">Net Kâr</TableHead><TableHead className="text-right">Marj</TableHead>
         </TableRow></TableHeader>
         <TableBody>
@@ -1283,11 +1284,12 @@ function ChannelTab({ rows }: { rows: ChannelRow[] }) {
               <TableCell className="text-right tabular-nums text-rose-600">- {tl(r.estCommission)}</TableCell>
               <TableCell className="text-right tabular-nums text-rose-600">- {tl(r.estShipping)}</TableCell>
               <TableCell className="text-right tabular-nums text-rose-600">- {tl(r.estWithholding)}</TableCell>
+              <TableCell className="text-right tabular-nums text-rose-600">{r.estOther > 0 ? `- ${tl(r.estOther)}` : tl(0)}</TableCell>
               <TableCell className={`text-right tabular-nums font-semibold ${r.estProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{tl(r.estProfit)}</TableCell>
               <TableCell className={`text-right tabular-nums ${r.marginPct >= 15 ? "text-emerald-600" : "text-amber-600"}`}>{pct(r.marginPct)}</TableCell>
             </TableRow>
           ))}
-          {rows.length === 0 && (<TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">Veri yok</TableCell></TableRow>)}
+          {rows.length === 0 && (<TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">Veri yok</TableCell></TableRow>)}
         </TableBody>
       </Table>
     </CardContent></Card>

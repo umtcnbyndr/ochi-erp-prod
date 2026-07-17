@@ -122,6 +122,8 @@ export interface ChannelBreakdownRow {
   estCommission: number
   estShipping: number
   estWithholding: number
+  /** Platform hizmet bedeli + ceza + diğer kesinti (mutabakattan, yoksa 0) */
+  estOther: number
   estProfit: number
   marginPct: number
   isActual: boolean
@@ -472,6 +474,76 @@ export async function getCategoryBreakdown(filter: SalesFilter): Promise<Categor
   })
 }
 
+// ===== Kanal gider seçimi (TEK KAYNAK — saf fonksiyon) =====
+
+/**
+ * Bir kanalın komisyon/kargo/stopaj/DİĞER giderini öncelik sırasıyla seçer:
+ *   per-order mutabakat (recon) > aylık gerçek gider (actual) > mağaza (0) > tahmin.
+ *
+ * Hem `getChannelBreakdown` hem `calculateChannelExpenses` buradan besleniyor —
+ * önceden iki yerde elle kopyalanmıştı ve getChannelBreakdown `recon.other`'ı
+ * ATLIYORDU (kanal net kârı "Diğer" kadar şişiyordu, 2026-07-17 bulundu). Tek
+ * fonksiyon → tekrar ayrışamaz. `other` yalnızca mutabakatta gerçek kalem
+ * (platform/ceza/diğer kesinti); aylık/tahmin modunda karşılığı yok → 0.
+ */
+export interface ChannelExpenseResolution {
+  commission: number
+  shipping: number
+  withholding: number
+  other: number
+  mode: "recon" | "actual" | "store" | "estimate"
+}
+export function resolveChannelExpense(input: {
+  revenue: number
+  isStore: boolean
+  recon?: { commission: number; shipping: number; withholding: number; other: number }
+  // Prisma Decimal veya number gelebilir → içeride Number() ile normalize edilir
+  actual?: { commissionPaid: unknown; shippingPaid: unknown; withholdingPaid: unknown }
+  actualRevenueShare?: number
+  tariffCommission: number
+  shippingPerOrder: number
+  orders: number
+  withholdingPct: number
+}): ChannelExpenseResolution {
+  const { revenue } = input
+  // Mağaza kanalı: komisyon/kargo/stopaj/diğer hep 0 (ciro gerçek satış sayılır)
+  if (input.isStore) {
+    return { commission: 0, shipping: 0, withholding: 0, other: 0, mode: "store" }
+  }
+  // Öncelik 1: per-order mutabakat (gerçek panel verisi)
+  if (input.recon) {
+    const r = input.recon
+    return {
+      commission: r.commission,
+      shipping: r.shipping,
+      // Stopaj: rapor gerçek stopaj veriyorsa (Farmazon) onu kullan; yoksa (Trendyol
+      // kesmez, recon.withholding=0) senin vergi maliyetin → ciro × oran.
+      withholding: r.withholding > 0 ? r.withholding : (revenue * input.withholdingPct) / 100,
+      other: r.other,
+      mode: "recon",
+    }
+  }
+  // Öncelik 2: aylık gerçek gider (Ay Sonu / MarketplaceMonthlyExpense) — ciro payına oranlı (F5)
+  if (input.actual) {
+    const share = input.actualRevenueShare ?? 1
+    return {
+      commission: Number(input.actual.commissionPaid ?? 0) * share,
+      shipping: Number(input.actual.shippingPaid ?? 0) * share,
+      withholding: Number(input.actual.withholdingPaid ?? 0) * share,
+      other: 0,
+      mode: "actual",
+    }
+  }
+  // Öncelik 3: tahmin (tarife komisyonu + marketplace kargo/stopaj)
+  return {
+    commission: input.tariffCommission,
+    shipping: input.orders * input.shippingPerOrder,
+    withholding: (revenue * input.withholdingPct) / 100,
+    other: 0,
+    mode: "estimate",
+  }
+}
+
 // ===== Channel breakdown =====
 
 export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelBreakdownRow[]> {
@@ -546,38 +618,23 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
     const orders = Number(r.order_count ?? 0)
     const isStore = isStoreChannel(r.sales_channel)
 
-    // Öncelik: per-order mutabakat (recon) > aylık gider (actual) > tahmin
+    // Öncelik: per-order mutabakat (recon) > aylık gider (actual) > tahmin (TEK KAYNAK)
     const recon = isStore ? undefined : reconByMp.get(r.sales_channel)
-    const actual = r.marketplace_id != null ? monthlyExpenses.get(r.marketplace_id) : undefined
-    const isActual = recon !== undefined || actual !== undefined
+    const actual = isStore ? undefined : r.marketplace_id != null ? monthlyExpenses.get(r.marketplace_id) : undefined
+    const channelTotalRevenue = channelRevenueMap.get(r.sales_channel) ?? revenue
+    const exp = resolveChannelExpense({
+      revenue,
+      isStore,
+      recon,
+      actual,
+      actualRevenueShare: channelTotalRevenue > 0 ? revenue / channelTotalRevenue : 1,
+      tariffCommission: Number(r.tariff_commission ?? 0),
+      shippingPerOrder: Number(r.shipping_cost ?? 0),
+      orders,
+      withholdingPct: Number(r.withholding ?? 0),
+    })
 
-    let estCommission: number
-    let estShipping: number
-    let estWithholding: number
-
-    if (recon) {
-      estCommission = recon.commission
-      estShipping = recon.shipping
-      estWithholding =
-        recon.withholding > 0 ? recon.withholding : (revenue * Number(r.withholding ?? 0)) / 100
-    } else if (actual) {
-      // Aylık gider ayın TÜM markaları için tek toplam — filtrelenmiş ciro payına göre oranla (F5)
-      const channelTotalRevenue = channelRevenueMap.get(r.sales_channel) ?? revenue
-      const revenueShare = channelTotalRevenue > 0 ? revenue / channelTotalRevenue : 1
-      estCommission = Number(actual.commissionPaid ?? 0) * revenueShare
-      estShipping = Number(actual.shippingPaid ?? 0) * revenueShare
-      estWithholding = Number(actual.withholdingPaid ?? 0) * revenueShare
-    } else if (isStore) {
-      estCommission = 0
-      estShipping = 0
-      estWithholding = 0
-    } else {
-      estCommission = Number(r.tariff_commission ?? 0)
-      estShipping = orders * Number(r.shipping_cost ?? 0)
-      estWithholding = (revenue * Number(r.withholding ?? 0)) / 100
-    }
-
-    const profit = revenue - cost - estCommission - estShipping - estWithholding
+    const profit = revenue - cost - exp.commission - exp.shipping - exp.withholding - exp.other
     return {
       salesChannel: r.sales_channel,
       marketplaceId: r.marketplace_id,
@@ -585,12 +642,13 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
       orderCount: orders,
       unitCount: Number(r.unit_count ?? 0),
       revenue,
-      estCommission,
-      estShipping,
-      estWithholding,
+      estCommission: exp.commission,
+      estShipping: exp.shipping,
+      estWithholding: exp.withholding,
+      estOther: exp.other,
       estProfit: profit,
       marginPct: revenue > 0 ? (profit / revenue) * 100 : 0,
-      isActual,
+      isActual: exp.mode === "recon" || exp.mode === "actual",
     }
   })
 }
@@ -1427,38 +1485,28 @@ async function calculateChannelExpenses(filter: SalesFilter): Promise<ChannelExp
     const orders = Number(r.orders ?? 0)
     const isStore = isStoreChannel(r.sales_channel)
 
-    // Öncelik 1: Pazaryeri mutabakatı (gerçek panel verisi — Trendyol, Farmazon...)
+    // Gider seçimi TEK KAYNAK (resolveChannelExpense) — getChannelBreakdown ile aynı.
     const recon = isStore ? undefined : reconByMp.get(r.sales_channel)
-    if (recon) {
-      totalCommission += recon.commission
-      totalShipping += recon.shipping
-      totalOther += recon.other
-      // Stopaj: rapor gerçek stopaj veriyorsa (Farmazon) onu kullan; yoksa (Trendyol
-      // kesmez, recon.withholding=0) senin vergi maliyetin → ciro × oran.
-      totalWithholding +=
-        recon.withholding > 0 ? recon.withholding : (revenue * Number(r.withholding ?? 0)) / 100
-      reconciledUsed = true
-      continue
-    }
-
-    const actual = r.marketplace_id != null ? monthlyExpenses.get(r.marketplace_id) : undefined
-    if (actual) {
-      // Aylık gider ayın TÜM markaları için tek toplam — filtrelenmiş ciro payına göre oranla
-      // (yoksa marka filtresiyle bakınca ayın tüm gideri küçük bir ciroya düşer → saçma negatif kâr)
-      const channelTotalRevenue = channelRevenueMap.get(r.sales_channel) ?? revenue
-      const revenueShare = channelTotalRevenue > 0 ? revenue / channelTotalRevenue : 1
-      totalCommission += Number(actual.commissionPaid ?? 0) * revenueShare
-      totalShipping += Number(actual.shippingPaid ?? 0) * revenueShare
-      totalWithholding += Number(actual.withholdingPaid ?? 0) * revenueShare
-      actualUsed = true
-    } else if (isStore) {
-      // mağaza: 0 (zaten 0 ekleniyor)
-    } else {
-      totalCommission += Number(r.tariff_commission ?? 0)
-      totalShipping += orders * Number(r.shipping_cost ?? 0)
-      totalWithholding += (revenue * Number(r.withholding ?? 0)) / 100
-      estimatedUsed = true
-    }
+    const actual = isStore ? undefined : r.marketplace_id != null ? monthlyExpenses.get(r.marketplace_id) : undefined
+    const channelTotalRevenue = channelRevenueMap.get(r.sales_channel) ?? revenue
+    const exp = resolveChannelExpense({
+      revenue,
+      isStore,
+      recon,
+      actual,
+      actualRevenueShare: channelTotalRevenue > 0 ? revenue / channelTotalRevenue : 1,
+      tariffCommission: Number(r.tariff_commission ?? 0),
+      shippingPerOrder: Number(r.shipping_cost ?? 0),
+      orders,
+      withholdingPct: Number(r.withholding ?? 0),
+    })
+    totalCommission += exp.commission
+    totalShipping += exp.shipping
+    totalWithholding += exp.withholding
+    totalOther += exp.other
+    if (exp.mode === "recon") reconciledUsed = true
+    else if (exp.mode === "actual") actualUsed = true
+    else if (exp.mode === "estimate") estimatedUsed = true
   }
 
   return {
