@@ -100,8 +100,11 @@ _⏳ Faz 2 — sırayla eklenecek pazaryerleri (her biri = 1 parser registry kay
 - ✅ **Amazon** (2026-07-17): "Ödemeler → İşlem (Transaction)" CSV'si; her sipariş çok satıra dağılır (Sipariş + ayrı Kargo Hizmetleri satırı), tip'e göre birleştirilir. Ciro = ürün satışları + promosyon (Dopigo ile 45/45 birebir), komisyon + kargo gerçek. Sipariş-dışı satırlar (Transfer=bankaya ödeme, Reklam, Düzeltme) atlanır + önizlemede bilgi. Stopaj tahmin, eşleşme sipariş no birebir (tire içerir, bölünmez). CSV desteği (fileAccept prop).
 - ⏳ ePttAVM: user ay sonu raporunu (kolon başlıkları) gösterecek → registry'ye 1 kayıt.
 
-_🗑️ "Ay Sonu" (MarketplaceMonthlyExpense) — kaldırma kararı beklemede:_
-- User bir kez (Mart 2026, 8 kanal) kullanıp bıraktı. Teknik olarak ölü değil: analytics'te fallback (recon yoksa) + 8 Mart kaydı. **Parser'ı olmayan 5 pazaryeri için tek gerçek-maliyet yolu.** Faz 2 bitince kaldırılabilir. Öneri: önce UI sekmesini kaldır (fallback+veri kalsın), Faz 2 sonrası tam sil.
+_✅ "Ay Sonu" UI sekmesi kaldırıldı (2026-07-17):_
+- `/dopigo-siparisler` "Ay Sonu" manuel giriş sekmesi (MonthlyExpenseTab/Row) UI'dan çıkarıldı — Faz 2 parser'ları gerçek per-order gideri veriyor, işlevsiz kalmıştı. **Fallback + veri DURUYOR:** `loadMonthlyExpensesIfApplicable` + `resolveChannelExpense` 'actual' kolu + MarketplaceMonthlyExpense + saveMonthlyExpenseAction — parser'ı olmayan ePttAVM için hâlâ devrede. ePttAVM parser'ı gelince tam silinebilir.
+
+_✅ Kanal breakdown "Diğer" bug fix (2026-07-17):_
+- `getChannelBreakdown` net kârı `recon.other` (platform/ceza) düşmüyordu → kanal net toplamı KPI'dan 21.705 (=Diğer) sapıyordu. Gider seçimi tek saf fonksiyona (`resolveChannelExpense`) indirildi, iki call-site ondan besleniyor. Test: `channel-expense.test.ts`.
 
 _🗑️ Kesin ölü kod (silinebilir, user onayı bekliyor):_
 - `components/common/coming-soon.tsx` (hiç import yok) · `app/api/admin/debug/cerave/route.ts` (geçici debug).
