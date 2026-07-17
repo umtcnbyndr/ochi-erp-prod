@@ -19,6 +19,10 @@
 - ✅ **Ölü TY API buybox temizliği:** risk raporu + dashboard (getBuyboxLost, freshness) okurları scraper'a (`getLatestBuyboxMap` export). "TY Senkron" butonundan buybox side-fetch çıktı (listing sync kaldı). `refreshBuyboxForProducts` + `trendyol/buybox.ts` (fetchBuybox*) **silindi**. `CompetitorPriceObservation` tablosu kalıyor (tarihsel veri + admin-reset). Artık hiçbir yerden yazılmıyor/okunmuyor.
 - 🔲 Açık: Sipariş butonu tam ürün-highlight (opsiyonel nicelik); Deploy OOM (altyapı)
 
+**2026-07-17 yapılanlar (BuyBox kartı kademeli komisyon fix + BACKLOG stale düzeltme):**
+- ✅ **Ürünler BuyBox kartı marjı kademeli komisyona bağlandı.** Kart ("rakip fiyatına satarsan +₺X kâr · %Y marj") `product.ts`'te base `Marketplace.commissionRate` (%19 düz) kullanıyordu, `CommissionTariff` kademesine bakmıyordu → Pazar Takip (doğru) ile tutarsızdı. Yeni saf helper `resolveMarginAtMarket` (effective-commission.ts): fiyatın düştüğü kademenin komisyonuyla marj; tarife yoksa base'e düşer. `product.ts` buybox'lı ürünler için `loadCommissionTariffsForProducts` + helper. Test: effective-commission.test.ts +3 (base korunur / kademeli uygulanır / regresyon kilidi), 152/152. **Prod etki: 201/346 tarifeli üründe marj yanlıştı, ort. 8pp / maks 15,3pp komisyon farkı** — bazıları karar değiştiriyordu (Mustela Cradle Cap −%13→+%2,1). Commit + deploy 2026-07-17.
+- ✅ **"Satın alma planlama modülü" bayat notu koddan düzeltildi** (madde 2, aşağı). Keşif ajanı + kod okuması: modül ZATEN VAR (`/siparisler` = `PurchaseOrder`, reorder beyni `getSalesAnalysis`, öncelik `order-priority-score.ts`, açık sipariş düşme + aging). Sıfırdan modül yazımına başlamadan yakalandı. Gerçek eksikler tekrar önceliklendirildi: (a) lead-time alanı yok, (b) `market-opportunity` ORDER overlay builder'a bağlı değil, (c) sezonsallık. Kod değişikliği yok, sadece doküman. Kullanıcı "önce düzelt + dur" dedi.
+
 **2026-07-02 denetiminden bu yana KAPATILAN açıklar (git log doğrulaması):**
 - ✅ F4/F5 — çoklu paket + marka-filtreli KPI'da gider hesabı düzeldi
 - ✅ F6 — stok yazımı race condition (`SELECT FOR UPDATE`) kapandı
@@ -36,7 +40,7 @@
 - Cron Coolify Scheduled Task kurulumu (endpoint hazır, otomatik tetik yok)
 - Güvenlik O1-O5 (AUTH_SECRET ayır, güvenlik header, login rate-limit IP)
 
-**Sıradaki fikir kuyruğu:** aşağıda "🎯 Sıradaki Plan" (otomatik uyarı maili, satın alma planlama modülü, vb.)
+**Sıradaki fikir kuyruğu:** aşağıda "🎯 Sıradaki Plan" (otomatik uyarı maili, satın alma planı **lead-time/ORDER-overlay eklemeleri** — modül zaten var, bkz. madde 2, vb.)
 
 ---
 
@@ -69,7 +73,7 @@
 
 ### 🎯 Sıradaki Plan — Fikirler (2026-06-11, öncelik sırası)
 1. **[P1] Otomatik rapor/uyarı maili** — düşük stok, BuyBox kaybı, SKT, günlük/haftalık özet. Cron altyapısı hazır → job + mail kanalı (Resend/SMTP) + içerik şablonu.
-2. **[P2] Satın alma planlama modülü** — satış hızı (30/60g) + lead time + sezonsallık → "ne, ne kadar al" önerisi. Panel kritik stoğu sayıyor ama miktar önermiyor; asıl para kaldıracı.
+2. **[P2] ~~Satın alma planlama modülü~~ — ⚠️ 2026-07-17 KODDAN DÜZELTİLDİ: modül ZATEN VAR.** `/siparisler` = `PurchaseOrder`/`PurchaseOrderItem` (DRAFT→CONFIRMED→PARTIAL→COMPLETED). Reorder beyni `getSalesAnalysis` (satış hızı `analysisDays` + `suggested = targetStock − stockForSale` + `calculateSuggestedQty`), öncelik `order-priority-score.ts` (tier→hedef hafta 8/6/4/2/0), açık sipariş düşme + aging var. Eski "miktar önermiyor" notu yanlıştı. **Gerçekten eksik 3 şey (öncelik):** (a) **lead-time (tedarik süresi)** — hiçbir modelde teslim süresi alanı yok, reorder sadece hedef gün sayıyor, teslim penceresinde stok tükeniyor; (b) **ORDER fırsat overlay** — `market-opportunity.ts` `ORDER` tipini (katalogda var/stok=0/piyasada kârlı) üretiyor ama builder'a akmıyor (Pazar Takip→satın alma köprüsü kurulmadı); (c) **sezonsallık** — geçmiş veri ister, ROI düşük. Uygulama beklemede (kullanıcı 2026-07-17 "önce BACKLOG düzelt + dur" dedi).
 3. **[hızlı] Excel export şıklaştırma** — renk/vurgu/koşullu format/donmuş başlık (xlsx → exceljs gerekebilir). Dopigo Aktar + raporlar.
 4. **[düşük] Otomatik Drive yedek** — Coolify DB yedeğine ek offsite (rclone/Drive API). Mevcut yedek var, bu redundancy.
 5. **[araştır] Dopigo eşleştirme önerileri** — XML feed (foreign_sku/barcode + çok-kanal kategori mapping) ile eşleşmemiş ürün/kanal tespiti + öneri. Kapsam netleşecek (tartışılıyor).

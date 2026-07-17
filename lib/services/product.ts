@@ -4,7 +4,10 @@ import type { ProductFormValues } from "@/lib/validators/product"
 import { recalculateMarketplacePrices } from "./marketplace-price"
 import { recalculateSetsContainingComponents } from "./set-product"
 import { syncPrimaryTrendyolListing } from "./product-marketplace-listing"
-import { calculateActualProfit } from "@/lib/pricing/sale-price"
+import {
+  loadCommissionTariffsForProducts,
+  resolveMarginAtMarket,
+} from "@/lib/pricing/effective-commission"
 
 /** Scraper satıcı adı bize mi ait (BuyBox bizde) — "ochi" içerir. */
 function isOurSellerName(name: string | null | undefined): boolean {
@@ -267,17 +270,28 @@ export async function listProducts(options: ProductListOptions = {}) {
       }
     : null
 
+  // Kademeli komisyon tarifeleri — BuyBox marjı base değil, fiyatın düştüğü
+  // kademenin oranıyla hesaplansın (Pazar Takip ile tutarlı). Tarife yoksa base'e düşer.
+  const buyboxProductIds = [...buyboxByProductId.keys()]
+  const tyTariffMap = await loadCommissionTariffsForProducts(
+    buyboxProductIds,
+    ["Trendyol"],
+  )
+
   // SET tipindeki ürünler için sanal stok / PSF / alış hesapla
   const itemsWithVirtualStock = items.map((p) => {
     const buybox = buyboxByProductId.get(p.id) ?? null
-    // Rakip (BuyBox) fiyatına satarsak net marj % (base komisyonla, tooltip için)
+    // Rakip (BuyBox) fiyatına satarsak net marj % (kademeli tarife öncelikli, tooltip için)
     const cost = p.mainPurchasePrice != null ? Number(p.mainPurchasePrice) : null
     const trendyolBuyboxMargin =
       buybox && tyConfig && cost != null && cost > 0
-        ? calculateActualProfit({
+        ? resolveMarginAtMarket({
+            productId: p.id,
+            marketplaceName: "Trendyol",
             salePrice: buybox.buyboxPrice,
             netPurchasePrice: cost,
             marketplace: tyConfig,
+            tariffMap: tyTariffMap,
           })
         : null
     const trendyolMp = p.marketplacePrices?.[0]

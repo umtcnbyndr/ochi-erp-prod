@@ -20,6 +20,7 @@
  *     — büyük listelerde N+1 önler (Excel export, çoklu ürün rapor, vb.).
  */
 import { prisma } from "@/lib/db"
+import { calculateActualProfit } from "./sale-price"
 
 export interface EffectiveCommissionResult {
   rate: number // % komisyon (0-100)
@@ -353,6 +354,41 @@ export function calculateWithEffectiveCommission(input: {
   }
 
   return { price, rate, source, tier }
+}
+
+/**
+ * Rakip (BuyBox) fiyatına satarsak net marj % — kademeli tarife öncelikli.
+ *
+ * `salePrice`'ın düştüğü kademenin komisyonu ile hesaplanır; tarife yoksa
+ * `marketplace.commissionRate` (Marketplace default) fallback → base davranış korunur.
+ * Ürünler sayfası BuyBox kartı ile Pazar Takip'in AYNI marjı üretmesi için ortak nokta
+ * (önceden Ürünler base komisyon kullanıyordu → tutarsızdı).
+ */
+export function resolveMarginAtMarket(input: {
+  productId: number
+  marketplaceName: string
+  salePrice: number
+  netPurchasePrice: number
+  marketplace: {
+    commissionRate: number
+    shippingCost: number
+    withholdingTax: number
+    extraCost: number
+  }
+  tariffMap: TariffMap
+}): number {
+  const rate = resolveEffectiveCommissionSync({
+    productId: input.productId,
+    marketplaceName: input.marketplaceName,
+    priceAtCalculation: input.salePrice,
+    tariffMap: input.tariffMap,
+    fallbackRate: input.marketplace.commissionRate,
+  }).rate
+  return calculateActualProfit({
+    salePrice: input.salePrice,
+    netPurchasePrice: input.netPurchasePrice,
+    marketplace: { ...input.marketplace, commissionRate: rate },
+  })
 }
 
 // ─── SQL helpers (sales-analytics gibi raw SQL kullanan servisler için) ──────

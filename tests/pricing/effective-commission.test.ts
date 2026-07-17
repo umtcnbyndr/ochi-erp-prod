@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   resolveTier,
   resolveEffectiveCommissionSync,
+  resolveMarginAtMarket,
   tariffKey,
   type TariffMap,
   type TariffRow,
@@ -117,5 +118,65 @@ describe("resolveEffectiveCommissionSync", () => {
       fallbackRate: 19,
     })
     expect(r).toEqual({ rate: 19, source: "MARKETPLACE_DEFAULT" })
+  })
+})
+
+describe("resolveMarginAtMarket (Ürünler BuyBox kartı ↔ Pazar Takip tutarlılığı)", () => {
+  // sale=1000, cost=600, shipping=30, stopaj=%1
+  const mp = { commissionRate: 19, shippingCost: 30, withholdingTax: 1, extraCost: 0 }
+  const row: TariffRow = {
+    id: 1,
+    productId: 42,
+    marketplace: "Trendyol",
+    effectiveFrom: new Date("2026-01-01"),
+    effectiveTo: new Date("2030-01-01"),
+    ...TARIFF,
+  }
+  const map: TariffMap = new Map([[tariffKey(42, "Trendyol"), row]])
+
+  it("tarife YOK → base komisyonla marj (eski/base davranış korunur) = %17,0", () => {
+    // commission 190 + stopaj 10 + kargo 30 → net 770 − alış 600 = 170 → %17
+    const m = resolveMarginAtMarket({
+      productId: 999, // tarifesiz ürün
+      marketplaceName: "Trendyol",
+      salePrice: 1000,
+      netPurchasePrice: 600,
+      marketplace: mp,
+      tariffMap: map,
+    })
+    expect(m).toBe(17)
+  })
+
+  it("tarife VAR → kademe komisyonuyla marj (düzeltilen davranış) = %18,0", () => {
+    // 1000 → kademe3 (%18): commission 180 + stopaj 10 + kargo 30 → net 780 − 600 = 180 → %18
+    const m = resolveMarginAtMarket({
+      productId: 42,
+      marketplaceName: "Trendyol",
+      salePrice: 1000,
+      netPurchasePrice: 600,
+      marketplace: mp,
+      tariffMap: map,
+    })
+    expect(m).toBe(18)
+  })
+
+  it("kademeli oran base'den farklıysa marj da değişir (regresyon kilidi)", () => {
+    const base = resolveMarginAtMarket({
+      productId: 999,
+      marketplaceName: "Trendyol",
+      salePrice: 6000,
+      netPurchasePrice: 4000,
+      marketplace: mp,
+      tariffMap: map,
+    })
+    const tariffed = resolveMarginAtMarket({
+      productId: 42, // 6000 → kademe1 (%10), base %19'dan düşük komisyon → daha yüksek marj
+      marketplaceName: "Trendyol",
+      salePrice: 6000,
+      netPurchasePrice: 4000,
+      marketplace: mp,
+      tariffMap: map,
+    })
+    expect(tariffed).toBeGreaterThan(base)
   })
 })
