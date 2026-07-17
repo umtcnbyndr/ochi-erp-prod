@@ -17,7 +17,6 @@
 - [ ] Vichy id=619 gerçek eczane kodu.
 
 **Kod — kritik/kısa:**
-- [ ] [KRİTİK] **Toplu İsim Düzelt sayfasını kaldır + sistem sıfırlama butonunu kaldır** (tehlikeli yüzey)
 - [ ] Eski TY-Floor ölü kod temizliği (BrandMarketplaceFloor tablo+servis+applyTrendyolFloor+validator) — chip açıldı 2026-07-17
 - [ ] Güvenlik O1-O3: AUTH_SECRET'tan ayrı SECRET_ENCRYPTION_KEY · güvenlik header'ları (HSTS/CSP) · login rate-limit IP+username
 - [ ] Cron Coolify Scheduled Task kurulumu (endpoint hazır, otomatik tetik yok — Dopigo 20dk)

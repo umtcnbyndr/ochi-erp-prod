@@ -22,7 +22,6 @@ import {
   Receipt,
   Archive,
   AlertTriangle,
-  Edit3,
   Radar,
 } from "lucide-react"
 
@@ -116,7 +115,6 @@ export const navGroups: NavGroup[] = [
     items: [
       { label: "Ayarlar", href: "/ayarlar", icon: Settings, moduleKey: "ayarlar" },
       { label: "Yedekleme", href: "/ayarlar/yedekleme", icon: Archive, moduleKey: "ayarlar" },
-      { label: "Toplu İsim Düzelt", href: "/ayarlar/isim-duzeltme", icon: Edit3, moduleKey: "ayarlar" },
     ],
   },
 ]
