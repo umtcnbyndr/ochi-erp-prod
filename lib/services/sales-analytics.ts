@@ -338,9 +338,12 @@ function buildPnlCTE(whereSql: string): string {
       o."salesChannel" AS sales_channel,
       o."marketplaceId" AS marketplace_id,
       m.name AS marketplace_name,
-      -- Alış maliyeti: ana depo > eczane alışından çevrilmiş (STREET_FALLBACK_SQL) > manuel (Eksik Alış) > 0
+      -- Alış maliyeti: MÜHÜRLÜ (costAtSale, satış-anı snapshot) > ana depo >
+      -- eczane çevrimi (STREET_FALLBACK_SQL) > manuel (Eksik Alış) > 0.
+      -- Mühür sayesinde alış fiyatı güncellemeleri geçmiş ayların kârını değiştirmez.
       COALESCE(
         CASE
+          WHEN i."costAtSale" IS NOT NULL THEN i."costAtSale" * i.amount
           WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0
             THEN p."mainPurchasePrice" * i.amount
           WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0
@@ -948,8 +951,9 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
     case "cost":
       // GLOBAL alış sıralaması — artan yönde alış fiyatı OLMAYAN kalemler (NULL) en
       // üste gelir → eksik alışları bulup drawer'dan doldurma akışı. Alış maliyeti
-      // satır bazlı hesaplanan CASE ile aynı (main > eczane fallback > manuel > NULL).
+      // satır bazlı hesaplanan CASE ile aynı (mühürlü > main > eczane > manuel > NULL).
       orderBy = `(CASE
+        WHEN i."costAtSale" IS NOT NULL THEN i."costAtSale"
         WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0 THEN p."mainPurchasePrice"
         WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0 THEN (${STREET_FALLBACK_SQL})
         WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice"
@@ -1062,13 +1066,14 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       i.amount::int                       AS amount,
       i."unitPrice"::float8               AS unit_price,
       i.price::float8                     AS line_total,
-      -- Alış maliyeti: 1) mainPurchasePrice (ana depo, gerçek)
-      --                2) streetPurchasePrice → calculatePharmacyStockPrice formülüyle çevrilmiş (STREET_FALLBACK_SQL)
-      --                3) ManualPurchasePrice (Eksik Alış — eşleşmeyen kalem, SKU/barkod bazlı)
-      --                4) NULL (göstergede "—")
-      -- Not: aggregate P&L (buildPnlCTE/getTopLineKPIs) manuel alışı zaten sayıyordu;
-      -- burada eksikti → tablo/drawer "—" gösteriyordu. Artık tutarlı.
+      -- Alış maliyeti: 1) costAtSale (MÜHÜRLÜ — satış-anı snapshot, fiyat güncellemesi
+      --                   geçmişi değiştirmez)
+      --                2) mainPurchasePrice (ana depo, güncel)
+      --                3) streetPurchasePrice → calculatePharmacyStockPrice formülüyle çevrilmiş
+      --                4) ManualPurchasePrice (Eksik Alış — eşleşmeyen kalem)
+      --                5) NULL (göstergede "—")
       CASE
+        WHEN i."costAtSale" IS NOT NULL THEN i."costAtSale"
         WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0
           THEN p."mainPurchasePrice"
         WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0
@@ -1077,8 +1082,9 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
           THEN mpp."purchasePrice"
         ELSE NULL
       END::float8                         AS cost_per_unit,
-      -- Hangi kaynak kullanıldı? UI'da rozet gösterilebilir
+      -- Hangi kaynak kullanıldı? Mühürlü kalemde mühürlenirken kaydedilen kaynak.
       CASE
+        WHEN i."costAtSale" IS NOT NULL THEN COALESCE(i."costAtSaleSource", 'MAIN')
         WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0 THEN 'MAIN'
         WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0 THEN 'STREET_FALLBACK'
         WHEN mpp."purchasePrice" IS NOT NULL THEN 'MANUAL'

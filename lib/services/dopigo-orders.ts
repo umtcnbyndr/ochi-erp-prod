@@ -18,6 +18,7 @@
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@prisma/client"
 import { iterateOrders, type DopigoApiOrder, type DopigoApiOrderItem } from "./dopigo-api/orders"
+import { sealUnsealedOrderItemCosts } from "./cost-snapshot"
 import { isNonSalesChannel } from "./channel-classification"
 
 export interface SyncOrdersOptions {
@@ -84,6 +85,17 @@ export async function syncDopigoOrders(opts: SyncOrdersOptions = {}): Promise<Sy
     }
 
     const matchRate = totalItemsSeen > 0 ? totalMatched / totalItemsSeen : 0
+
+    // Yeni gelen/yeni eşleşen kalemlerin maliyetini satış anında mühürle
+    // (costAtSale snapshot — geçmiş kâr, alış fiyatı güncellemelerinden etkilenmesin).
+    // İdempotent sweep: yalnızca costAtSale IS NULL kalemlere dokunur.
+    try {
+      await sealUnsealedOrderItemCosts()
+    } catch (sealErr) {
+      // Mühürleme hatası senkronu düşürmesin — kalemler canlı fallback'le hesaplanmaya
+      // devam eder, bir sonraki sync sweep'i tekrar dener.
+      console.error("[cost-snapshot] mühürleme hatası:", sealErr)
+    }
 
     await prisma.dopigoOrderSyncRun.update({
       where: { id: run.id },

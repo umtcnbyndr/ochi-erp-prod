@@ -9,6 +9,7 @@ import {
   type UnmatchedItemAggregate,
 } from "@/lib/services/manual-purchase-price"
 import { writeAuditLog } from "@/lib/services/audit-log"
+import { sealUnsealedOrderItemCosts } from "@/lib/services/cost-snapshot"
 
 type Result<T> = { success: true; data: T } | { success: false; error: string }
 
@@ -52,6 +53,8 @@ export async function saveManualPriceAction(input: {
       entityId: r.id,
       after: { sku: input.sku, barcode: input.barcode, name: input.name, price: input.purchasePrice },
     })
+    // Maliyeti boş kalemleri yeni girilen fiyatla mühürle (costAtSale snapshot)
+    await sealUnsealedOrderItemCosts()
     revalidatePath("/finans/eksik-alis")
     revalidatePath("/dopigo-siparisler")
     revalidatePath("/finans/gelir-gider")

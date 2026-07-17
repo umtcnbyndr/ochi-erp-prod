@@ -707,6 +707,7 @@ function InlineCostFill({ row }: { row: OrderTableRow }) {
     }
     startTransition(async () => {
       const res = await saveOrderItemCostAction({
+        itemId: row.itemId,
         productId: row.productId,
         sku: row.foreignSku,
         barcode: row.barcode,

@@ -823,6 +823,15 @@ model DopigoOrderItem {
   matchMethod String? // "BARCODE_EXACT" | "FOREIGN_SKU_EXACT" | "DOPIGO_SKU" | "MANUAL" | "NONE"
   matchedAt   DateTime?
 
+  /// Satış anında mühürlenen BİRİM alış maliyeti (KDV dahil, ana depo eşdeğeri).
+  /// Alış fiyatları her ay değişiyor — mühürlenmezse geçmiş ayların kârı
+  /// mainPurchasePrice her güncellendiğinde geriye dönük kayar (2026-07-17 kararı).
+  /// NULL → maliyet henüz bilinmiyor, P&L canlı fallback'e düşer (main>eczane>manuel);
+  /// ilk maliyet girildiğinde sweep mühürler. Fiyatlama motorları bu alanı KULLANMAZ
+  /// (onlar güncel maliyetle çalışmalı) — sadece satış kâr raporları okur.
+  costAtSale       Decimal? @db.Decimal(12, 2)
+  costAtSaleSource String? // "MAIN" | "STREET_FALLBACK" | "MANUAL"
+
   // Hediye/Set işareti — analiz raporunda ayrı göstermek için
   productType String? // SINGLE | SET | GIFT (snapshot)
 

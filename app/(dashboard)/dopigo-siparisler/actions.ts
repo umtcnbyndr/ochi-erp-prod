@@ -6,6 +6,7 @@ import { syncDopigoOrders, backfillMarketplaceMappings, rematchUnmatchedItems } 
 import { manualMatchOrderItem, clearMatchForOrderItem } from "@/lib/services/dopigo-orders"
 import { testDopigoConnection } from "@/lib/services/dopigo-api/client"
 import { upsertManualPurchasePrice } from "@/lib/services/manual-purchase-price"
+import { sealOrderItemCost, sealUnsealedOrderItemCosts } from "@/lib/services/cost-snapshot"
 import { writeAuditLog } from "@/lib/services/audit-log"
 import { requireAdmin, requirePermission } from "@/lib/permissions"
 
@@ -247,6 +248,7 @@ export async function saveMonthlyExpenseAction(input: {
  *   (sistem geneli gerçek maliyet — pricing dahil her yerde kullanılır).
  */
 export async function saveOrderItemCostAction(input: {
+  itemId: number
   productId: number | null
   sku: string | null
   barcode: string | null
@@ -291,6 +293,11 @@ export async function saveOrderItemCostAction(input: {
         after: { sku: input.sku, barcode: input.barcode, name: input.name, price: input.purchasePrice, source: "dopigo-siparisler-drawer" },
       })
     }
+
+    // Bu kalemi girilen değerle mühürle (bilinçli düzeltme — mühür güncellenir),
+    // sonra sweep: aynı ürünün/SKU'nun maliyeti boş diğer kalemleri de mühürler.
+    await sealOrderItemCost(input.itemId, input.purchasePrice, input.productId != null ? "MAIN" : "MANUAL")
+    await sealUnsealedOrderItemCosts()
 
     revalidatePath("/dopigo-siparisler")
     revalidatePath("/finans/eksik-alis")
