@@ -11,7 +11,7 @@
 ## 🔴 Açık İşler (öncelik sırası)
 
 **Kullanıcının aksiyonu (kod değil, veri/karar):**
-- [ ] **79 üründe alış yok ama satış var** → COGS=0, net kâr şişik. Eksik Alış'tan gir. (2026-06-25 denetimi)
+- [ ] **6 üründe hem ana hem eczane alışı yok** (CeraVe Yoğun Nemlendirici 236ml #904, Dermalogica Age Bright Serum #781, LRP Effaclar Duo #684, Dermalogica Sebum Masque #773, Vichy Neovadiol Phytosculpt #637, Caudalie Vinocrush Skin Tint #574) — hiçbirinde satış yok, düşük öncelik. Eksik Alış'tan gir istersen. (2026-07-17 doğrulandı — eski "79 ürün/COGS şişik" notu bayattı, eczane fallback zinciri sorunu çözmüş)
 - [ ] **Sipariş #2: uzun süredir CONFIRMED, ₺433K** — geldiyse kapat, gelmediyse beklet.
 - [ ] **5433 firewall** — prod DB dış erişim kısıtı sende kalmıştı.
 - [ ] Vichy id=619 gerçek eczane kodu.
@@ -33,8 +33,6 @@
 - [ ] Kesin ölü kod sil (user onaylı): `components/common/coming-soon.tsx` · `app/api/admin/debug/cerave/route.ts`
 
 ## 🧠 Fikir Havuzu (2026-07-17 beyin fırtınası — önceliklendirilecek)
-
-*Hızlı:* PSF eksik / cadde alış eksik tespiti yeterli mi (hızlı filtreler var — sayaç/rapor gerekir mi)
 
 *Denetim turu (modül modül, çoğu salt-okunur — `/denetim` skill'i ile):*
 Dopigo Aktarım hesap anlatımı+doğrulama · SET ürünler · Kampanyalar (bu/gelecek ay kullanılacak) · Barkod eşleştirme mantığı · Raporlar · Markalar (satıcı iletişim alanları + liste yükleme) · Pazar Yerleri (veri doğru mu) · Cariler · Ayarlar
