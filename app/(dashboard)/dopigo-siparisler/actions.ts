@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db"
 import { syncDopigoOrders, backfillMarketplaceMappings, rematchUnmatchedItems } from "@/lib/services/dopigo-orders"
 import { manualMatchOrderItem, clearMatchForOrderItem } from "@/lib/services/dopigo-orders"
 import { testDopigoConnection } from "@/lib/services/dopigo-api/client"
+import { upsertManualPurchasePrice } from "@/lib/services/manual-purchase-price"
+import { writeAuditLog } from "@/lib/services/audit-log"
 import { requireAdmin, requirePermission } from "@/lib/permissions"
 
 export interface SyncFormResult {
@@ -233,5 +235,67 @@ export async function saveMonthlyExpenseAction(input: {
       success: false,
       message: err instanceof Error ? err.message : "Kayıt başarısız",
     }
+  }
+}
+
+/**
+ * Sipariş detayından (drawer) alış fiyatı doldurma. Alış maliyeti boş kalemler için.
+ * - Eşleşmeyen kalem (productId yok) → Eksik Alış (ManualPurchasePrice), SKU/barkod bazlı.
+ *   COGS önceliği: mainPurchasePrice > eczane > ManualPurchasePrice — o yüzden eşleşmeyende
+ *   manuel kayıt devreye girer.
+ * - Eşleşmiş ürün (productId var) ama alış yoksa → ürünün mainPurchasePrice'ı güncellenir
+ *   (sistem geneli gerçek maliyet — pricing dahil her yerde kullanılır).
+ */
+export async function saveOrderItemCostAction(input: {
+  productId: number | null
+  sku: string | null
+  barcode: string | null
+  name: string
+  purchasePrice: number
+}): Promise<{ success: boolean; message: string }> {
+  try {
+    const actor = await requireAdmin()
+    if (!(input.purchasePrice > 0)) {
+      return { success: false, message: "Alış fiyatı 0'dan büyük olmalı" }
+    }
+
+    if (input.productId != null) {
+      await prisma.product.update({
+        where: { id: input.productId },
+        data: { mainPurchasePrice: input.purchasePrice },
+      })
+      await writeAuditLog({
+        userId: actor.id,
+        action: "PRODUCT_PURCHASE_PRICE_SAVE",
+        entityType: "Product",
+        entityId: input.productId,
+        after: { mainPurchasePrice: input.purchasePrice, source: "dopigo-siparisler-drawer" },
+      })
+    } else {
+      if (!input.sku && !input.barcode) {
+        return { success: false, message: "Eşleşmeyen kalemde SKU veya barkod gerekli" }
+      }
+      const r = await upsertManualPurchasePrice({
+        sku: input.sku,
+        barcode: input.barcode,
+        name: input.name,
+        purchasePrice: input.purchasePrice,
+        userId: actor.id,
+      })
+      await writeAuditLog({
+        userId: actor.id,
+        action: "MANUAL_PURCHASE_PRICE_SAVE",
+        entityType: "ManualPurchasePrice",
+        entityId: r.id,
+        after: { sku: input.sku, barcode: input.barcode, name: input.name, price: input.purchasePrice, source: "dopigo-siparisler-drawer" },
+      })
+    }
+
+    revalidatePath("/dopigo-siparisler")
+    revalidatePath("/finans/eksik-alis")
+    revalidatePath("/finans/gelir-gider")
+    return { success: true, message: "Alış fiyatı kaydedildi" }
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : "Kayıt başarısız" }
   }
 }

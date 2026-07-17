@@ -918,7 +918,7 @@ export interface OrdersListResult {
 export interface OrdersListFilter extends SalesFilter {
   limit?: number
   offset?: number
-  sortBy?: "date" | "channel" | "revenue" | "profit"
+  sortBy?: "date" | "channel" | "revenue" | "profit" | "cost" | "amount"
   sortDir?: "asc" | "desc"
 }
 
@@ -945,6 +945,19 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       break
     case "profit":
       orderBy = `o."serviceCreatedAt" DESC, o.id DESC, (i.price - COALESCE(p."mainPurchasePrice" * i.amount, 0)) ${dir}, i.id ASC`
+      break
+    case "amount":
+      orderBy = `i.amount ${dir}, o.id DESC, i.id ASC`
+      break
+    case "cost":
+      // GLOBAL alış sıralaması — artan yönde alış fiyatı OLMAYAN kalemler (NULL) en
+      // üste gelir → eksik alışları bulup drawer'dan doldurma akışı. Alış maliyeti
+      // satır bazlı hesaplanan CASE ile aynı (main > eczane fallback > manuel > NULL).
+      orderBy = `(CASE
+        WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0 THEN p."mainPurchasePrice"
+        WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0 THEN (${STREET_FALLBACK_SQL})
+        WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice"
+        ELSE NULL END) ${dir} NULLS ${dir === "ASC" ? "FIRST" : "LAST"}, o.id DESC, i.id ASC`
       break
     case "date":
     default:
@@ -995,7 +1008,7 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       unit_price: number | null
       line_total: number
       cost_per_unit: number | null
-      cost_source: string  // "MAIN" | "STREET_FALLBACK" | "NONE"
+      cost_source: string  // "MAIN" | "STREET_FALLBACK" | "MANUAL" | "NONE"
       psf: number | null
       commission_rate: number | null
       shipping_cost: number | null
@@ -1043,18 +1056,24 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
       i.price::float8                     AS line_total,
       -- Alış maliyeti: 1) mainPurchasePrice (ana depo, gerçek)
       --                2) streetPurchasePrice → calculatePharmacyStockPrice formülüyle çevrilmiş (STREET_FALLBACK_SQL)
-      --                3) NULL (göstergede "—")
+      --                3) ManualPurchasePrice (Eksik Alış — eşleşmeyen kalem, SKU/barkod bazlı)
+      --                4) NULL (göstergede "—")
+      -- Not: aggregate P&L (buildPnlCTE/getTopLineKPIs) manuel alışı zaten sayıyordu;
+      -- burada eksikti → tablo/drawer "—" gösteriyordu. Artık tutarlı.
       CASE
         WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0
           THEN p."mainPurchasePrice"
         WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0
           THEN (${STREET_FALLBACK_SQL})
+        WHEN mpp."purchasePrice" IS NOT NULL
+          THEN mpp."purchasePrice"
         ELSE NULL
       END::float8                         AS cost_per_unit,
       -- Hangi kaynak kullanıldı? UI'da rozet gösterilebilir
       CASE
         WHEN p."mainPurchasePrice" IS NOT NULL AND p."mainPurchasePrice" > 0 THEN 'MAIN'
         WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0 THEN 'STREET_FALLBACK'
+        WHEN mpp."purchasePrice" IS NOT NULL THEN 'MANUAL'
         ELSE 'NONE'
       END                                 AS cost_source,
       p."psf"::float8                     AS psf,
@@ -1086,6 +1105,16 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
     LEFT JOIN "Category" c ON c.id = p."categoryId"
     LEFT JOIN "Subcategory" s ON s.id = p."subcategoryId"
     LEFT JOIN "Marketplace" m ON m.id = o."marketplaceId"
+    LEFT JOIN LATERAL (
+      -- Eksik Alış (ManualPurchasePrice) — yalnızca eşleşmeyen kalem (productId NULL),
+      -- SKU (foreignSku) veya barkod ile. buildPnlCTE/getTopLineKPIs ile aynı koşul.
+      SELECT "purchasePrice"
+      FROM "ManualPurchasePrice"
+      WHERE i."productId" IS NULL
+        AND ((i."foreignSku" IS NOT NULL AND "sku" = i."foreignSku")
+             OR (i."barcode" IS NOT NULL AND "barcode" = i."barcode"))
+      LIMIT 1
+    ) mpp ON true
     LEFT JOIN LATERAL (
       SELECT "netReceived", "commission", "withholding", "shipping", "returnShipping",
              "platformFee", "penalty", "otherDeductions", "internationalFee", "orderStatus"

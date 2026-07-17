@@ -24,6 +24,7 @@ import {
   syncOrdersAction,
   backfillMarketplaceAction,
   rematchOrdersAction,
+  saveOrderItemCostAction,
 } from "./actions"
 
 // ===== Tipler =====
@@ -43,7 +44,7 @@ interface ChannelRow { salesChannel: string; marketplaceId: number | null; marke
 interface TopProductRow { productId: number | null; productName: string; brandName: string | null; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; commission: number; shipping: number; other: number; netProfit: number; netMarginPct: number }
 interface UnmatchedItem { itemId: number; orderId: number; salesChannel: string; productName: string; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; price: number; serviceCreatedAt: string }
 interface SyncRun { id: number; startedAt: string; finishedAt: string | null; totalFetched: number; totalCreated: number; totalUpdated: number; totalMatched: number; status: string; errorMessage: string | null; rangeFrom: string | null; rangeTo: string | null }
-interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; costSource: "MAIN" | "STREET_FALLBACK" | "NONE"; totalCost: number; commission: number; shipping: number; withholding: number; other: number; remaining: number; marginPct: number; matchMethod: string | null; isReconciled: boolean; reconOrderStatus: string | null; isUnfinalized: boolean; psf: number | null }
+interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; costSource: "MAIN" | "STREET_FALLBACK" | "MANUAL" | "NONE"; totalCost: number; commission: number; shipping: number; withholding: number; other: number; remaining: number; marginPct: number; matchMethod: string | null; isReconciled: boolean; reconOrderStatus: string | null; isUnfinalized: boolean; psf: number | null }
 
 interface Props {
   period: string; rangeLabel: string; from?: string; to?: string
@@ -52,7 +53,7 @@ interface Props {
   brandId: number | null; categoryId: number | null; salesChannel: string | null
   statusFilter: "SUCCESS" | "CANCELLED" | "RETURNED" | "WAITING" | "OTHER" | null
   searchQuery: string | null
-  sortBy: "date" | "channel" | "revenue" | "profit"
+  sortBy: "date" | "channel" | "revenue" | "profit" | "cost" | "amount"
   sortDir: "asc" | "desc"
   configExists: boolean; configActive: boolean; lastTestOk: boolean | null; lastTestNote: string | null
   brands: { id: number; name: string }[]
@@ -510,11 +511,15 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                 <TableHead>Ürün</TableHead>
                 <TableHead className="w-[100px]">Marka</TableHead>
                 <TableHead className="w-[100px]">Kategori</TableHead>
-                <TableHead className="text-center w-[50px]">Adet</TableHead>
+                <TableHead className="text-center cursor-pointer w-[50px]" onClick={() => handleSort("amount")}>
+                  Adet<SortIcon col="amount" />
+                </TableHead>
                 <TableHead className="text-right cursor-pointer w-[110px]" onClick={() => handleSort("revenue")}>
                   Sipariş Tut.<SortIcon col="revenue" />
                 </TableHead>
-                <TableHead className="text-right w-[100px]">Alış</TableHead>
+                <TableHead className="text-right cursor-pointer w-[100px]" onClick={() => handleSort("cost")}>
+                  Alış<SortIcon col="cost" />
+                </TableHead>
                 <TableHead className="text-right w-[100px]">Komis.</TableHead>
                 <TableHead className="text-right w-[80px]">Kargo</TableHead>
                 <TableHead className="text-right w-[80px]">Stopaj</TableHead>
@@ -659,6 +664,75 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// ===== Inline Alış Fiyatı Doldurma (alış maliyeti boş kalemler) =====
+
+function InlineCostFill({ row }: { row: OrderTableRow }) {
+  const [pending, startTransition] = useTransition()
+  const [value, setValue] = useState("")
+  const [saved, setSaved] = useState(false)
+
+  const isMatched = row.productId != null
+  const handleSave = () => {
+    const price = parseFloat(value.replace(",", "."))
+    if (!(price > 0)) {
+      toast.error("Alış fiyatı 0'dan büyük olmalı")
+      return
+    }
+    startTransition(async () => {
+      const res = await saveOrderItemCostAction({
+        productId: row.productId,
+        sku: row.foreignSku,
+        barcode: row.barcode,
+        name: row.productName,
+        purchasePrice: price,
+      })
+      if (res.success) {
+        toast.success(res.message + " — kâr yeniden hesaplandı")
+        setSaved(true)
+      } else {
+        toast.error(res.message)
+      }
+    })
+  }
+
+  if (saved) {
+    return (
+      <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50 p-2 text-xs text-emerald-700 dark:text-emerald-400">
+        ✅ Alış fiyatı kaydedildi. Sayfayı yenilediğinde net kâr güncel değerle görünecek.
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 p-3 space-y-2">
+      <p className="text-xs text-amber-700 dark:text-amber-400">
+        ⚠️ <strong>Alış maliyeti girilmemiş</strong> — bu kalemin kârı şişik görünüyor.{" "}
+        {isMatched
+          ? "Ürün eşleşmiş; girdiğin fiyat ürünün ana alış fiyatı olarak kaydedilir."
+          : "Kalem eşleşmemiş; girdiğin fiyat Eksik Alış'a (SKU/barkod) kaydedilir, aynı ürünün gelecekteki satışlarında da geçerli olur."}
+      </p>
+      <div className="flex items-end gap-2">
+        <div className="space-y-1">
+          <Label className="text-[11px]">Birim alış fiyatı (₺, KDV dahil)</Label>
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Örn. 450"
+            className="h-8 w-40 text-sm"
+          />
+        </div>
+        <Button size="sm" onClick={handleSave} disabled={pending} className="h-8">
+          {pending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
+          Kaydet
+        </Button>
+      </div>
+    </div>
   )
 }
 
@@ -876,6 +950,8 @@ function OrderDetailDrawer({ row, siblings, onSwitchItem, onClose }: {
             )
           })()}
         </div>
+
+        {row.costSource === "NONE" && <InlineCostFill row={row} />}
 
         {row.isReconciled && row.isUnfinalized && (
           <div className="rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 p-2 text-xs text-amber-700 dark:text-amber-400">

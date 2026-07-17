@@ -160,7 +160,7 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
     | null
   const searchQuery = sp.search ?? null
   const pageNum = Math.max(1, Number(sp.page ?? "1"))
-  const sortBy = (sp.sortBy as "date" | "channel" | "revenue" | "profit" | undefined) ?? "date"
+  const sortBy = (sp.sortBy as "date" | "channel" | "revenue" | "profit" | "cost" | "amount" | undefined) ?? "date"
   const sortDir = (sp.sortDir as "asc" | "desc" | undefined) ?? "desc"
 
   // Kullanıcı bazlı marka kısıtı (SALES rolü için)
