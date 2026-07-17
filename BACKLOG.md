@@ -15,7 +15,8 @@
 - ✅ Siparişler → **Pazar Fırsatı** sekmesi (motorun ORDER önerileri) + barkod + tasarım revizyonu (birim kâr, rakip, satıcı detayı, sıralama)
 - ✅ Sipariş builder BuyBox kaynağı: ölü TY API (`CompetitorPriceObservation`) → canlı scraper (`MarketPriceSnapshot`) — `sales-analysis.ts`
 - ✅ **#2 Dopigo Aktarım konsolidasyonu:** `refreshAndExportAction` artık TY API'ye gitmiyor; `getRecommendations`/`getLatestBuyboxMap`/`getLatestBuyboxForProduct` scraper verisinden besleniyor. Motor/kapsam korundu (HOLD/LIST fiyatları değişmedi). Test: `snapshotToBuyboxRow` (latest-buybox.test.ts)
-- 🔲 Açık: ölü TY API buybox modülü tam silinmesi (`refreshBuyboxForProducts`, `trendyol/buybox.ts`, rapor/dashboard display okurları); Sipariş butonu tam ürün-highlight; SALES marka veri kısıtı /raporlar
+- ✅ **#4 SALES marka veri kısıtı /raporlar:** `reports.ts` 8 servise `allowedBrandIds` + saf `resolveBrandFilter` (izinsiz brand'i `?brand=` ile bile göremez, clamp). Sayfa + 6 export action server-side kısıtlıyor. Test: `report-brand-filter.test.ts`
+- 🔲 Açık: ölü TY API buybox modülü tam silinmesi (`refreshBuyboxForProducts`, `trendyol/buybox.ts`, rapor/dashboard display okurları — `getRiskOverview` hâlâ `CompetitorPriceObservation` okuyor); Sipariş butonu tam ürün-highlight
 
 **2026-07-02 denetiminden bu yana KAPATILAN açıklar (git log doğrulaması):**
 - ✅ F4/F5 — çoklu paket + marka-filtreli KPI'da gider hesabı düzeldi

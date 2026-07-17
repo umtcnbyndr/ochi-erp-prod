@@ -18,6 +18,24 @@ export interface StockSummaryFilters {
   brandId?: number
   categoryId?: number
   subcategoryId?: number
+  /** SALES kullanıcı marka kısıtı — verildiyse sadece bu markalar görünür */
+  allowedBrandIds?: number[] | null
+}
+
+/**
+ * Marka WHERE filtresi çözer (SALES `allowedBrandIds` kısıtı). Saf fonksiyon (test).
+ * - allowedBrandIds boşsa: seçili brandId (veya undefined).
+ * - allowedBrandIds doluysa: seçili brand izinliyse onu, değilse tüm izinli markalar.
+ *   → SALES kullanıcı izinsiz markayı ?brand= ile bile göremez.
+ */
+export function resolveBrandFilter(
+  brandId: number | undefined,
+  allowedBrandIds: number[] | null | undefined,
+): number | { in: number[] } | undefined {
+  if (allowedBrandIds && allowedBrandIds.length > 0) {
+    return brandId && allowedBrandIds.includes(brandId) ? brandId : { in: allowedBrandIds }
+  }
+  return brandId
 }
 
 export interface StockSummary {
@@ -56,7 +74,8 @@ export async function getStockSummary(
   const where: Prisma.ProductWhereInput = {
     status: "ACTIVE",
   }
-  if (filters.brandId) where.brandId = filters.brandId
+  const brandFilter = resolveBrandFilter(filters.brandId, filters.allowedBrandIds)
+  if (brandFilter !== undefined) where.brandId = brandFilter
   if (filters.categoryId) where.categoryId = filters.categoryId
   if (filters.subcategoryId) where.subcategoryId = filters.subcategoryId
 
@@ -116,7 +135,8 @@ export async function getBrandCategoryBreakdown(
   filters: StockSummaryFilters = {},
 ): Promise<BrandCategoryRow[]> {
   const where: Prisma.ProductWhereInput = { status: "ACTIVE" }
-  if (filters.brandId) where.brandId = filters.brandId
+  const brandFilter = resolveBrandFilter(filters.brandId, filters.allowedBrandIds)
+  if (brandFilter !== undefined) where.brandId = brandFilter
   if (filters.categoryId) where.categoryId = filters.categoryId
   if (filters.subcategoryId) where.subcategoryId = filters.subcategoryId
 
@@ -211,12 +231,14 @@ export async function getStaleProducts(opts: {
   daysSinceMovement?: number // null = hiç hareket görmemiş, varsa son N gün hareket yok
   brandId?: number
   categoryId?: number
+  allowedBrandIds?: number[] | null
 }): Promise<StaleProductsResult> {
   const where: Prisma.ProductWhereInput = {
     status: "ACTIVE",
     productType: { not: "SET" }, // setlerin fiziksel stoğu yok
   }
-  if (opts.brandId) where.brandId = opts.brandId
+  const brandFilter = resolveBrandFilter(opts.brandId, opts.allowedBrandIds)
+  if (brandFilter !== undefined) where.brandId = brandFilter
   if (opts.categoryId) where.categoryId = opts.categoryId
 
   const products = await prisma.product.findMany({
@@ -362,16 +384,19 @@ export interface RiskOverview {
 
 export async function getRiskOverview(opts: {
   expirySoonDays?: number // varsayilan 90
+  allowedBrandIds?: number[] | null
 } = {}): Promise<RiskOverview> {
   const expirySoonDays = opts.expirySoonDays ?? 90
   const now = new Date()
   const expirySoonCutoff = new Date(now.getTime() + expirySoonDays * 86400000)
 
+  const brandFilter = resolveBrandFilter(undefined, opts.allowedBrandIds)
   const products = await prisma.product.findMany({
     where: {
       status: "ACTIVE",
       // Set ve Hediye HARİÇ — risk uyarıları sadece tekil (SINGLE) ürünlere uygulanır
       productType: "SINGLE",
+      ...(brandFilter !== undefined ? { brandId: brandFilter } : {}),
     },
     select: {
       id: true,
@@ -573,6 +598,7 @@ export async function getTopMovers(opts: {
   daysPeriod?: number // varsayilan 30
   brandId?: number
   categoryId?: number
+  allowedBrandIds?: number[] | null
 }): Promise<TopMoversResult> {
   const days = opts.daysPeriod ?? 30
   const now = Date.now()
@@ -583,7 +609,8 @@ export async function getTopMovers(opts: {
     status: "ACTIVE",
     productType: { not: "SET" },
   }
-  if (opts.brandId) productWhere.brandId = opts.brandId
+  const brandFilter = resolveBrandFilter(opts.brandId, opts.allowedBrandIds)
+  if (brandFilter !== undefined) productWhere.brandId = brandFilter
   if (opts.categoryId) productWhere.categoryId = opts.categoryId
 
   const products = await prisma.product.findMany({
@@ -729,13 +756,15 @@ export interface PharmacyStockReport {
 
 export async function getPharmacyStockReport(opts: {
   brandId?: number
+  allowedBrandIds?: number[] | null
 } = {}): Promise<PharmacyStockReport> {
   const where: Prisma.ProductWhereInput = {
     status: "ACTIVE",
     productType: { not: "SET" },
     streetStock: { gt: 0 }, // sadece eczane stoğu olanlar
   }
-  if (opts.brandId) where.brandId = opts.brandId
+  const brandFilter = resolveBrandFilter(opts.brandId, opts.allowedBrandIds)
+  if (brandFilter !== undefined) where.brandId = brandFilter
 
   const products = await prisma.product.findMany({
     where,
@@ -901,6 +930,7 @@ function getBucket(daysLeft: number): ExpiryBucket | null {
 export async function getExpiryReport(opts: {
   brandId?: number
   maxDays?: number // varsayılan 180 (6 ay sonrasına kadar)
+  allowedBrandIds?: number[] | null
 } = {}): Promise<ExpiryReport> {
   const maxDays = opts.maxDays ?? 180
   const now = new Date()
@@ -915,7 +945,8 @@ export async function getExpiryReport(opts: {
     },
     OR: [{ mainStock: { gt: 0 } }, { streetStock: { gt: 0 } }],
   }
-  if (opts.brandId) where.brandId = opts.brandId
+  const brandFilter = resolveBrandFilter(opts.brandId, opts.allowedBrandIds)
+  if (brandFilter !== undefined) where.brandId = brandFilter
 
   const products = await prisma.product.findMany({
     where,
@@ -1027,6 +1058,7 @@ export interface InventoryDetailResult {
 export async function getInventoryDetail(opts: {
   brandId?: number
   categoryId?: number
+  allowedBrandIds?: number[] | null
 } = {}): Promise<InventoryDetailResult> {
   const where: Prisma.ProductWhereInput = {
     status: "ACTIVE",
@@ -1034,7 +1066,8 @@ export async function getInventoryDetail(opts: {
     productType: "SINGLE",
     mainStock: { gt: 0 }, // sadece stoğu olanlar
   }
-  if (opts.brandId) where.brandId = opts.brandId
+  const brandFilter = resolveBrandFilter(opts.brandId, opts.allowedBrandIds)
+  if (brandFilter !== undefined) where.brandId = brandFilter
   if (opts.categoryId) where.categoryId = opts.categoryId
 
   const products = await prisma.product.findMany({

@@ -24,8 +24,9 @@ import { requirePermission } from "@/lib/permissions"
 export async function exportInventoryExcel(
   filters: StockSummaryFilters = {},
 ): Promise<{ filename: string; base64: string }> {
-  await requirePermission("raporlar", "view")
-  const data = await getInventoryDetail(filters)
+  const user = await requirePermission("raporlar", "view")
+  const allowed = user.allowedBrandIds?.length ? user.allowedBrandIds : null
+  const data = await getInventoryDetail({ ...filters, allowedBrandIds: allowed })
   let brandFilterName: string | null = null
   if (filters.brandId) {
     const b = await prisma.brand.findUnique({
@@ -45,8 +46,9 @@ export async function exportStaleProductsExcel(opts: {
   brandId?: number
   categoryId?: number
 }): Promise<{ filename: string; base64: string }> {
-  await requirePermission("raporlar", "view")
-  const result = await getStaleProducts(opts)
+  const user = await requirePermission("raporlar", "view")
+  const allowed = user.allowedBrandIds?.length ? user.allowedBrandIds : null
+  const result = await getStaleProducts({ ...opts, allowedBrandIds: allowed })
   const periodLabel =
     opts.daysSinceMovement === 9999
       ? "Hiç hareket görmemiş"
@@ -58,8 +60,9 @@ export async function exportStaleProductsExcel(opts: {
 }
 
 export async function exportPharmacyStockExcel(opts: { brandId?: number } = {}) {
-  await requirePermission("raporlar", "view")
-  const data = await getPharmacyStockReport(opts)
+  const user = await requirePermission("raporlar", "view")
+  const allowed = user.allowedBrandIds?.length ? user.allowedBrandIds : null
+  const data = await getPharmacyStockReport({ ...opts, allowedBrandIds: allowed })
   return buildPharmacyStockExcel(data, { reportDate: new Date() })
 }
 
@@ -68,8 +71,9 @@ export async function exportTopMoversExcel(opts: {
   brandId?: number
   categoryId?: number
 }) {
-  await requirePermission("raporlar", "view")
-  const result = await getTopMovers(opts)
+  const user = await requirePermission("raporlar", "view")
+  const allowed = user.allowedBrandIds?.length ? user.allowedBrandIds : null
+  const result = await getTopMovers({ ...opts, allowedBrandIds: allowed })
   const periodLabel = `Son ${opts.daysPeriod ?? 30} gün`
   return buildTopMoversExcel(result.products, {
     reportDate: new Date(),
@@ -78,8 +82,9 @@ export async function exportTopMoversExcel(opts: {
 }
 
 export async function exportExpiryExcel(opts: { brandId?: number } = {}) {
-  await requirePermission("raporlar", "view")
-  const data = await getExpiryReport(opts)
+  const user = await requirePermission("raporlar", "view")
+  const allowed = user.allowedBrandIds?.length ? user.allowedBrandIds : null
+  const data = await getExpiryReport({ ...opts, allowedBrandIds: allowed })
   let brandFilterName: string | null = null
   if (opts.brandId) {
     const b = await prisma.brand.findUnique({
@@ -96,10 +101,11 @@ export async function exportRiskOverviewExcel(): Promise<{
   filename: string
   base64: string
 }> {
-  await requirePermission("raporlar", "view")
+  const user = await requirePermission("raporlar", "view")
+  const allowed = user.allowedBrandIds?.length ? user.allowedBrandIds : null
   // Şimdilik basit XLSX (formatlamasız)
   const XLSX = await import("xlsx")
-  const result = await getRiskOverview()
+  const result = await getRiskOverview({ allowedBrandIds: allowed })
   const data = [
     ["Ürün", "Barkod", "Marka", "Risk Tipi", "Detay", "Önem"],
     ...result.items.map((r) => [

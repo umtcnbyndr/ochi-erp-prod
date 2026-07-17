@@ -25,10 +25,11 @@ interface PageProps {
 }
 
 export default async function RaporlarPage({ searchParams }: PageProps) {
-  // Yetki guard — bu sayfa eskiden korumasızdı (giriş yapmış herkes açabiliyordu).
-  // Not: marka-bazlı veri kısıtı (SALES allowedBrandIds → rapor servisleri) ayrı
-  // tasarım işi — 7 rapor servisinin where'i değişecek, kullanıcı onayıyla yapılacak.
-  await requirePermission("raporlar", "view")
+  // Yetki guard + SALES marka veri kısıtı: allowedBrandIds set ise tüm rapor
+  // servisleri ve marka seçici SADECE bu markalara kısıtlanır (izinsiz markayı
+  // ?brand= ile bile açamaz — resolveBrandFilter clamp ediyor).
+  const user = await requirePermission("raporlar", "view")
+  const allowed = user.allowedBrandIds?.length ? user.allowedBrandIds : null
 
   const sp = await searchParams
   const tab =
@@ -44,7 +45,7 @@ export default async function RaporlarPage({ searchParams }: PageProps) {
   const daysSinceMovement = sp.days ? Number(sp.days) : 60
   const movePeriod = sp.movePeriod ? Number(sp.movePeriod) : 30
 
-  const filters = { brandId, categoryId }
+  const filters = { brandId, categoryId, allowedBrandIds: allowed }
 
   const [
     brands,
@@ -58,6 +59,7 @@ export default async function RaporlarPage({ searchParams }: PageProps) {
     expiryReport,
   ] = await Promise.all([
     prisma.brand.findMany({
+      where: allowed ? { id: { in: allowed } } : undefined,
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
@@ -67,11 +69,11 @@ export default async function RaporlarPage({ searchParams }: PageProps) {
     }),
     getStockSummary(filters),
     getBrandCategoryBreakdown(filters),
-    getStaleProducts({ daysSinceMovement, brandId, categoryId }),
-    getRiskOverview(),
-    getTopMovers({ daysPeriod: movePeriod, brandId, categoryId }),
-    getPharmacyStockReport({ brandId }),
-    getExpiryReport({ brandId }),
+    getStaleProducts({ daysSinceMovement, brandId, categoryId, allowedBrandIds: allowed }),
+    getRiskOverview({ allowedBrandIds: allowed }),
+    getTopMovers({ daysPeriod: movePeriod, brandId, categoryId, allowedBrandIds: allowed }),
+    getPharmacyStockReport({ brandId, allowedBrandIds: allowed }),
+    getExpiryReport({ brandId, allowedBrandIds: allowed }),
   ])
 
   // Date serialize
