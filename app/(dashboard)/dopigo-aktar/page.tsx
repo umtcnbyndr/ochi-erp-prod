@@ -3,23 +3,26 @@ import { AktarFlow } from "./aktar-flow"
 import { CampaignReminderBanner } from "./campaign-reminder-banner"
 import { CampaignExportSection } from "./campaign-export-section"
 import { AktarTabs } from "./aktar-tabs"
-import { TyFloorFlow } from "./ty-floor-flow"
+import { TyFloorInfo } from "./ty-floor-info"
 import {
   listBrandsAction,
   listLowStockAlertsCountAction,
   listMarketplacesAction,
+  getAutoFloorPreviewAction,
 } from "./actions"
 import { listCampaigns } from "@/lib/services/campaign"
 
 export const dynamic = "force-dynamic"
 
 export default async function DopigoAktarPage() {
-  const [brands, alertResult, marketplaces, campaigns] = await Promise.all([
-    listBrandsAction(),
-    listLowStockAlertsCountAction(),
-    listMarketplacesAction(),
-    listCampaigns({ status: ["ACTIVE", "ENDED"] }),
-  ])
+  const [brands, alertResult, marketplaces, campaigns, floorPreview] =
+    await Promise.all([
+      listBrandsAction(),
+      listLowStockAlertsCountAction(),
+      listMarketplacesAction(),
+      listCampaigns({ status: ["ACTIVE", "ENDED"] }),
+      getAutoFloorPreviewAction(),
+    ])
 
   const lowStockCount = alertResult.success ? alertResult.count : 0
 
@@ -57,7 +60,7 @@ export default async function DopigoAktarPage() {
           />
         }
         campaignSection={<CampaignExportSection />}
-        tyFloorSection={<TyFloorFlow brands={brands} />}
+        tyFloorSection={<TyFloorInfo preview={floorPreview} />}
       />
     </div>
   )

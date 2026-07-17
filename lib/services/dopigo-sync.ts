@@ -25,7 +25,8 @@ import { prisma } from "@/lib/db"
 import {
   calculateSalePrice,
   InvalidPricingError,
-  applyTrendyolFloor,
+  computeIsoProfitFloor,
+  resolveEffectiveCommissionSync,
   calculateWithEffectiveCommission,
   loadCommissionTariffsForProducts,
   isRecommendationStale,
@@ -526,14 +527,9 @@ export function calculateMarketplacePricesFor(
   marketplaces: MarketplaceConfig[],
   activeCampaign?: ActiveCampaignContext | null,
   /**
-   * Brand × Marketplace TY-floor map (marketplaceId → multiplier).
-   * null/undefined ise floor uygulanmaz (geri uyumlu).
-   * Sadece SINGLE/SET ürünler için (GIFT'lerde TY referansı anlamsız).
-   */
-  floorMap?: Map<number, number> | null,
-  /**
    * Kademeli komisyon tarifeleri (ürün × marketplace).
    * null/undefined → fallback Marketplace.commissionRate (eski davranış).
+   * Otomatik iso-kâr taban hesabında TY + hedef efektif komisyonu buradan çözülür.
    */
   tariffMap?: TariffMap | null,
 ): Record<string, MarketplacePriceCell | null> {
@@ -732,30 +728,60 @@ export function calculateMarketplacePricesFor(
     }
   }
 
-  // ========== Pass 2: TY-Floor uygulama ==========
-  // GIFT ürünler hariç (TY referansı anlamsız), MANUAL_OVERRIDE'lara dokunulmaz.
-  // TY fiyatı yoksa veya floorMap boşsa hiçbir şey yapılmaz.
-  if (floorMap && floorMap.size > 0 && product.productType !== "GIFT") {
+  // ========== Pass 2: Otomatik iso-kâr taban (her site TY kadar kâr) ==========
+  // GIFT hariç (TY referansı anlamsız), MANUAL_OVERRIDE'a dokunulmaz.
+  // Her pazaryerinde fiyat, TY ile AYNI net kârı bırakan tabanın altına inemez.
+  // Taban komisyon/kargo/stopaj farkından OTOMATİK hesaplanır (elle oran/multiplier YOK).
+  if (product.productType !== "GIFT") {
     const tyCell = result[TRENDYOL_NAME]
     const trendyolPrice = tyCell?.sale ?? null
-    if (trendyolPrice != null && trendyolPrice > 0) {
+    const tyMp = marketplaces.find((m) => m.name === TRENDYOL_NAME)
+    if (trendyolPrice != null && trendyolPrice > 0 && tyMp) {
+      // TY tarafı: efektif komisyon @ trendyolPrice (kademeli tarife öncelikli)
+      const tyCommission = resolveEffectiveCommissionSync({
+        productId: product.id,
+        marketplaceName: TRENDYOL_NAME,
+        priceAtCalculation: trendyolPrice,
+        tariffMap: tariffMap ?? new Map(),
+        fallbackRate: Number(tyMp.commissionRate),
+      }).rate
+      const tyCfg = {
+        commissionPct: tyCommission,
+        withholdingPct: Number(tyMp.withholdingTax),
+        shippingCost: Number(tyMp.shippingCost),
+        extraCost: Number(tyMp.extraCost ?? 0),
+      }
+
       for (const m of marketplaces) {
         if (m.name === TRENDYOL_NAME) continue // TY kendine floor uygulamaz
         const cell = result[m.name]
         if (!cell) continue
         if (cell.source === "MANUAL_OVERRIDE") continue // kullanıcı bilinçli
-        const multiplier = floorMap.get(m.id)
-        if (!multiplier || multiplier <= 0) continue
 
-        const floorRes = applyTrendyolFloor({
-          formulaPrice: cell.sale,
+        // Hedef site: efektif komisyon @ mevcut aday fiyat (tarife nadir → genelde flat)
+        const xCommission = resolveEffectiveCommissionSync({
+          productId: product.id,
+          marketplaceName: m.name,
+          priceAtCalculation: cell.sale,
+          tariffMap: tariffMap ?? new Map(),
+          fallbackRate: Number(m.commissionRate),
+        }).rate
+
+        const floor = computeIsoProfitFloor({
           trendyolPrice,
-          multiplier,
+          trendyol: tyCfg,
+          target: {
+            commissionPct: xCommission,
+            withholdingPct: Number(m.withholdingTax),
+            shippingCost: Number(m.shippingCost),
+            extraCost: Number(m.extraCost ?? 0),
+          },
         })
-        if (floorRes.floorApplied) {
+
+        if (floor != null && cell.sale < floor) {
           result[m.name] = {
-            sale: round2(floorRes.finalPrice),
-            list: round2(floorRes.finalPrice * LIST_PRICE_MULTIPLIER),
+            sale: round2(floor),
+            list: round2(floor * LIST_PRICE_MULTIPLIER),
             source: "TY_FLOOR",
           }
         }
@@ -902,11 +928,6 @@ export async function buildExportPreview(
     })(),
   ])
 
-  // TY-floor map'ini brand bazlı toplu çek (N+1 önlemi)
-  const brandIds = Array.from(new Set(products.map((p) => p.brand.id)))
-  const { getFloorMapsForBrands } = await import("./brand-marketplace-floor")
-  const floorMapsByBrand = await getFloorMapsForBrands(brandIds)
-
   // Çoklu listing: her ürünün TY listing'lerini topluca çek
   const { getActiveListingsByMarketplaceBulk } = await import(
     "./product-marketplace-listing"
@@ -927,12 +948,10 @@ export async function buildExportPreview(
     const purchase = calculateEffectivePurchasePrice(p)
     const stockInfo = calculateEffectiveStock(p)
     const activeCampaign = activeCampaignMap.get(p.id) ?? null
-    const floorMap = floorMapsByBrand.get(p.brand.id) ?? null
     const marketplacePrices = calculateMarketplacePricesFor(
       p,
       marketplaces,
       activeCampaign,
-      floorMap,
       tariffMap,
     )
 

@@ -77,6 +77,61 @@ export function applyTrendyolFloor(input: TrendyolFloorInput): TrendyolFloorResu
   return { finalPrice: floor, floorApplied: true, floorValue: floor }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Otomatik iso-kâr taban (multiplier'sız): her pazaryerinde TY kadar kâr
+// ─────────────────────────────────────────────────────────────
+
+export interface ChannelCostConfig {
+  /** Komisyon % (kademeli tarife çözülmüş efektif oran) */
+  commissionPct: number
+  /** Stopaj % */
+  withholdingPct: number
+  /** Sabit kargo (TL) */
+  shippingCost: number
+  /** Ek maliyet (TL) */
+  extraCost: number
+}
+
+/**
+ * "Trendyol kadar kâr" tabanı — bir pazaryerinde, Trendyol fiyatıyla AYNI net
+ * kârı bırakacak minimum fiyat. Kullanıcı hiçbir oran girmez; komisyon/kargo/
+ * stopaj farkından otomatik hesaplanır.
+ *
+ * Mantık: COGS iki tarafta da aynı (aynı ürün) → sadeleşir. Yani "aynı kâr" =
+ * "aynı net gelir". TY net gelirini bul, hedef pazaryerinde o net geliri veren
+ * fiyatı çöz:
+ *
+ *   tyNet   = P_TY × (1 − (komTY + stopajTY)/100) − kargoTY − ekTY
+ *   floor_X = (tyNet + kargoX + ekX) / (1 − (komX + stopajX)/100)
+ *
+ * Komisyonu TY'den yüksek pazaryerinde floor > P_TY çıkar (aynı kârı korumak
+ * için daha pahalı olmalı) — bu bilinçli/doğru davranış.
+ *
+ * @returns floor fiyatı, veya hesaplanamıyorsa null (TY fiyatı yok / payda ≤ 0)
+ */
+export function computeIsoProfitFloor(input: {
+  trendyolPrice: DecimalLike
+  trendyol: ChannelCostConfig
+  target: ChannelCostConfig
+}): number | null {
+  const P = toNum(input.trendyolPrice)
+  if (P == null || P <= 0) return null
+
+  const ty = input.trendyol
+  const x = input.target
+
+  const tyNet =
+    P * (1 - (ty.commissionPct + ty.withholdingPct) / 100) -
+    ty.shippingCost -
+    ty.extraCost
+
+  const denom = 1 - (x.commissionPct + x.withholdingPct) / 100
+  if (denom <= 0) return null // komisyon+stopaj ≥ %100 → anlamsız
+
+  const floor = (tyNet + x.shippingCost + x.extraCost) / denom
+  return floor > 0 ? floor : null
+}
+
 /**
  * Multiplier'dan kullanıcı dostu yüzde indirimi.
  *   0.9375 → 6.25 (TY'den %6.25 düşük)

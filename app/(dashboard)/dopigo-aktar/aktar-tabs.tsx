@@ -42,7 +42,7 @@ export function AktarTabs({
         </TabsTrigger>
         <TabsTrigger value="ty-floor" className="gap-1.5">
           <ShieldHalf className="h-3.5 w-3.5" />
-          TY-Floor
+          Kâr Tabanı
         </TabsTrigger>
       </TabsList>
 

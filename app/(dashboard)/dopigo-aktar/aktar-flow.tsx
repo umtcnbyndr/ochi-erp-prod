@@ -827,7 +827,7 @@ const SOURCE_BADGE: Record<
   TY_FLOOR: {
     color: "bg-amber-500",
     label: "T",
-    tooltip: "TY-Floor devreye girdi — Trendyol fiyatına göre minimuma yükseltildi",
+    tooltip: "Kâr tabanı devreye girdi — Trendyol ile aynı kârı korumak için minimuma yükseltildi",
   },
   NO_DATA: { color: "bg-rose-500", label: "?", tooltip: "Hesaplanamadı" },
 }

@@ -14,12 +14,62 @@ import {
 } from "@/lib/services/price-recommendation"
 import { getCampaign, getCampaignProducts, listCampaigns } from "@/lib/services/campaign"
 import { requirePermission } from "@/lib/permissions"
-import {
-  getFloorsForBrand,
-  saveFloorsForBrand,
-  type FloorRow,
-} from "@/lib/services/brand-marketplace-floor"
-import { SaveFloorsForBrandSchema } from "@/lib/validators/brand-marketplace-floor"
+import { computeIsoProfitFloor } from "@/lib/pricing"
+
+export interface AutoFloorPreviewRow {
+  name: string
+  commissionPct: number
+  floor: number
+  /** TY'ye göre % fark (+ pahalı / − ucuz) */
+  pctVsTy: number
+}
+
+/**
+ * Otomatik iso-kâr taban önizlemesi (salt-okunur).
+ * Referans TY fiyatı için her pazaryerinde "TY kadar kâr" tabanını gösterir.
+ * Ayar yok — komisyon/kargo/stopaj farkından otomatik. Kullanıcıya şeffaflık için.
+ */
+export async function getAutoFloorPreviewAction(): Promise<{
+  referenceTyPrice: number
+  rows: AutoFloorPreviewRow[]
+}> {
+  await requirePermission("dopigo-aktar", "view")
+  const REF = 5000
+  const ms = await prisma.marketplace.findMany({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+  })
+  const ty = ms.find((m) => m.name === "Trendyol")
+  if (!ty) return { referenceTyPrice: REF, rows: [] }
+  const tyCfg = {
+    commissionPct: Number(ty.commissionRate),
+    withholdingPct: Number(ty.withholdingTax),
+    shippingCost: Number(ty.shippingCost),
+    extraCost: Number(ty.extraCost ?? 0),
+  }
+  const rows: AutoFloorPreviewRow[] = ms
+    .filter((m) => m.name !== "Trendyol")
+    .map((m) => {
+      const floor =
+        computeIsoProfitFloor({
+          trendyolPrice: REF,
+          trendyol: tyCfg,
+          target: {
+            commissionPct: Number(m.commissionRate),
+            withholdingPct: Number(m.withholdingTax),
+            shippingCost: Number(m.shippingCost),
+            extraCost: Number(m.extraCost ?? 0),
+          },
+        }) ?? 0
+      return {
+        name: m.name,
+        commissionPct: Number(m.commissionRate),
+        floor: Math.round(floor * 100) / 100,
+        pctVsTy: Math.round((floor / REF - 1) * 1000) / 10,
+      }
+    })
+  return { referenceTyPrice: REF, rows }
+}
 
 export interface BrandOption {
   id: number
@@ -357,45 +407,5 @@ export async function exportCampaignAction(input: {
   }
 }
 
-// ============== TY-Floor (Trendyol-Relative Floor) ==============
-
-export async function getFloorsForBrandAction(brandId: number): Promise<{
-  success: true
-  data: FloorRow[]
-} | {
-  success: false
-  error: string
-}> {
-  try {
-    await requirePermission("dopigo-aktar", "view")
-    const rows = await getFloorsForBrand(brandId)
-    return { success: true, data: rows }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Floor verisi okunamadı",
-    }
-  }
-}
-
-export async function saveFloorsForBrandAction(input: {
-  brandId: number
-  rows: Array<{
-    marketplaceId: number
-    multiplier: number
-    isEnabled: boolean
-    notes?: string | null
-  }>
-}) {
-  try {
-    await requirePermission("dopigo-aktar", "edit")
-    const parsed = SaveFloorsForBrandSchema.parse(input)
-    const result = await saveFloorsForBrand(parsed.brandId, parsed.rows)
-    return { success: true as const, data: result }
-  } catch (err) {
-    return {
-      success: false as const,
-      error: err instanceof Error ? err.message : "Kaydedilemedi",
-    }
-  }
-}
+// TY-Floor (elle multiplier) kaldırıldı → otomatik iso-kâr taban
+// (bkz. getAutoFloorPreviewAction yukarıda + dopigo-sync Pass 2).
