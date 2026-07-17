@@ -1422,8 +1422,16 @@ function buildWhere(filter: SalesFilter): QueryParts {
   }
   // Mutabakatta TAM İADE (netReceived <= 0) olan siparişleri tüm raporlardan çıkar.
   // Dopigo'da SUCCESS görünse bile Trendyol Excel'i 'net 0' diyorsa → satış olmadı,
-  // ciro/kâr/gidere katma. (excludeReturned false ise — örn iade chip'i — uygulanmaz.)
-  if (filter.excludeReturned !== false && !filter.derivedStatus) {
+  // ciro/kâr/gidere katma.
+  // Dışlama İADE/İPTAL statü chip'lerinde uygulanmaz (orada bu siparişleri görmek
+  // istenir) ama SUCCESS/Bekliyor/Tümü'de uygulanır — yoksa "Başarılı" KPI'ı bu net-0
+  // SUCCESS siparişleri sayıp "Tümü"den YÜKSEK çıkıyordu (2026-07-17 bug).
+  // Tablo (excludeReturned:false) bundan etkilenmez, chip ne derse onu gösterir.
+  if (
+    filter.excludeReturned !== false &&
+    filter.derivedStatus !== "RETURNED" &&
+    filter.derivedStatus !== "CANCELLED"
+  ) {
     conditions.push(`
       NOT EXISTS (
         SELECT 1 FROM "TrendyolOrderReconciliation" tr
