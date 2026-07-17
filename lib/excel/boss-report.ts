@@ -1,177 +1,284 @@
 /**
- * Patron Aylık Raporu — Excel üretimi (exceljs, server-only).
+ * Patron Raporu — kullanıcının MEVCUT "Ochi Health 2026.xlsx" dosyasını doldurur.
  *
- * "Ochi Health 2026.xlsx" per-ay sayfası düzenini birebir izler:
- *   PAZAR YERLERİ · QUICK COMMERCE · KARLILIK HESABI · DETAY RAPOR
- * Ek olarak "Diğer (Platform/Ceza)" kalemi (manuel raporda yoktu).
+ * Kullanıcının şablonuna BİREBİR uyum (2026-07-17 kararı):
+ *  - Yeni satır/kalem EKLENMEZ (Diğer/İade raporda yok; KALAN'ı şablonun kendi
+ *    formülü hesaplar: ciro − alış − komisyon − kargo − stopaj).
+ *  - Yalnızca GİRİŞ hücreleri yazılır; formüller (stopaj =Net×1%, yüzdeler,
+ *    toplamlar, KALAN) olduğu gibi korunur.
+ *  - Hücreler ETİKETLE bulunur (satır no hardcode değil) — şablonda satır
+ *    kayarsa bozulmaz.
+ *  - Seçilen ayın sayfası yoksa şablondan oluşturulur; BİR SONRAKİ ayın boş
+ *    şablon sayfası da hazırlanır (kullanıcının manuel kopyalama adımı otomatik).
+ *  - Özet sayfada ("OCHİ HEALTH 2026") ayın kolonu doldurulur.
+ *  - Getir Cadde (Quick Commerce) sistemde yok → 0 yazılır, kullanıcı elle doldurur.
  */
 import ExcelJS from "exceljs"
 import type { BossReportData } from "@/lib/services/boss-report"
 
-const TL = "#,##0"
-const PCT = "0.0%"
+const TR_MONTHS_UPPER = [
+  "OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN",
+  "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK",
+]
+const TR_MONTHS_TITLE = [
+  "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
+]
 
-// Renkler
-const HEADER_FILL = "FF1E293B" // slate-800
-const SUBHEADER_FILL = "FFE2E8F0" // slate-200
-const TOTAL_FILL = "FFF1F5F9" // slate-100
-const NEW_FILL = "FFFEF9C3" // amber-100 (yeni Diğer satırı vurgusu)
+// Ay sayfasındaki pazaryeri SATIR sırası (PAZAR YERLERİ tablosu, A kolonu etiketleri)
+const SHEET_MP_ROWS = ["Trendyol", "Hepsiburada", "N11", "Trendyol Mikro", "Pazarama", "PttAvm", "Farmazon", "Amazon"]
+// DETAY RAPOR kolon sırası (r26 başlık satırı)
+const DETAIL_COLS = ["Trendyol", "Hepsiburada", "N11", "Pazarama", "Amazon", "PttAvm", "Farmazon"]
 
-export async function buildBossReportWorkbook(data: BossReportData): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook()
-  wb.creator = "Ochi ERP"
-  const ws = wb.addWorksheet(data.monthLabel, {
-    views: [{ showGridLines: false }],
-  })
+interface MonthValues {
+  /** label → { satış, sipariş, adet, alış, komisyon, kargo } */
+  byLabel: Map<string, { netSatis: number; siparis: number; adet: number; alis: number; komisyon: number; kargo: number }>
+}
 
-  // Kolon genişlikleri (Detay Rapor 7 pazaryeri = 8 kolon)
-  ws.columns = [
-    { width: 26 }, { width: 15 }, { width: 15 }, { width: 15 },
-    { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 },
-  ]
-
-  let row = 1
-  const { ciro } = data.totals
-
-  // ── Başlık ────────────────────────────────────────────
-  const title = ws.getCell(row, 1)
-  title.value = `OCHİ HEALTH — ${data.monthLabel} RAPORU`
-  title.font = { bold: true, size: 15, color: { argb: "FF1E293B" } }
-  row += 1
-  const note = ws.getCell(row, 1)
-  note.value = data.anyReconciled
-    ? "Değerler pazaryeri mutabakatlarından gelen GERÇEK kesintilerdir (komisyon/kargo/platform/ceza)."
-    : "Değerler tahminidir (mutabakat yüklenmemiş)."
-  note.font = { italic: true, size: 9, color: { argb: "FF64748B" } }
-  row += 2
-
-  const sectionHeader = (label: string, span: number) => {
-    ws.mergeCells(row, 1, row, span)
-    const c = ws.getCell(row, 1)
-    c.value = label
-    c.font = { bold: true, size: 12, color: { argb: "FFFFFFFF" } }
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_FILL } }
-    c.alignment = { vertical: "middle" }
-    ws.getRow(row).height = 20
-    row += 1
-  }
-  const colHeader = (labels: string[]) => {
-    labels.forEach((l, i) => {
-      const c = ws.getCell(row, i + 1)
-      c.value = l
-      c.font = { bold: true, size: 10 }
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: SUBHEADER_FILL } }
-      c.alignment = { horizontal: i === 0 ? "left" : "right", wrapText: true }
-    })
-    row += 1
-  }
-
-  // ── PAZAR YERLERİ ─────────────────────────────────────
-  sectionHeader(`PAZAR YERLERİ — ${data.monthLabel}`, 5)
-  colHeader(["Pazar Yerleri", "Toplam Satış", "Sipariş Adedi", "Satış Adedi", "Ort. Sepet"])
+function toMonthValues(data: BossReportData): MonthValues {
+  const byLabel = new Map<string, { netSatis: number; siparis: number; adet: number; alis: number; komisyon: number; kargo: number }>()
   for (const m of data.marketplaces) {
-    ws.getCell(row, 1).value = m.label
-    const cells = [
-      { v: m.netSatis, f: TL },
-      { v: m.siparisAdedi, f: "#,##0" },
-      { v: m.satisAdedi, f: "#,##0" },
-      { v: m.ortSepet, f: TL },
-    ]
-    cells.forEach((cc, i) => {
-      const c = ws.getCell(row, i + 2)
-      c.value = cc.v
-      c.numFmt = cc.f
+    byLabel.set(m.label, {
+      netSatis: round2(m.netSatis),
+      siparis: m.siparisAdedi,
+      adet: m.satisAdedi,
+      alis: round2(m.alis),
+      komisyon: round2(m.komisyon),
+      kargo: round2(m.kargo),
     })
-    row += 1
   }
-  // Toplam
-  const totalOrders = data.marketplaces.reduce((a, m) => a + m.siparisAdedi, 0)
-  const totalUnits = data.marketplaces.reduce((a, m) => a + m.satisAdedi, 0)
-  {
-    const c1 = ws.getCell(row, 1); c1.value = "TOPLAM"; c1.font = { bold: true }
-    const vals = [
-      { v: ciro, f: TL }, { v: totalOrders, f: "#,##0" },
-      { v: totalUnits, f: "#,##0" }, { v: totalOrders > 0 ? ciro / totalOrders : 0, f: TL },
-    ]
-    vals.forEach((cc, i) => {
-      const c = ws.getCell(row, i + 2); c.value = cc.v; c.numFmt = cc.f
-      c.font = { bold: true }
-    })
-    ws.getRow(row).eachCell((c) => (c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: TOTAL_FILL } }))
-    row += 2
+  return { byLabel }
+}
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+/** A kolonunda verilen etiketi taşıyan satırı bul (ilk eşleşme). */
+function findRowByLabel(ws: ExcelJS.Worksheet, label: string, col = 1): number | null {
+  for (let r = 1; r <= Math.min(ws.rowCount, 200); r++) {
+    const v = ws.getRow(r).getCell(col).value
+    if (typeof v === "string" && v.trim() === label) return r
   }
+  return null
+}
 
-  // ── QUICK COMMERCE (placeholder — sistemde yok, elle doldur) ──
-  sectionHeader(`QUICK COMMERCE — ${data.monthLabel}`, 5)
-  colHeader(["Pazar Yerleri", "Toplam Satış", "Sipariş Adedi", "Satış Adedi", "Ort. Sepet"])
-  ws.getCell(row, 1).value = "Getir Cadde"
-  ws.getCell(row, 1).font = { color: { argb: "FF94A3B8" } }
-  for (let i = 2; i <= 5; i++) { const c = ws.getCell(row, i); c.value = 0; c.numFmt = TL }
-  ws.getCell(row, 6).value = "← elle doldur (sistemde yok)"
-  ws.getCell(row, 6).font = { italic: true, size: 9, color: { argb: "FF94A3B8" } }
-  row += 2
-
-  // ── KARLILIK HESABI ───────────────────────────────────
-  sectionHeader("KARLILIK HESABI", 3)
-  colHeader(["Kalem", "Tutar", "Ciro %"])
-  const karlilik: { label: string; value: number; highlight?: boolean }[] = [
-    { label: "CİRO", value: data.totals.ciro },
-    { label: "ALIŞ MALİYETİ", value: data.totals.alis },
-    { label: "KOMİSYON MALİYETİ", value: data.totals.komisyon },
-    { label: "KARGO MALİYETİ", value: data.totals.kargo },
-    { label: "STOPAJ", value: data.totals.stopaj },
-    { label: "DİĞER (Platform/Ceza)", value: data.totals.diger, highlight: true },
-    { label: "İADE MALİYETİ (kargo/ceza)", value: data.totals.iade, highlight: true },
-    { label: "KALAN (Net Kâr)", value: data.totals.kalan },
+/** Ay sayfasının giriş hücrelerini doldurur (formüllere dokunmaz). */
+function fillMonthSheet(ws: ExcelJS.Worksheet, values: MonthValues) {
+  // PAZAR YERLERİ tablosu: her pazaryeri satırı B=satış C=sipariş D=adet
+  for (const label of SHEET_MP_ROWS) {
+    const r = findRowByLabel(ws, label)
+    if (r == null) continue
+    const v = values.byLabel.get(label)
+    ws.getRow(r).getCell(2).value = v?.netSatis ?? 0
+    ws.getRow(r).getCell(3).value = v?.siparis ?? 0
+    ws.getRow(r).getCell(4).value = v?.adet ?? 0
+  }
+  // Getir Cadde → sıfırla (sistemde yok, elle doldurulur)
+  const getirRow = findRowByLabel(ws, "Getir Cadde")
+  if (getirRow != null) {
+    for (const c of [2, 3, 4]) ws.getRow(getirRow).getCell(c).value = 0
+  }
+  // DETAY RAPOR: "Değerler" başlık satırından kolon eşlemesi
+  const headerRow = findRowByLabel(ws, "Değerler")
+  if (headerRow == null) return
+  const colOf = new Map<string, number>()
+  for (let c = 2; c <= 12; c++) {
+    const v = ws.getRow(headerRow).getCell(c).value
+    if (typeof v === "string" && v.trim()) colOf.set(v.trim(), c)
+  }
+  const detailRows: { label: string; pick: (v: NonNullable<ReturnType<MonthValues["byLabel"]["get"]>>) => number }[] = [
+    { label: "Net Satış", pick: (v) => v.netSatis },
+    { label: "Alış Fiyatı", pick: (v) => v.alis },
+    { label: "Komisyon Fiyatı", pick: (v) => v.komisyon },
+    { label: "Kargo Toplam", pick: (v) => v.kargo },
   ]
-  for (const k of karlilik) {
-    const isTotal = k.label.startsWith("CİRO") || k.label.startsWith("KALAN")
-    const c1 = ws.getCell(row, 1); c1.value = k.label; c1.font = { bold: isTotal }
-    const c2 = ws.getCell(row, 2); c2.value = k.value; c2.numFmt = TL; c2.font = { bold: isTotal }
-    const c3 = ws.getCell(row, 3); c3.value = ciro > 0 ? k.value / ciro : 0; c3.numFmt = PCT
-    if (k.highlight) {
-      ws.getRow(row).eachCell((c) => (c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NEW_FILL } }))
+  for (const { label, pick } of detailRows) {
+    const r = findRowByLabel(ws, label)
+    if (r == null) continue
+    for (const mp of DETAIL_COLS) {
+      const c = colOf.get(mp)
+      if (c == null) continue
+      const v = values.byLabel.get(mp)
+      ws.getRow(r).getCell(c).value = v ? pick(v) : 0
     }
-    if (k.label.startsWith("KALAN")) {
-      c2.font = { bold: true, color: { argb: "FF16A34A" } }
-      c3.font = { bold: true, color: { argb: "FF16A34A" } }
+  }
+}
+
+/** Boş ay şablonu oluşturur — kullanıcının sayfalarıyla aynı düzen ve formüller. */
+function createMonthTemplateSheet(wb: ExcelJS.Workbook, monthIdx: number, year: number): ExcelJS.Worksheet {
+  const AY = TR_MONTHS_UPPER[monthIdx]
+  const ws = wb.addWorksheet(`${AY} ${year}`)
+  ws.getCell("A1").value = `PAZAR YERLERİ ${AY}`
+  ws.getCell("A2").value = ","
+  ;["Toplam Satış", "Toplam Sipariş Adeti", "Toplam Satış Adeti", "Ortalama Sepet Tutarı"].forEach((h, i) => {
+    ws.getCell(2, i + 2).value = h
+  })
+  SHEET_MP_ROWS.forEach((label, i) => {
+    const r = 3 + i
+    ws.getCell(r, 1).value = label
+    ws.getCell(r, 2).value = 0
+    ws.getCell(r, 3).value = 0
+    ws.getCell(r, 4).value = 0
+    ws.getCell(r, 5).value = { formula: `IFERROR(B${r}/C${r},0)` }
+  })
+  ws.getCell("B11").value = { formula: "SUM(B3:B10)" }
+  ws.getCell("C11").value = { formula: "SUM(C3:C10)" }
+  ws.getCell("D11").value = { formula: "SUM(D3:D10)" }
+  ws.getCell("E11").value = { formula: "IFERROR(B11/C11,0)" }
+
+  ws.getCell("A12").value = `QUİCK COMMERCE ${AY}`
+  ;["Pazar Yerleri", "Toplam Satış", "Toplam Sipariş Adeti", "Toplam Satış Adeti", "Ortalama Sepet Tutarı"].forEach((h, i) => {
+    ws.getCell(13, i + 1).value = h
+  })
+  ws.getCell("A14").value = "Getir Cadde"
+  ws.getCell("B14").value = 0
+  ws.getCell("C14").value = 0
+  ws.getCell("D14").value = 0
+  ws.getCell("E14").value = { formula: "IFERROR(B14/C14,0)" }
+  ws.getCell("B15").value = { formula: "SUM(B14)" }
+  ws.getCell("C15").value = { formula: "SUM(C14)" }
+  ws.getCell("D15").value = { formula: "SUM(D14)" }
+
+  ws.getCell("A17").value = "KARLILIK HESABI"
+  const karlilik: [string, string][] = [
+    ["CİRO", "SUM(B27:H27)"],
+    ["ALIŞ MALİYETİ", "SUM(B29:H29)"],
+    ["KOMİSYON MALİYETİ", "SUM(B32:H32)"],
+    ["KARGO MALİYETİ", "SUM(B35:H35)"],
+    ["STOPAJ", "SUM(B38:H38)"],
+  ]
+  karlilik.forEach(([label, f], i) => {
+    const r = 18 + i
+    ws.getCell(r, 1).value = label
+    ws.getCell(r, 2).value = { formula: f }
+    ws.getCell(r, 3).value = i === 0 ? 1 : { formula: `IFERROR(B${r}/B18,0)` }
+  })
+  ws.getCell("A23").value = "KALAN"
+  ws.getCell("B23").value = { formula: "B18-B19-B20-B21-B22" }
+  ws.getCell("C23").value = { formula: "IFERROR(B23/B18,0)" }
+
+  ws.getCell("A25").value = "DETAY RAPOR"
+  ws.getCell("A26").value = "Değerler"
+  DETAIL_COLS.forEach((mp, i) => (ws.getCell(26, i + 2).value = mp))
+  const detay: [number, string, boolean][] = [
+    [27, "Net Satış", false],
+    [29, "Alış Fiyatı", false],
+    [32, "Komisyon Fiyatı", false],
+    [35, "Kargo Toplam", false],
+  ]
+  for (const [r, label] of detay) {
+    ws.getCell(r, 1).value = label
+    for (let c = 2; c <= 8; c++) ws.getCell(r, c).value = 0
+    // Yüzde satırı (bir alt satır)
+    ws.getCell(r + 1, 1).value = `${label === "Net Satış" ? "" : label + " "}Yüzde`.trim() || undefined
+  }
+  // Yüzde + stopaj + kalan formülleri (şablonla aynı)
+  const pctRow = (r: number, base: number) => {
+    for (let c = 2; c <= 8; c++) {
+      const col = ws.getColumn(c).letter
+      ws.getCell(r, c).value = { formula: `IFERROR(${col}${base}/${col}27,0)` }
     }
-    row += 1
   }
-  row += 1
-
-  // ── DETAY RAPOR (pazaryeri sütunları) ─────────────────
-  const detayMps = data.marketplaces.filter((m) => m.channel) // "Trendyol Mikro" (null) hariç
-  sectionHeader("DETAY RAPOR", detayMps.length + 1)
-  colHeader(["Değerler", ...detayMps.map((m) => m.label)])
-
-  const detayRow = (label: string, pick: (m: BossReportData["marketplaces"][0]) => number, fmt: string, bold = false) => {
-    const c1 = ws.getCell(row, 1); c1.value = label; c1.font = { bold }
-    detayMps.forEach((m, i) => {
-      const c = ws.getCell(row, i + 2); c.value = pick(m); c.numFmt = fmt
-    })
-    row += 1
+  ws.getCell("A30").value = "Alış Fiyatı Yüzde"; pctRow(30, 29)
+  ws.getCell("A33").value = "Komisyon Fiyatı Yüzde"; pctRow(33, 32)
+  ws.getCell("A36").value = "Kargo Toplam Yüzde"; pctRow(36, 35)
+  ws.getCell("A38").value = "Stopaj Toplam"
+  for (let c = 2; c <= 8; c++) {
+    const col = ws.getColumn(c).letter
+    ws.getCell(38, c).value = { formula: `${col}27*1/100` }
   }
-  detayRow("Net Satış", (m) => m.netSatis, TL, true)
-  row += 1
-  detayRow("Alış Fiyatı", (m) => m.alis, TL)
-  detayRow("Alış %", (m) => (m.netSatis > 0 ? m.alis / m.netSatis : 0), PCT)
-  row += 1
-  detayRow("Komisyon", (m) => m.komisyon, TL)
-  detayRow("Komisyon %", (m) => (m.netSatis > 0 ? m.komisyon / m.netSatis : 0), PCT)
-  row += 1
-  detayRow("Kargo", (m) => m.kargo, TL)
-  detayRow("Kargo %", (m) => (m.netSatis > 0 ? m.kargo / m.netSatis : 0), PCT)
-  row += 1
-  detayRow("Stopaj", (m) => m.stopaj, TL)
-  detayRow("Stopaj %", (m) => (m.netSatis > 0 ? m.stopaj / m.netSatis : 0), PCT)
-  row += 1
-  detayRow("Diğer (Platform/Ceza)", (m) => m.diger, TL)
-  detayRow("Diğer %", (m) => (m.netSatis > 0 ? m.diger / m.netSatis : 0), PCT)
-  row += 1
-  detayRow("İade Maliyeti (kargo/ceza)", (m) => m.iade, TL)
-  detayRow("İade %", (m) => (m.netSatis > 0 ? m.iade / m.netSatis : 0), PCT)
+  ws.getCell("A39").value = "Stopaj Yüzde"; pctRow(39, 38)
+  ws.getCell("A41").value = "Kalan Toplam"
+  for (let c = 2; c <= 8; c++) {
+    const col = ws.getColumn(c).letter
+    ws.getCell(41, c).value = { formula: `${col}27-${col}29-${col}32-${col}35-${col}38` }
+  }
+  ws.getCell("A42").value = "Kalan Yüzde"; pctRow(42, 41)
+  ws.getColumn(1).width = 24
+  for (let c = 2; c <= 8; c++) ws.getColumn(c).width = 14
+  return ws
+}
 
-  const arrayBuffer = await wb.xlsx.writeBuffer()
-  return Buffer.from(arrayBuffer)
+/** Özet sayfada ("OCHİ HEALTH 2026") ayın kolonunu doldurur. */
+function fillSummarySheet(wb: ExcelJS.Workbook, monthIdx: number, data: BossReportData) {
+  const ws = wb.worksheets.find((w) => w.name.toUpperCase().includes("OCHİ") || w.name.toUpperCase().includes("OCHI"))
+  if (!ws) return
+  const ayAdi = TR_MONTHS_TITLE[monthIdx]
+
+  // Etiket satırını B kolonunda bul, ay kolonunu o tablonun başlık satırından çöz.
+  const fillLabeled = (label: string, value: number | { formula: string }) => {
+    const r = findRowByLabel(ws, label, 2)
+    if (r == null) return
+    // Yukarı doğru en yakın "Item" başlık satırını bul → ay kolonunu oradan al
+    for (let hr = r - 1; hr >= Math.max(1, r - 12); hr--) {
+      const isHeader = ws.getRow(hr).getCell(2).value === "Item"
+      if (!isHeader) continue
+      for (let c = 3; c <= 15; c++) {
+        if (ws.getRow(hr).getCell(c).value === ayAdi) {
+          ws.getRow(r).getCell(c).value = value
+          return
+        }
+      }
+      return
+    }
+  }
+
+  const t = data.totals
+  fillLabeled("Sanal", round2(t.ciro))
+  fillLabeled("Ürün Maliyet", round2(t.alis))
+  fillLabeled("Komisyon Maliyeti", round2(t.komisyon))
+  fillLabeled("Kargo Maliyet", round2(t.kargo))
+  // Stopaj satırı bazı kolonlarda formül — pattern'e uyup formül yaz (Sanal×%1)
+  {
+    const r = findRowByLabel(ws, "Stopaj", 2)
+    const sanalRow = findRowByLabel(ws, "Sanal", 2)
+    if (r != null && sanalRow != null) {
+      for (let hr = r - 1; hr >= Math.max(1, r - 12); hr--) {
+        if (ws.getRow(hr).getCell(2).value !== "Item") continue
+        for (let c = 3; c <= 15; c++) {
+          if (ws.getRow(hr).getCell(c).value === ayAdi) {
+            const col = ws.getColumn(c).letter
+            ws.getRow(r).getCell(c).value = { formula: `${col}${sanalRow}*1/100` }
+          }
+        }
+        break
+      }
+    }
+  }
+  // Pazar Yerleri tablosu (etiketler ay sayfası satır adlarıyla aynı)
+  for (const m of data.marketplaces) fillLabeled(m.label, round2(m.netSatis))
+  // Getir Cadde → 0
+  fillLabeled("Getir Cadde", 0)
+}
+
+/**
+ * Ana giriş: kullanıcının workbook'unu doldurur.
+ *  - Ay sayfası (yoksa oluştur) → giriş hücreleri
+ *  - Sonraki ayın boş şablonu (yoksa)
+ *  - Özet sayfa ay kolonu
+ */
+export async function fillOchiWorkbook(
+  fileBuffer: Buffer,
+  year: number,
+  monthIdx: number, // 0-11
+  data: BossReportData,
+): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook()
+  await wb.xlsx.load(fileBuffer as unknown as ArrayBuffer)
+
+  const sheetName = `${TR_MONTHS_UPPER[monthIdx]} ${year}`
+  let ws = wb.worksheets.find((w) => w.name.trim().toUpperCase() === sheetName)
+  if (!ws) ws = createMonthTemplateSheet(wb, monthIdx, year)
+  fillMonthSheet(ws, toMonthValues(data))
+
+  // Bir sonraki ayın boş şablonu (yıl taşması dahil)
+  const nextIdx = (monthIdx + 1) % 12
+  const nextYear = monthIdx === 11 ? year + 1 : year
+  const nextName = `${TR_MONTHS_UPPER[nextIdx]} ${nextYear}`
+  if (!wb.worksheets.find((w) => w.name.trim().toUpperCase() === nextName)) {
+    createMonthTemplateSheet(wb, nextIdx, nextYear)
+  }
+
+  fillSummarySheet(wb, monthIdx, data)
+
+  const out = await wb.xlsx.writeBuffer()
+  return Buffer.from(out)
 }

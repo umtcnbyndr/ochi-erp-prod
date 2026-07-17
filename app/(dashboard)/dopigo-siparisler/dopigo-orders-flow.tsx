@@ -161,16 +161,6 @@ export function DopigoOrdersFlow(props: Props) {
     return `/api/dopigo-siparisler-export?${p.toString()}`
   }, [props])
 
-  // Patron Aylık Raporu — sadece seçili dönemin from/to'su (marka/kategori filtresiz, tüm ay)
-  const reportUrl = useMemo(() => {
-    const parts = exportUrlSafe.split("?")[1] ?? ""
-    const src = new URLSearchParams(parts)
-    const p = new URLSearchParams()
-    if (src.get("from")) p.set("from", src.get("from")!)
-    if (src.get("to")) p.set("to", src.get("to")!)
-    return `/api/dopigo-rapor-export?${p.toString()}`
-  }, [exportUrlSafe])
-
   return (
     <div className="space-y-4">
       {/* Üst bar: tarih + sync + excel */}
@@ -207,12 +197,7 @@ export function DopigoOrdersFlow(props: Props) {
               Excel
             </a>
           </Button>
-          <Button size="sm" variant="default" asChild title="Patron için aylık P&L raporu (Pazar Yerleri · Karlılık · Detay)">
-            <a href={reportUrl} download>
-              <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />
-              Patron Raporu
-            </a>
-          </Button>
+          <BossReportButton />
           {props.lastSync && (
             <div className="text-xs text-muted-foreground">
               Son sync: <span className={props.lastSync.status === "FAILED" ? "text-rose-600" : ""}>
@@ -688,6 +673,86 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// ===== Patron Raporu (mevcut Ochi Health Excel'ini doldur) =====
+
+function BossReportButton() {
+  const [open, setOpen] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [file, setFile] = useState<File | null>(null)
+  // Default: geçen ay (mutabakatı biten ay)
+  const [month, setMonth] = useState(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+  })
+
+  const handleFill = async () => {
+    if (!file) {
+      toast.error("Ochi Health Excel dosyanı seç")
+      return
+    }
+    setPending(true)
+    try {
+      const fd = new FormData()
+      fd.set("file", file)
+      fd.set("month", month)
+      const res = await fetch("/api/dopigo-rapor-export", { method: "POST", body: fd })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        toast.error(err?.error ?? `Hata (${res.status})`)
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = file.name
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success(`${month} ayı dolduruldu — dosya indirildi`)
+      setOpen(false)
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="default" onClick={() => setOpen(true)} title="Ochi Health Excel'ine ay verilerini doldur">
+        <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />
+        Patron Raporu
+      </Button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Patron Raporu Doldur</SheetTitle>
+            <SheetDescription>
+              Mevcut &quot;Ochi Health&quot; Excel&apos;ini yükle — sistem seçtiğin ayın sayfasındaki
+              değerleri doldurur (formüller ve düzen aynen korunur, yeni satır eklenmez),
+              bir sonraki ayın boş şablonunu oluşturur ve özet sayfanın ay kolonunu yazar.
+              Getir Cadde sıfırlanır — elle doldur.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 mt-4">
+            <div className="space-y-1.5">
+              <Label className="text-sm">Ochi Health Excel (.xlsx)</Label>
+              <Input type="file" accept=".xlsx" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Doldurulacak ay</Label>
+              <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-44" />
+            </div>
+            <Button onClick={handleFill} disabled={pending || !file}>
+              {pending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-1.5" />}
+              Doldur ve indir
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }
 
