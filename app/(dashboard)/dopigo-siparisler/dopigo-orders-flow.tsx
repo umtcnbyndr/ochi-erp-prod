@@ -161,6 +161,16 @@ export function DopigoOrdersFlow(props: Props) {
     return `/api/dopigo-siparisler-export?${p.toString()}`
   }, [props])
 
+  // Patron Aylık Raporu — sadece seçili dönemin from/to'su (marka/kategori filtresiz, tüm ay)
+  const reportUrl = useMemo(() => {
+    const parts = exportUrlSafe.split("?")[1] ?? ""
+    const src = new URLSearchParams(parts)
+    const p = new URLSearchParams()
+    if (src.get("from")) p.set("from", src.get("from")!)
+    if (src.get("to")) p.set("to", src.get("to")!)
+    return `/api/dopigo-rapor-export?${p.toString()}`
+  }, [exportUrlSafe])
+
   return (
     <div className="space-y-4">
       {/* Üst bar: tarih + sync + excel */}
@@ -195,6 +205,12 @@ export function DopigoOrdersFlow(props: Props) {
             <a href={exportUrlSafe} download>
               <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />
               Excel
+            </a>
+          </Button>
+          <Button size="sm" variant="default" asChild title="Patron için aylık P&L raporu (Pazar Yerleri · Karlılık · Detay)">
+            <a href={reportUrl} download>
+              <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />
+              Patron Raporu
             </a>
           </Button>
           {props.lastSync && (

@@ -119,6 +119,8 @@ export interface ChannelBreakdownRow {
   orderCount: number
   unitCount: number
   revenue: number
+  /** Alış maliyeti (COGS) — main > eczane > manuel */
+  cost: number
   estCommission: number
   estShipping: number
   estWithholding: number
@@ -642,6 +644,7 @@ export async function getChannelBreakdown(filter: SalesFilter): Promise<ChannelB
       orderCount: orders,
       unitCount: Number(r.unit_count ?? 0),
       revenue,
+      cost,
       estCommission: exp.commission,
       estShipping: exp.shipping,
       estWithholding: exp.withholding,
