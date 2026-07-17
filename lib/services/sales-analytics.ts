@@ -921,7 +921,7 @@ export interface OrdersListResult {
 export interface OrdersListFilter extends SalesFilter {
   limit?: number
   offset?: number
-  sortBy?: "date" | "channel" | "revenue" | "profit" | "cost" | "amount"
+  sortBy?: "date" | "channel" | "revenue" | "profit" | "cost" | "amount" | "commission" | "shipping" | "withholding" | "other"
   sortDir?: "asc" | "desc"
 }
 
@@ -934,6 +934,17 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
   const { whereSql, params } = buildWhere(filter)
   const limit = filter.limit ?? 100
   const offset = filter.offset ?? 0
+
+  // Komisyon/kargo/stopaj/diğer GLOBAL sıralaması için SQL ifadeleri — aşağıdaki
+  // JS map'iyle (tableRows) AYNI mantık: recon varsa gruba orantılı dağıtım, yoksa
+  // tahmin. Sıralama bu hesaplanmış değere göre yapılır (tabloda gösterilenle tutar).
+  const storeChk = `LOWER(o."salesChannel") IN ('store','magaza','mağaza')`
+  const grpRev = `SUM(CASE WHEN o."derivedStatus" NOT IN ('CANCELLED','RETURNED') THEN i.price ELSE 0 END) OVER (PARTITION BY o."salesChannel", ${reconMatchKeySql("o")})`
+  const ordRev = `SUM(i.price) OVER (PARTITION BY o.id)`
+  const commissionCalc = `CASE WHEN ${storeChk} THEN 0 WHEN recon."netReceived" IS NOT NULL THEN recon."commission" * (i.price / NULLIF(${grpRev}, 0)) ELSE i.price * (${EFFECTIVE_COMMISSION_PCT_SQL}) / 100 END`
+  const shippingCalc = `CASE WHEN ${storeChk} THEN 0 WHEN recon."netReceived" IS NOT NULL THEN (recon."shipping" + recon."returnShipping") * (i.price / NULLIF(${grpRev}, 0)) ELSE COALESCE(m."shippingCost", 0) * (i.price / NULLIF(${ordRev}, 0)) END`
+  const withholdingCalc = `CASE WHEN ${storeChk} THEN 0 WHEN recon."netReceived" IS NOT NULL AND recon."withholding" > 0 THEN recon."withholding" * (i.price / NULLIF(${grpRev}, 0)) ELSE i.price * COALESCE(m."withholdingTax", 0) / 100 END`
+  const otherCalc = `CASE WHEN ${storeChk} THEN 0 WHEN recon."netReceived" IS NOT NULL THEN (recon."platformFee" + recon."penalty" + recon."otherDeductions" + recon."internationalFee") * (i.price / NULLIF(${grpRev}, 0)) ELSE 0 END`
 
   // Sort kuralı — aynı siparişe ait kalemler hep yan yana kalır (orderId ikinci anahtar)
   let orderBy: string
@@ -961,6 +972,18 @@ export async function listOrdersForTable(filter: OrdersListFilter): Promise<Orde
         WHEN p."streetPurchasePrice" IS NOT NULL AND p."streetPurchasePrice" > 0 THEN (${STREET_FALLBACK_SQL})
         WHEN mpp."purchasePrice" IS NOT NULL THEN mpp."purchasePrice"
         ELSE NULL END) ${dir} NULLS ${dir === "ASC" ? "FIRST" : "LAST"}, o.id DESC, i.id ASC`
+      break
+    case "commission":
+      orderBy = `(${commissionCalc}) ${dir}, o.id DESC, i.id ASC`
+      break
+    case "shipping":
+      orderBy = `(${shippingCalc}) ${dir}, o.id DESC, i.id ASC`
+      break
+    case "withholding":
+      orderBy = `(${withholdingCalc}) ${dir}, o.id DESC, i.id ASC`
+      break
+    case "other":
+      orderBy = `(${otherCalc}) ${dir}, o.id DESC, i.id ASC`
       break
     case "date":
     default:
@@ -1439,8 +1462,11 @@ function buildWhere(filter: SalesFilter): QueryParts {
   }
   if (filter.searchQuery && filter.searchQuery.trim().length > 0) {
     const q = `%${filter.searchQuery.trim()}%`
+    // Sipariş No araması: tabloda gösterilen no = serviceValue ilk parça, ama
+    // serviceOrderId (order code / UUID) farklı olabiliyor → İKİSİNİ de tara,
+    // yoksa kullanıcının gördüğü no ile arayınca sonuç gelmiyordu.
     conditions.push(
-      `(i."productName" ILIKE $${idx} OR i.barcode = $${idx + 1} OR o."serviceOrderId" ILIKE $${idx} OR o."customerName" ILIKE $${idx})`,
+      `(i."productName" ILIKE $${idx} OR i.barcode = $${idx + 1} OR o."serviceOrderId" ILIKE $${idx} OR o."serviceValue" ILIKE $${idx} OR o."customerName" ILIKE $${idx})`,
     )
     params.push(q, filter.searchQuery.trim())
     idx += 2

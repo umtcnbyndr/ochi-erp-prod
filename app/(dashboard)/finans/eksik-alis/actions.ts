@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { requireAdmin } from "@/lib/permissions"
+import { requirePermission } from "@/lib/permissions"
 import {
   getUnmatchedDopigoItems,
   upsertManualPurchasePrice,
@@ -17,7 +17,7 @@ export async function listUnmatchedAction(input: {
   toDate: string
 }): Promise<Result<UnmatchedItemAggregate[]>> {
   try {
-    await requireAdmin()
+    await requirePermission("finans-eksik-alis", "edit")
     const items = await getUnmatchedDopigoItems({
       fromDate: new Date(input.fromDate),
       toDate: new Date(input.toDate),
@@ -36,7 +36,7 @@ export async function saveManualPriceAction(input: {
   notes?: string | null
 }): Promise<Result<{ id: number }>> {
   try {
-    const actor = await requireAdmin()
+    const actor = await requirePermission("finans-eksik-alis", "edit")
     const r = await upsertManualPurchasePrice({
       sku: input.sku,
       barcode: input.barcode,
@@ -63,7 +63,7 @@ export async function saveManualPriceAction(input: {
 
 export async function deleteManualPriceAction(id: number): Promise<Result<true>> {
   try {
-    const actor = await requireAdmin()
+    const actor = await requirePermission("finans-eksik-alis", "edit")
     await deleteManualPurchasePrice(id)
     await writeAuditLog({
       userId: actor.id,

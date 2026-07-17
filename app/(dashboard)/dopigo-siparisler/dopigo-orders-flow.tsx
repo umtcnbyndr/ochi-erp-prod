@@ -53,7 +53,7 @@ interface Props {
   brandId: number | null; categoryId: number | null; salesChannel: string | null
   statusFilter: "SUCCESS" | "CANCELLED" | "RETURNED" | "WAITING" | "OTHER" | null
   searchQuery: string | null
-  sortBy: "date" | "channel" | "revenue" | "profit" | "cost" | "amount"
+  sortBy: "date" | "channel" | "revenue" | "profit" | "cost" | "amount" | "commission" | "shipping" | "withholding" | "other"
   sortDir: "asc" | "desc"
   configExists: boolean; configActive: boolean; lastTestOk: boolean | null; lastTestNote: string | null
   brands: { id: number; name: string }[]
@@ -536,10 +536,18 @@ function OrdersTable({ data, sortBy, sortDir, onSort, onPageChange, onRowClick }
                 <TableHead className="text-right cursor-pointer w-[100px]" onClick={() => handleSort("cost")}>
                   Alış<SortIcon col="cost" />
                 </TableHead>
-                <TableHead className="text-right w-[100px]">Komis.</TableHead>
-                <TableHead className="text-right w-[80px]">Kargo</TableHead>
-                <TableHead className="text-right w-[80px]">Stopaj</TableHead>
-                <TableHead className="text-right w-[80px]">Diğer</TableHead>
+                <TableHead className="text-right cursor-pointer w-[100px]" onClick={() => handleSort("commission")}>
+                  Komis.<SortIcon col="commission" />
+                </TableHead>
+                <TableHead className="text-right cursor-pointer w-[80px]" onClick={() => handleSort("shipping")}>
+                  Kargo<SortIcon col="shipping" />
+                </TableHead>
+                <TableHead className="text-right cursor-pointer w-[80px]" onClick={() => handleSort("withholding")}>
+                  Stopaj<SortIcon col="withholding" />
+                </TableHead>
+                <TableHead className="text-right cursor-pointer w-[80px]" onClick={() => handleSort("other")}>
+                  Diğer<SortIcon col="other" />
+                </TableHead>
                 <TableHead className="text-right cursor-pointer w-[120px] font-semibold" onClick={() => handleSort("profit")}>
                   Kalan<SortIcon col="profit" />
                 </TableHead>

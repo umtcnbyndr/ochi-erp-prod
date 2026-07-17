@@ -24,7 +24,8 @@ function defaultRange(): { from: string; to: string } {
 export default async function EksikAlisPage({ searchParams }: Props) {
   const user = await getAuthUser()
   if (!user) redirect("/login")
-  if (user.role !== "ADMIN") redirect("/panel")
+  // Granüler izin: ADMIN full erişim + finans-eksik-alis izni olan (ör. MANAGER)
+  if (!user.permissions["finans-eksik-alis"]?.canView) redirect("/panel")
 
   const sp = await searchParams
   const def = defaultRange()

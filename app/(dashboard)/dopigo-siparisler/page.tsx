@@ -160,14 +160,15 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
     | null
   const searchQuery = sp.search ?? null
   const pageNum = Math.max(1, Number(sp.page ?? "1"))
-  const sortBy = (sp.sortBy as "date" | "channel" | "revenue" | "profit" | "cost" | "amount" | undefined) ?? "date"
+  const sortBy = (sp.sortBy as "date" | "channel" | "revenue" | "profit" | "cost" | "amount" | "commission" | "shipping" | "withholding" | "other" | undefined) ?? "date"
   const sortDir = (sp.sortDir as "asc" | "desc" | undefined) ?? "desc"
 
   // Kullanıcı bazlı marka kısıtı (SALES rolü için)
   const authUser = await getAuthUser()
   const allowedBrandIds = authUser?.allowedBrandIds ?? null
 
-  // KPI'lar için filter — exclude cancelled/returned default true
+  // Status sayaçları (chip'ler + İptal/İade oranı) — TÜM statüleri sayar, chip'ten
+  // etkilenmez (derivedStatus null). getStatusCounts bunu kullanır.
   const baseFilter = {
     fromDate,
     toDate,
@@ -181,6 +182,12 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
     excludeReturned: true,
     excludeArchived: true,
   }
+
+  // KPI kartları + breakdown'lar status chip'ini DİNLER — "Başarılı"ya basınca
+  // ciro/net kâr sadece başarılıyı, "İade"ye basınca iadeyi gösterir. null (Tümü)
+  // → net satış (cancelled/returned hariç). derivedStatus set ise buildWhere zaten
+  // exclude bayraklarını yok sayıp o statüye filtreler.
+  const kpiFilter = { ...baseFilter, derivedStatus: statusFilter }
 
   // Tablo için filter — status chip'i ne diyorsa ona göre
   const tableFilter = {
@@ -223,13 +230,13 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
       select: { id: true, name: true },
     }),
     prisma.category.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    getTopLineKPIs(baseFilter),
+    getTopLineKPIs(kpiFilter),
     getStatusCounts(baseFilter),
-    getBrandBreakdown(baseFilter),
-    getCategoryBreakdown(baseFilter),
-    getSubcategoryBreakdown(baseFilter),
-    getChannelBreakdown(baseFilter),
-    getTopProducts(baseFilter, 20),
+    getBrandBreakdown(kpiFilter),
+    getCategoryBreakdown(kpiFilter),
+    getSubcategoryBreakdown(kpiFilter),
+    getChannelBreakdown(kpiFilter),
+    getTopProducts(kpiFilter, 20),
     getUnmatchedItems({ fromDate, toDate }, 50),
     prisma.dopigoOrderSyncRun.findFirst({
       orderBy: { startedAt: "desc" },

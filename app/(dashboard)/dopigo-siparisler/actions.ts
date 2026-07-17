@@ -254,7 +254,8 @@ export async function saveOrderItemCostAction(input: {
   purchasePrice: number
 }): Promise<{ success: boolean; message: string }> {
   try {
-    const actor = await requireAdmin()
+    // Eksik alış fiyatı girme yetkisi (Eksik Alış modülü) — ADMIN + izinli MANAGER
+    const actor = await requirePermission("finans-eksik-alis", "edit")
     if (!(input.purchasePrice > 0)) {
       return { success: false, message: "Alış fiyatı 0'dan büyük olmalı" }
     }

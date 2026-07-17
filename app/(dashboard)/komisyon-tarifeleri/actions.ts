@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { prisma } from "@/lib/db"
-import { requireAdmin } from "@/lib/permissions"
+import { requirePermission } from "@/lib/permissions"
 import {
   importCommissionTariff,
   getCurrentTariffWeek,
@@ -24,7 +24,7 @@ export type UploadResult =
 
 export async function uploadTariffAction(formData: FormData): Promise<UploadResult> {
   try {
-    const adminUser = await requireAdmin()
+    const adminUser = await requirePermission("komisyon-tarifeleri", "edit")
     const file = formData.get("file") as File | null
     if (!file) return { success: false, error: "Dosya seçilmedi" }
 
@@ -87,7 +87,7 @@ export async function selectTariffAction(
   customPrice: number | null = null,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const adminUser = await requireAdmin()
+    const adminUser = await requirePermission("komisyon-tarifeleri", "edit")
     await selectTariffTier(tariffId, tier, adminUser.id, customPrice)
     revalidatePath("/komisyon-tarifeleri")
     return { success: true }
@@ -103,7 +103,7 @@ export async function setApplyToEndAction(
   tariffId: number,
   applyToEnd: boolean,
 ): Promise<{ success: boolean }> {
-  await requireAdmin()
+  await requirePermission("komisyon-tarifeleri", "edit")
   await prisma.commissionTariff.update({
     where: { id: tariffId },
     data: { applyToEnd },
@@ -122,7 +122,7 @@ export async function bulkSelectAction(input: {
   fixedTier?: 1 | 2 | 3 | 4
 }): Promise<{ success: boolean; updated: number; error?: string }> {
   try {
-    const adminUser = await requireAdmin()
+    const adminUser = await requirePermission("komisyon-tarifeleri", "edit")
     if (input.tariffIds.length === 0) {
       return { success: true, updated: 0 }
     }
@@ -210,7 +210,7 @@ export async function bulkSelectAction(input: {
 export async function bulkApplyRecommendedAction(
   selections: Array<{ tariffId: number; tier: 1 | 2 | 3 | 4 }>,
 ): Promise<{ success: boolean; updated: number }> {
-  await requireAdmin()
+  await requirePermission("komisyon-tarifeleri", "edit")
   const ids = selections.map((s) => s.tariffId)
   if (ids.length === 0) return { success: true, updated: 0 }
 
