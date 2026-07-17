@@ -47,7 +47,11 @@ logs
 
 # Coolify / Docker
 .coolify/
-.claude/
+# Claude Code: skills + proje ayarları commit'lenir; local ayarlar + worktree'ler hariç
+.claude/*
+!.claude/skills/
+!.claude/settings.json
+!.claude/launch.json
 
 # Playwright MCP tarayıcı geçici çıktıları
 .playwright-mcp/
