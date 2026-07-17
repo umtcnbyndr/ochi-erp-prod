@@ -1,89 +1,42 @@
 import { describe, it, expect } from "vitest"
-import { resolveChannelExpense } from "@/lib/services/sales-analytics"
+import { reconCreditAmount } from "@/lib/services/sales-analytics"
 
-// getChannelBreakdown (Kanal sekmesi) ve calculateChannelExpenses (başlık KPI) artık
-// TEK bu fonksiyondan besleniyor. 2026-07-17: getChannelBreakdown recon.other'ı
-// atlıyordu → kanal net kârı "Diğer" kadar şişiyordu. Bu testler o regresyonu kilitler.
+// 2026-07-17 refactor: tüm görünümler (KPI/Kanal/Marka/Kategori/tablo) TEK motora
+// (buildPnlCTE satır toplamları) bağlandı — resolveChannelExpense/calculateChannel
+// Expenses ikilisi silindi, ayrışma sınıfı ortadan kalktı. Kalan pure kural: kredi.
 
-describe("resolveChannelExpense — öncelik ve DİĞER dahiliyeti", () => {
-  const base = {
-    revenue: 100000,
-    isStore: false,
-    tariffCommission: 9999,
-    shippingPerOrder: 30,
-    orders: 100,
-    withholdingPct: 1,
-  }
-
-  it("recon modunda 'other' (platform/ceza/diğer) DÖNER — kanal net kârından düşülür", () => {
-    const exp = resolveChannelExpense({
-      ...base,
-      recon: { commission: 12000, shipping: 5000, withholding: 0, other: 2500 },
-    })
-    expect(exp.mode).toBe("recon")
-    expect(exp.commission).toBe(12000)
-    expect(exp.shipping).toBe(5000)
-    expect(exp.other).toBe(2500) // ← eski bug: 0 dönüyordu
-    // Trendyol tipi: recon.withholding=0 → ciro × oran tahmini
-    expect(exp.withholding).toBeCloseTo(1000, 4) // 100000 × %1
+describe("reconCreditAmount — pazaryeri kredisi (İndirim) kuralı", () => {
+  it("Hepsiburada (generic motor): İndirim = pazaryerinin ödediği kredi → kâra eklenir", () => {
+    expect(reconCreditAmount("hepsiburada", 1528.87)).toBeCloseTo(1528.87, 2)
   })
 
-  it("recon gerçek stopaj veriyorsa (Farmazon) onu kullanır, tahmine düşmez", () => {
-    const exp = resolveChannelExpense({
-      ...base,
-      recon: { commission: 4000, shipping: 300, withholding: 335, other: 0 },
-    })
-    expect(exp.withholding).toBe(335)
+  it("REGRESYON: Trendyol'da İndirim kredi DEĞİL (bilgi kolonu) — 0 dönmeli", () => {
+    // TY hakedişi ödenen tutar üzerinden (Net Tutar Excel'den, 260/261 satırda
+    // net = ödenen − kesintiler doğrulandı). Kredi sayılırsa kâr ~24,7K/ay şişer.
+    expect(reconCreditAmount("trendyol", 24699.6)).toBe(0)
+    expect(reconCreditAmount("Trendyol", 100)).toBe(0) // case-insensitive
   })
 
-  it("recon yoksa aylık gerçek gider (actual) ciro payına oranlanır, other=0", () => {
-    const exp = resolveChannelExpense({
-      ...base,
-      actual: { commissionPaid: 20000, shippingPaid: 4000, withholdingPaid: 1000 },
-      actualRevenueShare: 0.5,
-    })
-    expect(exp.mode).toBe("actual")
-    expect(exp.commission).toBe(10000)
-    expect(exp.shipping).toBe(2000)
-    expect(exp.withholding).toBe(500)
-    expect(exp.other).toBe(0)
+  it("diğer generic kanallar (farmazon/n11/pazarama/amazon) kredi olarak sayılır", () => {
+    for (const ch of ["farmazon", "n11", "pazarama", "amazon"]) {
+      expect(reconCreditAmount(ch, 50)).toBe(50)
+    }
   })
 
-  it("mağaza kanalı: her şey 0", () => {
-    const exp = resolveChannelExpense({ ...base, isStore: true, recon: { commission: 9, shipping: 9, withholding: 9, other: 9 } })
-    expect(exp.mode).toBe("store")
-    expect(exp).toMatchObject({ commission: 0, shipping: 0, withholding: 0, other: 0 })
+  it("kredi 0 ise etki yok", () => {
+    expect(reconCreditAmount("hepsiburada", 0)).toBe(0)
   })
+})
 
-  it("hiçbiri yoksa tahmin: tarife komisyonu + kargo×sipariş + ciro×stopaj, other=0", () => {
-    const exp = resolveChannelExpense(base)
-    expect(exp.mode).toBe("estimate")
-    expect(exp.commission).toBe(9999)
-    expect(exp.shipping).toBe(3000) // 100 sipariş × 30
-    expect(exp.withholding).toBeCloseTo(1000, 4)
-    expect(exp.other).toBe(0)
-  })
-
-  it("öncelik: recon > actual > tahmin (recon varsa actual/tahmin yok sayılır)", () => {
-    const exp = resolveChannelExpense({
-      ...base,
-      recon: { commission: 1, shipping: 2, withholding: 3, other: 4 },
-      actual: { commissionPaid: 999, shippingPaid: 999, withholdingPaid: 999 },
-    })
-    expect(exp.mode).toBe("recon")
-    expect(exp.commission).toBe(1)
-  })
-
-  it("net kâr = ciro − alış − komisyon − kargo − stopaj − DİĞER (regresyon senaryosu)", () => {
-    // Trendyol benzeri: recon other 19969 → net kâr bunu da düşmeli
-    const revenue = 2160711, cost = 1183000
-    const exp = resolveChannelExpense({
-      revenue, isStore: false,
-      recon: { commission: 261643, shipping: 141453, withholding: 0, other: 19969 },
-      tariffCommission: 0, shippingPerOrder: 0, orders: 1510, withholdingPct: 1,
-    })
-    const net = revenue - cost - exp.commission - exp.shipping - exp.withholding - exp.other
-    const netWithoutOther = revenue - cost - exp.commission - exp.shipping - exp.withholding
-    expect(netWithoutOther - net).toBeCloseTo(19969, 0) // 'other' düşülmezse tam bu kadar şişerdi
+describe("net kâr formülü — iade maliyeti dahil (dokümantasyon kilidi)", () => {
+  it("net = ciro − alış − komisyon − kargo − stopaj − diğer − iade maliyeti", () => {
+    // Haziran benzeri senaryo: iade maliyeti (tam-iade siparişlerin gerçek kargo/ceza
+    // kesintisi ~7,4K) net kârdan ayrı kalem olarak düşülür (denetim F2, user onaylı).
+    const ciro = 2457715, alis = 1338339, komisyon = 307504, kargo = 155884
+    const stopaj = 24330, diger = 21613, iade = 7352
+    const net = ciro - alis - komisyon - kargo - stopaj - diger - iade
+    expect(net).toBeCloseTo(602693, 0)
+    // İade düşülmezse eski (iyimser) değer çıkar — fark tam iade maliyeti kadar
+    expect(ciro - alis - komisyon - kargo - stopaj - diger - net).toBeCloseTo(iade, 0)
   })
 })

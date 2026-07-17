@@ -23,6 +23,8 @@ export interface BossReportMarketplace {
   kargo: number
   stopaj: number
   diger: number
+  /** Tam-iade siparişlerde pazaryerinin kestiği gerçek kargo/ceza */
+  iade: number
   isActual: boolean
 }
 
@@ -38,6 +40,7 @@ export interface BossReportData {
     kargo: number
     stopaj: number
     diger: number
+    iade: number
     kalan: number
   }
 }
@@ -80,6 +83,7 @@ export async function getBossMonthlyReport(filter: DateRangeFilter): Promise<Bos
       kargo: r?.estShipping ?? 0,
       stopaj: r?.estWithholding ?? 0,
       diger: r?.estOther ?? 0,
+      iade: r?.estReturnCost ?? 0,
       isActual: r?.isActual ?? false,
     }
   })
@@ -91,7 +95,8 @@ export async function getBossMonthlyReport(filter: DateRangeFilter): Promise<Bos
   const kargo = sum((m) => m.kargo)
   const stopaj = sum((m) => m.stopaj)
   const diger = sum((m) => m.diger)
-  const kalan = ciro - alis - komisyon - kargo - stopaj - diger
+  const iade = sum((m) => m.iade)
+  const kalan = ciro - alis - komisyon - kargo - stopaj - diger - iade
 
   // Ay etiketi — fromDate UTC olarak TR gün başını temsil eder (TR = UTC+3).
   const tr = new Date(filter.fromDate.getTime() + 3 * 60 * 60 * 1000)
@@ -101,6 +106,6 @@ export async function getBossMonthlyReport(filter: DateRangeFilter): Promise<Bos
     monthLabel,
     marketplaces,
     anyReconciled: marketplaces.some((m) => m.isActual),
-    totals: { ciro, alis, komisyon, kargo, stopaj, diger, kalan },
+    totals: { ciro, alis, komisyon, kargo, stopaj, diger, iade, kalan },
   }
 }

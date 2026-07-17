@@ -121,6 +121,7 @@ export async function buildBossReportWorkbook(data: BossReportData): Promise<Buf
     { label: "KARGO MALİYETİ", value: data.totals.kargo },
     { label: "STOPAJ", value: data.totals.stopaj },
     { label: "DİĞER (Platform/Ceza)", value: data.totals.diger, highlight: true },
+    { label: "İADE MALİYETİ (kargo/ceza)", value: data.totals.iade, highlight: true },
     { label: "KALAN (Net Kâr)", value: data.totals.kalan },
   ]
   for (const k of karlilik) {
@@ -167,6 +168,9 @@ export async function buildBossReportWorkbook(data: BossReportData): Promise<Buf
   row += 1
   detayRow("Diğer (Platform/Ceza)", (m) => m.diger, TL)
   detayRow("Diğer %", (m) => (m.netSatis > 0 ? m.diger / m.netSatis : 0), PCT)
+  row += 1
+  detayRow("İade Maliyeti (kargo/ceza)", (m) => m.iade, TL)
+  detayRow("İade %", (m) => (m.netSatis > 0 ? m.iade / m.netSatis : 0), PCT)
 
   const arrayBuffer = await wb.xlsx.writeBuffer()
   return Buffer.from(arrayBuffer)
