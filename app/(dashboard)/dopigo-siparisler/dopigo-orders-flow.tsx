@@ -22,7 +22,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import {
   syncOrdersAction,
-  saveMonthlyExpenseAction,
   backfillMarketplaceAction,
   rematchOrdersAction,
 } from "./actions"
@@ -44,23 +43,20 @@ interface ChannelRow { salesChannel: string; marketplaceId: number | null; marke
 interface TopProductRow { productId: number | null; productName: string; brandName: string | null; unitCount: number; revenue: number; cost: number; profit: number; marginPct: number; commission: number; shipping: number; other: number; netProfit: number; netMarginPct: number }
 interface UnmatchedItem { itemId: number; orderId: number; salesChannel: string; productName: string; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; price: number; serviceCreatedAt: string }
 interface SyncRun { id: number; startedAt: string; finishedAt: string | null; totalFetched: number; totalCreated: number; totalUpdated: number; totalMatched: number; status: string; errorMessage: string | null; rangeFrom: string | null; rangeTo: string | null }
-interface MonthlyExpense { id: number; marketplaceId: number; commissionPaid: number | null; shippingPaid: number | null; withholdingPaid: number | null; returnCosts: number | null; adSpend: number | null; otherExpenses: number | null; notes: string | null }
 interface OrderTableRow { itemId: number; orderId: number; dopigoOrderId: string; serviceOrderId: string | null; serviceCreatedAt: string; derivedStatus: string; salesChannel: string; marketplaceId: number | null; customerName: string | null; customerCity: string | null; productName: string; productId: number | null; brandName: string | null; categoryName: string | null; subcategoryName: string | null; barcode: string | null; foreignSku: string | null; sku: string | null; amount: number; unitPrice: number | null; lineTotal: number; costPerUnit: number | null; costSource: "MAIN" | "STREET_FALLBACK" | "NONE"; totalCost: number; commission: number; shipping: number; withholding: number; other: number; remaining: number; marginPct: number; matchMethod: string | null; isReconciled: boolean; reconOrderStatus: string | null; isUnfinalized: boolean; psf: number | null }
 
 interface Props {
   period: string; rangeLabel: string; from?: string; to?: string
   resolvedFrom: string; resolvedTo: string  // YYYY-MM-DD — sayfa filtresinin gerçek tarihleri
-  tab: "siparisler" | "ozet" | "marka" | "kategori" | "kanal" | "urun" | "esleshme" | "aysonu" | "ayarlar"
+  tab: "siparisler" | "ozet" | "marka" | "kategori" | "kanal" | "urun" | "esleshme" | "ayarlar"
   brandId: number | null; categoryId: number | null; salesChannel: string | null
   statusFilter: "SUCCESS" | "CANCELLED" | "RETURNED" | "WAITING" | "OTHER" | null
   searchQuery: string | null
   sortBy: "date" | "channel" | "revenue" | "profit"
   sortDir: "asc" | "desc"
-  currentMonth: string
   configExists: boolean; configActive: boolean; lastTestOk: boolean | null; lastTestNote: string | null
   brands: { id: number; name: string }[]
   categories: { id: number; name: string }[]
-  marketplaces: { id: number; name: string }[]
   kpis: KPIs
   statusCounts: StatusCounts
   brandRows: BrandRow[]
@@ -70,7 +66,6 @@ interface Props {
   topProducts: TopProductRow[]
   unmatched: UnmatchedItem[]
   lastSync: SyncRun | null
-  monthlyExpenses: MonthlyExpense[]
   tableData: { rows: OrderTableRow[]; totalCount: number; pageNum: number; pageSize: number }
 }
 
@@ -250,7 +245,6 @@ export function DopigoOrdersFlow(props: Props) {
           <TabsTrigger value="kanal"><Store className="h-3.5 w-3.5 mr-1" />Kanal</TabsTrigger>
           <TabsTrigger value="urun"><Award className="h-3.5 w-3.5 mr-1" />Top Ürün</TabsTrigger>
           <TabsTrigger value="esleshme"><Link2Icon className="h-3.5 w-3.5 mr-1" />Eşleşme</TabsTrigger>
-          <TabsTrigger value="aysonu"><Calendar className="h-3.5 w-3.5 mr-1" />Ay Sonu</TabsTrigger>
           <TabsTrigger value="ayarlar"><Settings className="h-3.5 w-3.5 mr-1" />Ayarlar</TabsTrigger>
         </TabsList>
 
@@ -282,12 +276,6 @@ export function DopigoOrdersFlow(props: Props) {
         </TabsContent>
         <TabsContent value="esleshme" className="mt-4">
           <UnmatchedTab unmatched={props.unmatched} />
-        </TabsContent>
-        <TabsContent value="aysonu" className="mt-4">
-          <MonthlyExpenseTab
-            currentMonth={props.currentMonth} marketplaces={props.marketplaces}
-            existing={props.monthlyExpenses} channelRows={props.channelRows} isActualMode={props.kpis.isActualMode}
-          />
         </TabsContent>
         <TabsContent value="ayarlar" className="mt-4">
           <SettingsTab
@@ -1373,94 +1361,6 @@ function UnmatchedTab({ unmatched }: { unmatched: UnmatchedItem[] }) {
           </TableBody>
         </Table>
       </CardContent>
-    </Card>
-  )
-}
-
-function MonthlyExpenseTab({ currentMonth, marketplaces, existing, channelRows, isActualMode }: {
-  currentMonth: string; marketplaces: { id: number; name: string }[]
-  existing: MonthlyExpense[]; channelRows: ChannelRow[]; isActualMode: boolean
-}) {
-  const existingMap = new Map(existing.map((e) => [e.marketplaceId, e]))
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          Ay Sonu Gerçek Giderleri
-          {isActualMode && <Badge variant="default">Gerçek mod aktif</Badge>}
-        </CardTitle>
-        <CardDescription>
-          Pazaryeri panellerinden bu ay için ödediğin gerçek komisyon/kargo/stopaj değerlerini gir.
-          Tüm girişler tamamlandığında raporlar gerçek net kâr hesaplar. Boş bırakılan kanallar için
-          marketplace defaults (tahmini) kullanılır.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="text-xs text-muted-foreground">Ay: <span className="font-semibold">{currentMonth.slice(0, 7)}</span></div>
-        {marketplaces.map((m) => {
-          const e = existingMap.get(m.id)
-          const cr = channelRows.find((r) => r.marketplaceId === m.id)
-          return (<MonthlyExpenseRow key={m.id} marketplaceId={m.id} marketplaceName={m.name}
-            month={currentMonth} existing={e} salesRevenue={cr?.revenue ?? 0} />)
-        })}
-      </CardContent>
-    </Card>
-  )
-}
-
-function MonthlyExpenseRow({ marketplaceId, marketplaceName, month, existing, salesRevenue }: {
-  marketplaceId: number; marketplaceName: string; month: string; existing?: MonthlyExpense; salesRevenue: number
-}) {
-  const [pending, startTransition] = useTransition()
-  const [open, setOpen] = useState(false)
-  const [commission, setCommission] = useState(existing?.commissionPaid?.toString() ?? "")
-  const [shipping, setShipping] = useState(existing?.shippingPaid?.toString() ?? "")
-  const [withholding, setWithholding] = useState(existing?.withholdingPaid?.toString() ?? "")
-  const [returnCosts, setReturnCosts] = useState(existing?.returnCosts?.toString() ?? "")
-  const [adSpend, setAdSpend] = useState(existing?.adSpend?.toString() ?? "")
-  const [other, setOther] = useState(existing?.otherExpenses?.toString() ?? "")
-  const [notes, setNotes] = useState(existing?.notes ?? "")
-  const handleSave = () => {
-    startTransition(async () => {
-      const res = await saveMonthlyExpenseAction({
-        marketplaceId, month,
-        commissionPaid: commission ? Number(commission) : null,
-        shippingPaid: shipping ? Number(shipping) : null,
-        withholdingPaid: withholding ? Number(withholding) : null,
-        returnCosts: returnCosts ? Number(returnCosts) : null,
-        adSpend: adSpend ? Number(adSpend) : null,
-        otherExpenses: other ? Number(other) : null,
-        notes: notes.trim() || null,
-      })
-      if (res.success) toast.success(res.message); else toast.error(res.message)
-    })
-  }
-  const filled = existing && (existing.commissionPaid !== null || existing.shippingPaid !== null)
-  return (
-    <Card className="border-l-4" style={{ borderLeftColor: filled ? "rgb(16 185 129)" : "rgb(245 158 11)" }}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-sm">{marketplaceName}</CardTitle>
-            <CardDescription className="text-xs">Bu aydaki ciro: <span className="font-semibold">{tl(salesRevenue)}</span></CardDescription>
-          </div>
-          <Button size="sm" variant="ghost" onClick={() => setOpen(!open)}>{open ? "Kapat" : filled ? "Düzenle" : "Doldur"}</Button>
-        </div>
-      </CardHeader>
-      {open && (
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <div><Label className="text-xs">Komisyon ödendi (TL)</Label><Input value={commission} onChange={(e) => setCommission(e.target.value)} type="number" step="0.01" /></div>
-            <div><Label className="text-xs">Kargo ödendi (TL)</Label><Input value={shipping} onChange={(e) => setShipping(e.target.value)} type="number" step="0.01" /></div>
-            <div><Label className="text-xs">Stopaj (TL)</Label><Input value={withholding} onChange={(e) => setWithholding(e.target.value)} type="number" step="0.01" /></div>
-            <div><Label className="text-xs">İade maliyetleri (TL)</Label><Input value={returnCosts} onChange={(e) => setReturnCosts(e.target.value)} type="number" step="0.01" /></div>
-            <div><Label className="text-xs">Reklam (TL)</Label><Input value={adSpend} onChange={(e) => setAdSpend(e.target.value)} type="number" step="0.01" /></div>
-            <div><Label className="text-xs">Diğer (TL)</Label><Input value={other} onChange={(e) => setOther(e.target.value)} type="number" step="0.01" /></div>
-          </div>
-          <div><Label className="text-xs">Not</Label><Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opsiyonel" /></div>
-          <Button size="sm" onClick={handleSave} disabled={pending}>{pending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}Kaydet</Button>
-        </CardContent>
-      )}
     </Card>
   )
 }

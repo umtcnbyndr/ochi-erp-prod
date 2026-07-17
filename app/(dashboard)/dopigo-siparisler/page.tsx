@@ -205,7 +205,6 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
     config,
     brands,
     categories,
-    marketplaces,
     kpis,
     statusCounts,
     brandRows,
@@ -215,7 +214,6 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
     topProducts,
     unmatched,
     lastSync,
-    monthlyExpenses,
     tableData,
   ] = await Promise.all([
     prisma.dopigoConfig.findUnique({ where: { id: 1 } }),
@@ -225,7 +223,6 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
       select: { id: true, name: true },
     }),
     prisma.category.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.marketplace.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getTopLineKPIs(baseFilter),
     getStatusCounts(baseFilter),
     getBrandBreakdown(baseFilter),
@@ -250,22 +247,6 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
         rangeTo: true,
       },
     }),
-    prisma.marketplaceMonthlyExpense.findMany({
-      where: {
-        month: new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), 1)),
-      },
-      select: {
-        id: true,
-        marketplaceId: true,
-        commissionPaid: true,
-        shippingPaid: true,
-        withholdingPaid: true,
-        returnCosts: true,
-        adSpend: true,
-        otherExpenses: true,
-        notes: true,
-      },
-    }),
     listOrdersForTable(tableFilter),
   ])
 
@@ -283,18 +264,6 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
   const unmatchedSerialized = unmatched.map((u) => ({
     ...u,
     serviceCreatedAt: u.serviceCreatedAt.toISOString(),
-  }))
-
-  const expensesSerialized = monthlyExpenses.map((e) => ({
-    id: e.id,
-    marketplaceId: e.marketplaceId,
-    commissionPaid: e.commissionPaid ? Number(e.commissionPaid) : null,
-    shippingPaid: e.shippingPaid ? Number(e.shippingPaid) : null,
-    withholdingPaid: e.withholdingPaid ? Number(e.withholdingPaid) : null,
-    returnCosts: e.returnCosts ? Number(e.returnCosts) : null,
-    adSpend: e.adSpend ? Number(e.adSpend) : null,
-    otherExpenses: e.otherExpenses ? Number(e.otherExpenses) : null,
-    notes: e.notes,
   }))
 
   const tableSerialized = {
@@ -319,7 +288,7 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
         // Sync için TR date string'leri (UTC değil — Dopigo TR günü ile filtrele)
         resolvedFrom={trDateString(fromDate)}
         resolvedTo={trDateString(toDate)}
-        tab={tab as "siparisler" | "ozet" | "marka" | "kategori" | "kanal" | "urun" | "esleshme" | "aysonu" | "ayarlar"}
+        tab={tab as "siparisler" | "ozet" | "marka" | "kategori" | "kanal" | "urun" | "esleshme" | "ayarlar"}
         brandId={brandId}
         categoryId={categoryId}
         salesChannel={salesChannel}
@@ -327,20 +296,12 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
         searchQuery={searchQuery}
         sortBy={sortBy}
         sortDir={sortDir}
-        currentMonth={(() => {
-          // fromDate UTC olarak TR midnight'i temsil ediyor (TR midnight = UTC -3h).
-          // Direkt getUTCMonth() önceki güne kayıp ay yanlış çıkıyor (Mayıs 1 TR → Nis 30 UTC).
-          // TR offset'i ekleyip doğru ayı al.
-          const tr = new Date(fromDate.getTime() + 3 * 60 * 60 * 1000)
-          return `${tr.getUTCFullYear()}-${String(tr.getUTCMonth() + 1).padStart(2, "0")}-01`
-        })()}
         configExists={!!config}
         configActive={config?.isActive ?? false}
         lastTestOk={config?.lastTestOk ?? null}
         lastTestNote={config?.lastTestNote ?? null}
         brands={brands}
         categories={categories}
-        marketplaces={marketplaces}
         kpis={kpis}
         statusCounts={statusCounts}
         brandRows={brandRows}
@@ -350,7 +311,6 @@ export default async function DopigoSiparislerPage({ searchParams }: PageProps) 
         topProducts={topProducts}
         unmatched={unmatchedSerialized}
         lastSync={lastSyncSerialized}
-        monthlyExpenses={expensesSerialized}
         tableData={tableSerialized}
       />
     </div>
