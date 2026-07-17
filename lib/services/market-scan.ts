@@ -49,7 +49,7 @@ export interface ScanResultInput {
  * Taranacak barkod kuyruğunu döner.
  *
  * scope:
- *   "ours" (Faz 1)     — aktif SINGLE ürünlerimiz (trendyolBarcode || primaryBarcode)
+ *   "ours" (Faz 1)     — aktif SINGLE + SET + GIFT ürünlerimiz (trendyolBarcode || primaryBarcode)
  *   "opportunities"    — eczane fırsat adayları (Faz 2, mainStock<=0 && streetStock>0)
  *   "catalog"          — BrandPriceList barkodları (Faz 2)
  *   "all"              — hepsi (dedup)
@@ -65,8 +65,10 @@ export async function getScanQueue(opts: {
   const limit = opts.limit ?? 2000
 
   // Faz 1: sadece "ours". Diğer scope'lar Faz 2'de eklenecek.
+  // SET + GIFT de dahil: 72/73'ünde gerçek TY listing contentId var → kesin taranırlar
+  // (SET'ler TY'de bundle olarak listeli; GIFT'ler ayrı satılıyor). Sadece PASSIVE dışarıda.
   const products = await prisma.product.findMany({
-    where: { status: "ACTIVE", productType: "SINGLE" },
+    where: { status: "ACTIVE", productType: { in: ["SINGLE", "SET", "GIFT"] } },
     select: { id: true, name: true, trendyolBarcode: true, primaryBarcode: true },
   })
 
