@@ -5,6 +5,7 @@
  * Her widget'ın ayrı sorgu olması yerine tek round-trip.
  */
 import { prisma } from "@/lib/db"
+import { getLatestBuyboxMap } from "./price-recommendation"
 
 // ─── Helpers ──────────────────────────────────────────────────
 
@@ -29,7 +30,8 @@ export async function getDataFreshness() {
       orderBy: { uploadedAt: "desc" },
       select: { uploadedAt: true, reportType: true, matchedCount: true, rowCount: true },
     }),
-    prisma.competitorPriceObservation.findFirst({
+    prisma.marketPriceSnapshot.findFirst({
+      where: { found: true },
       orderBy: { observedAt: "desc" },
       select: { observedAt: true },
     }),
@@ -185,37 +187,23 @@ export interface BuyboxLostResult {
 
 /** BuyBox kayıp — bizim fiyat rakipten yüksek */
 export async function getBuyboxLost(limit = 10): Promise<BuyboxLostResult> {
-  // Son BuyBox observation: bizim ranking != 1 ve buyboxPrice < ourPrice
-  const observations = await prisma.competitorPriceObservation.findMany({
-    where: {
-      observedAt: { gte: daysAgo(7) }, // son 7 gün
-    },
-    orderBy: { observedAt: "desc" },
-    select: {
-      productId: true,
-      buyboxPrice: true,
-      buyboxOrder: true,
-      ourPrice: true,
-      observedAt: true,
-    },
-  })
-
-  // Ürün başına en yeni gözlemi al
-  const latestByProduct = new Map<number, (typeof observations)[number]>()
-  for (const o of observations) {
-    if (!latestByProduct.has(o.productId)) {
-      latestByProduct.set(o.productId, o)
-    }
-  }
+  // BuyBox — Pazar Fiyat Takip scraper'ından (MarketPriceSnapshot), ürün başına en
+  // yeni. Bizim ranking != 1 (buybox bizde değil) ve ourPrice > buyboxPrice → kayıp.
+  const activeIds = (
+    await prisma.product.findMany({
+      where: { status: "ACTIVE", productType: "SINGLE" },
+      select: { id: true },
+    })
+  ).map((p) => p.id)
+  const latestByProduct = await getLatestBuyboxMap(activeIds)
 
   const lostProductIds: number[] = []
   for (const [pid, o] of latestByProduct.entries()) {
     if (
       o.buyboxOrder != null &&
       o.buyboxOrder > 1 &&
-      o.buyboxPrice != null &&
       o.ourPrice != null &&
-      Number(o.ourPrice) > Number(o.buyboxPrice)
+      o.ourPrice > o.buyboxPrice
     ) {
       lostProductIds.push(pid)
     }
@@ -243,8 +231,8 @@ export async function getBuyboxLost(limit = 10): Promise<BuyboxLostResult> {
 
   const items: BuyboxLostItem[] = products.map((p): BuyboxLostItem => {
     const obs = latestByProduct.get(p.id)!
-    const ourPrice = Number(obs.ourPrice)
-    const buyboxPrice = Number(obs.buyboxPrice)
+    const ourPrice = obs.ourPrice ?? 0
+    const buyboxPrice = obs.buyboxPrice
     const diffTL = ourPrice - buyboxPrice
     const diffPct = buyboxPrice > 0 ? (diffTL / buyboxPrice) * 100 : 0
     return {

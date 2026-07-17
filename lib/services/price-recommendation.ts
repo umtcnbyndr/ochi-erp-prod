@@ -523,7 +523,7 @@ export function snapshotToBuyboxRow(s: {
  * Kaynak: Pazar Fiyat Takip scraper'ı (MarketPriceSnapshot) — eski TY API
  * (CompetitorPriceObservation) DEĞİL. Ürün başına DISTINCT ON en yeni bulunmuş satır.
  */
-async function getLatestBuyboxMap(
+export async function getLatestBuyboxMap(
   productIds: number[],
 ): Promise<Map<number, LatestBuyboxEntry>> {
   if (productIds.length === 0) return new Map()
@@ -563,10 +563,3 @@ export async function getLatestBuyboxForProduct(productId: number) {
   }
 }
 
-/** Toplu BuyBox cek (Trendyol API) — sadece pass-through */
-export async function refreshBuyboxForProducts(productIds: number[]) {
-  const { fetchAndStoreBuyboxForProducts } = await import(
-    "@/lib/services/trendyol/buybox"
-  )
-  return fetchAndStoreBuyboxForProducts(productIds)
-}

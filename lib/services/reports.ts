@@ -11,6 +11,7 @@
  */
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@prisma/client"
+import { getLatestBuyboxMap } from "./price-recommendation"
 
 // ============== 1. Stok Özeti ==============
 
@@ -420,36 +421,10 @@ export async function getRiskOverview(opts: {
     },
   })
 
-  // BuyBox observation: en son Trendyol gözlemi
+  // BuyBox — Pazar Fiyat Takip scraper'ından (MarketPriceSnapshot), ürün başına en
+  // yeni. Eski CompetitorPriceObservation (TY API) yerine tek kaynak scraper.
   const productIds = products.map((p) => p.id)
-  const buyboxRows = await prisma.competitorPriceObservation.findMany({
-    where: {
-      productId: { in: productIds },
-      source: "TRENDYOL_BUYBOX",
-      observedAt: {
-        gte: new Date(Date.now() - 30 * 86400000),
-      },
-    },
-    orderBy: { observedAt: "desc" },
-    select: {
-      productId: true,
-      buyboxPrice: true,
-      buyboxOrder: true,
-      ourPrice: true,
-    },
-  })
-  const latestBuybox = new Map<
-    number,
-    { buyboxPrice: number; buyboxOrder: number | null; ourPrice: number | null }
-  >()
-  for (const b of buyboxRows) {
-    if (latestBuybox.has(b.productId)) continue
-    latestBuybox.set(b.productId, {
-      buyboxPrice: Number(b.buyboxPrice),
-      buyboxOrder: b.buyboxOrder,
-      ourPrice: b.ourPrice ? Number(b.ourPrice) : null,
-    })
-  }
+  const latestBuybox = await getLatestBuyboxMap(productIds)
 
   const items: RiskItem[] = []
   const counts: Record<RiskType, number> = {
