@@ -24,6 +24,8 @@ interface Props {
   hasOwnShipping?: boolean
   /** Panelden rapor nereden/nasıl indirilir (kullanıcıya adım adım gösterilir) */
   downloadInstructions?: string
+  /** Dosya input accept değeri (Amazon CSV için ".csv") — default Excel */
+  fileAccept?: string
   monthlyData: MonthlyReconData[]
 }
 
@@ -31,12 +33,13 @@ type Preview = MarketplacePreview & {
   _rows: MarketplaceReconRow[]
   month: string
   detectedMonths: { month: string; count: number }[]
+  nonOrderSummary?: { tip: string; count: number; total: number }[]
 }
 
 const fmt = (n: number) =>
   n.toLocaleString("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 })
 
-export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping, downloadInstructions, monthlyData }: Props) {
+export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping, downloadInstructions, fileAccept, monthlyData }: Props) {
   const [pending, startTransition] = useTransition()
   const [shipping, setShipping] = useState("")
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -107,8 +110,8 @@ export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping, dow
           <form action={handlePreview} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label className="text-sm">Sipariş/Mutabakat Excel</Label>
-                <Input type="file" name="file" accept=".xlsx,.xls" required />
+                <Label className="text-sm">Sipariş/Mutabakat dosyası</Label>
+                <Input type="file" name="file" accept={fileAccept ?? ".xlsx,.xls"} required />
               </div>
               {!hasOwnShipping && (
                 <div className="space-y-1.5">
@@ -177,6 +180,26 @@ export function MarketplaceReconciliationFlow({ marketplace, hasOwnShipping, dow
                   {preview.unmatched} satır Dopigo siparişiyle eşleşmedi (bu satırların
                   net kârı hesaplanmaz). Sipariş no farkı veya Dopigo'da eksik olabilir.
                 </span>
+              </div>
+            )}
+
+            {preview.nonOrderSummary && preview.nonOrderSummary.length > 0 && (
+              <div className="rounded-md bg-muted/50 p-3 text-xs space-y-1">
+                <p className="font-medium">
+                  Sipariş-dışı kalemler (siparişe bağlanamıyor, bu mutabakata dahil edilmez):
+                </p>
+                <ul className="space-y-0.5">
+                  {preview.nonOrderSummary.map((n) => (
+                    <li key={n.tip} className="flex justify-between tabular-nums">
+                      <span>
+                        {n.tip} ({n.count})
+                        {n.tip === "Transfer" && " — bankaya ödeme, gider değil"}
+                        {n.tip === "Hizmet Ücreti" && " — reklam maliyeti"}
+                      </span>
+                      <span>{fmt(n.total)}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

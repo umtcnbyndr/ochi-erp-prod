@@ -2,7 +2,6 @@ import { redirect } from "next/navigation"
 import { getAuthUser } from "@/lib/permissions"
 import { PageHeader } from "@/components/common/page-header"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
 import { prisma } from "@/lib/db"
 import { TrendyolReconciliationFlow } from "./trendyol-flow"
 import { MarketplaceReconciliationFlow } from "./marketplace-flow"
@@ -65,9 +64,7 @@ export default async function MutabakatPage() {
           <TabsTrigger value="hepsiburada">Hepsiburada</TabsTrigger>
           <TabsTrigger value="n11">N11</TabsTrigger>
           <TabsTrigger value="pazarama">Pazarama</TabsTrigger>
-          <TabsTrigger value="amazon" disabled>
-            Amazon <Badge variant="outline" className="ml-1 text-[9px]">Yakında</Badge>
-          </TabsTrigger>
+          <TabsTrigger value="amazon">Amazon</TabsTrigger>
         </TabsList>
 
         <TabsContent value="trendyol" className="space-y-4 pt-4">
@@ -105,6 +102,18 @@ export default async function MutabakatPage() {
             monthlyData={monthlyDataFor("Pazarama")}
             downloadInstructions={
               'Pazarama satıcı paneli → Siparişlerim → tarih aralığı seç → Dışarı Aktar (Siparişleriniz_*.xlsx) → burada yükle. Komisyon ve satıcı kampanyası dosyadan gerçek okunur; stopaj raporda olmadığı için tahminle (ciro × oran) devam eder, kargo sipariş başı girilir.'
+            }
+          />
+        </TabsContent>
+
+        <TabsContent value="amazon" className="space-y-4 pt-4">
+          <MarketplaceReconciliationFlow
+            marketplace="Amazon"
+            monthlyData={monthlyDataFor("Amazon")}
+            hasOwnShipping
+            fileAccept=".csv"
+            downloadInstructions={
+              'Amazon Seller Central → Ödemeler → Rapor Arşivi → Hesap türü "Standart siparişler", Rapor türü "İşlem", Özel tarih aralığı (ör. 06/01/2026–06/30/2026) → Raporu iste → hazırlanınca CSV indir → burada yükle. Komisyon ve kargo rapordan gerçek okunur; stopaj raporda olmadığı için tahminle (ciro × oran) devam eder. Sipariş-dışı kalemler (banka transferi, reklam, düzeltme) otomatik ayrılır.'
             }
           />
         </TabsContent>

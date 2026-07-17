@@ -12,6 +12,7 @@
  * Yeni pazaryeri eklemek = PARSERS registry'sine 1 kayıt.
  */
 import * as XLSX from "xlsx"
+import Papa from "papaparse"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { buildManualPriceMap } from "./manual-purchase-price"
@@ -439,6 +440,121 @@ export function applyN11SettlementRates(
   })
 }
 
+// ─── Amazon parser ──────────────────────────────────────────────
+// "Ödemeler → Rapor Arşivi → İşlem (Transaction) raporu" CSV'si. İlk 8 satır
+// önsöz/tanım, sonra başlık ("tarih/saat" ile başlar). Her sipariş BİRDEN FAZLA
+// satıra dağılır; "tip" kolonuna göre işlenir (2026-07-17 Haziran dosyası Dopigo
+// cirosuyla 45/45 kuruşu kuruşuna doğrulandı):
+//   - "Sipariş": ciro ("ürün satışları") + komisyon ("satış ücretleri", negatif).
+//     Ciro Dopigo cirosuyla birebir. "promosyon indirimleri" (satıcı promosyonu,
+//     negatif) ciroya eklenir — Amazon net'i o satırın "toplam"ıyla tutar.
+//   - "Kargo Hizmetleri": aynı sipariş no, gerçek kargo "diğer işlem ücretleri"nde
+//     (~93 TL, negatif). Sipariş başı input gerekmez (hasOwnShipping).
+//   - "Sipariş" satırındaki "diğer işlem ücretleri" (küçük ürün/vergi ücreti) →
+//     otherDeductions.
+//   - Sipariş no'su OLMAYAN satırlar sipariş-dışı → atlanır: "Transfer" (bankaya
+//     ödeme, gider değil), "Hizmet Ücreti" (reklam maliyeti), "Düzeltme". Bunlar
+//     siparişe bağlanamıyor; toplamları previewNote ile kullanıcıya bildirilir.
+//   - Stopaj raporda yok → 0 (analytics ciro×oran tahminine düşer, Trendyol gibi).
+//   - Eşleşme: serviceValue = "sipariş no." birebir (tire ile bölme YOK —
+//     sipariş no'nun kendisi tire içerir: 405-3715417-7673114).
+
+const AMZ_TR_MONTHS: Record<string, number> = {
+  Oca: 0, Şub: 1, Mar: 2, Nis: 3, May: 4, Haz: 5,
+  Tem: 6, Ağu: 7, Eyl: 8, Eki: 9, Kas: 10, Ara: 11,
+}
+// "1 Haz 2026 12:55:55 UTC" → Date (UTC)
+function parseAmazonDate(v: unknown): Date | null {
+  if (v == null) return null
+  const m = String(v).trim().match(/^(\d{1,2})\s+(\p{L}{3})\s+(\d{4})(?:\s+(\d{1,2}):(\d{2}):(\d{2}))?/u)
+  if (!m) return null
+  const [, dd, mon, yyyy, hh, mi, ss] = m
+  const month = AMZ_TR_MONTHS[mon]
+  if (month == null) return null
+  return new Date(Date.UTC(Number(yyyy), month, Number(dd), Number(hh ?? 0), Number(mi ?? 0), Number(ss ?? 0)))
+}
+// Amazon TRY: "1.169,49" / "-352,79" / "0" — nokta=binlik, virgül=ondalık (her zaman)
+function parseAmazonMoney(v: unknown): number {
+  if (v == null || v === "") return 0
+  const n = Number(String(v).trim().replace(/\./g, "").replace(",", "."))
+  return isFinite(n) ? n : 0
+}
+
+function parseAmazon(buffer: Buffer): MarketplaceReconRow[] {
+  const parsed = Papa.parse<string[]>(buffer.toString("utf8"), { skipEmptyLines: true })
+  const rows = parsed.data
+  // Önsöz değişken uzunlukta olabilir → başlık satırını içerikten bul
+  const headerIdx = rows.findIndex((r) => (r[0] ?? "").trim() === "tarih/saat")
+  if (headerIdx < 0) return []
+
+  const byOrder = new Map<string, MarketplaceReconRow>()
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i]
+    const tip = (r[2] ?? "").trim()
+    const no = (r[3] ?? "").trim()
+    if (!no) continue // Transfer / Hizmet Ücreti / Düzeltme (sipariş-dışı)
+    if (tip !== "Sipariş" && tip !== "Kargo Hizmetleri") continue
+
+    const isKargo = tip === "Kargo Hizmetleri"
+    const urun = parseAmazonMoney(r[12]) + parseAmazonMoney(r[14]) // ürün satışları + promosyon(-)
+    const commission = Math.abs(parseAmazonMoney(r[15])) // satış ücretleri
+    const digerUcret = Math.abs(parseAmazonMoney(r[17])) // kargo satırı → kargo, sipariş satırı → diğer
+    const adet = Math.floor(Number(r[6]) || 0)
+
+    const existing = byOrder.get(no)
+    if (existing) {
+      existing.saleAmount += isKargo ? 0 : urun
+      existing.commission += commission
+      existing.itemCount += isKargo ? 0 : adet
+      if (isKargo) existing.shipping = (existing.shipping ?? 0) + digerUcret
+      else existing.otherDeductions = (existing.otherDeductions ?? 0) + digerUcret
+      if (!existing.orderDate) existing.orderDate = parseAmazonDate(r[0])
+    } else {
+      byOrder.set(no, {
+        serviceOrderId: no,
+        orderDate: parseAmazonDate(r[0]),
+        saleAmount: isKargo ? 0 : urun,
+        commission,
+        withholding: 0,
+        returnAmount: 0,
+        itemCount: isKargo ? 0 : adet,
+        shipping: isKargo ? digerUcret : 0,
+        otherDeductions: isKargo ? 0 : digerUcret,
+        orderStatus: null, // rapor sipariş statüsü vermiyor
+        rawJson: {
+          tip,
+          "ürün satışları": r[12],
+          "promosyon indirimleri": r[14],
+          "satış ücretleri": r[15],
+          "diğer işlem ücretleri": r[17],
+        },
+      })
+    }
+  }
+  return [...byOrder.values()]
+}
+
+/** Amazon CSV'sindeki sipariş-dışı kalemleri (Transfer/Reklam/Düzeltme) özetler —
+ *  siparişe bağlanamaz, per-order recon'a girmez ama kullanıcıya bildirilir. */
+export function summarizeAmazonNonOrder(buffer: Buffer): { tip: string; count: number; total: number }[] {
+  const parsed = Papa.parse<string[]>(buffer.toString("utf8"), { skipEmptyLines: true })
+  const rows = parsed.data
+  const headerIdx = rows.findIndex((r) => (r[0] ?? "").trim() === "tarih/saat")
+  if (headerIdx < 0) return []
+  const agg = new Map<string, { count: number; total: number }>()
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i]
+    const tip = (r[2] ?? "").trim()
+    const no = (r[3] ?? "").trim()
+    if (no || !tip) continue
+    const a = agg.get(tip) ?? { count: 0, total: 0 }
+    a.count++
+    a.total += parseAmazonMoney(r[19]) // toplam
+    agg.set(tip, a)
+  }
+  return [...agg.entries()].map(([tip, a]) => ({ tip, count: a.count, total: a.total }))
+}
+
 // ─── Registry ─────────────────────────────────────────────────
 
 export const MARKETPLACE_PARSERS: Record<string, MarketplaceParser> = {
@@ -465,6 +581,12 @@ export const MARKETPLACE_PARSERS: Record<string, MarketplaceParser> = {
     parse: parsePazarama,
     matchKey: (sv) => sv.trim(), // serviceValue = "Sipariş Numarası" birebir
     hasOwnShipping: false,
+  },
+  Amazon: {
+    salesChannel: "amazon",
+    parse: parseAmazon,
+    matchKey: (sv) => sv.trim(), // serviceValue = "sipariş no." birebir (tire içerir, bölme YOK)
+    hasOwnShipping: true, // kargo raporda per-order gerçek
   },
 }
 

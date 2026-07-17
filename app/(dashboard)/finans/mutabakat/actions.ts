@@ -15,6 +15,7 @@ import {
   saveMarketplaceReconciliation,
   computeN11SettlementRates,
   applyN11SettlementRates,
+  summarizeAmazonNonOrder,
   type MarketplaceReconRow,
   type MarketplacePreview,
 } from "@/lib/services/marketplace-reconciliation"
@@ -67,7 +68,7 @@ export async function previewMarketplaceReconciliationAction(
   marketplace: string,
   shippingPerOrder: number,
   formData: FormData,
-): Promise<Result<MarketplacePreview & { _rows: MarketplaceReconRow[]; month: string; detectedMonths: { month: string; count: number }[] }>> {
+): Promise<Result<MarketplacePreview & { _rows: MarketplaceReconRow[]; month: string; detectedMonths: { month: string; count: number }[]; nonOrderSummary?: { tip: string; count: number; total: number }[] }>> {
   try {
     await requireAdmin()
     const parser = MARKETPLACE_PARSERS[marketplace]
@@ -77,7 +78,11 @@ export async function previewMarketplaceReconciliationAction(
 
     const buf = Buffer.from(await file.arrayBuffer())
     const rows = parser.parse(buf)
-    if (rows.length === 0) return { success: false, error: "Excel'de geçerli satır yok" }
+    if (rows.length === 0) return { success: false, error: "Dosyada geçerli satır yok" }
+
+    // Amazon: sipariş-dışı kalemleri (Transfer/Reklam/Düzeltme) kullanıcıya bildir
+    const nonOrderSummary =
+      marketplace === "Amazon" ? summarizeAmazonNonOrder(buf) : undefined
 
     const preview = await buildMarketplaceReconPreview(marketplace, rows, shippingPerOrder)
 
@@ -100,7 +105,7 @@ export async function previewMarketplaceReconciliationAction(
         ? `${fileNameMonth[1]}-${fileNameMonth[2]}`
         : (detectedMonths[0]?.month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`)
 
-    return { success: true, data: { ...preview, _rows: rows, month, detectedMonths } }
+    return { success: true, data: { ...preview, _rows: rows, month, detectedMonths, nonOrderSummary } }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Hata" }
   }
