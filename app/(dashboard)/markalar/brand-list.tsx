@@ -30,7 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Card, CardContent } from "@/components/ui/card"
-import { BrandDialog } from "./brand-dialog"
+import { BrandDialog, type BrandContactData } from "./brand-dialog"
 import { deleteBrand } from "./actions"
 import { formatNumber, formatPercent, formatDate, cn } from "@/lib/utils"
 import { useConfirm } from "@/components/common/confirm-provider"
@@ -52,7 +52,7 @@ interface Brand {
   priceUndercutBuffer?: string | number
   priceUndercutBufferPct?: string | number
   distributorInfo: string | null
-  contactInfo: string | null
+  contacts: BrandContactData[]
   _count?: { products: number; priceListItems?: number }
   priceListCount?: number
   lastPriceUpload?: string | null
@@ -249,7 +249,7 @@ export function BrandList({ brands }: { brands: Brand[] }) {
             priceUndercutBuffer: Number(editing.priceUndercutBuffer ?? 0),
             priceUndercutBufferPct: Number(editing.priceUndercutBufferPct ?? 0),
             distributorInfo: editing.distributorInfo,
-            contactInfo: editing.contactInfo,
+            contacts: editing.contacts,
           }}
         />
       )}

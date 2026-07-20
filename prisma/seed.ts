@@ -90,7 +90,7 @@ async function main() {
       pharmacyMargin: 5,
       pharmacyStockRule: 5,
       distributorInfo: "Caudalie Türkiye Distribütörü",
-      contactInfo: "info@caudalie.com.tr",
+      contacts: { create: [{ name: "Caudalie Türkiye", email: "info@caudalie.com.tr" }] },
     },
   })
   console.log(`  ✓ Sample brand: ${sampleBrand.name}`)

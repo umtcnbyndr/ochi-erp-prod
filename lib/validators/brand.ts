@@ -16,6 +16,39 @@ const aliasesParser = z
       .filter((s) => s.length > 0)
   })
 
+export const brandContactSchema = z.object({
+  name: z.string().min(1, "İsim zorunlu").max(100),
+  email: z
+    .union([z.string().email("Geçersiz e-posta"), z.literal("")])
+    .optional()
+    .transform((v) => (v ? v : undefined)),
+  phone: z
+    .string()
+    .max(50)
+    .optional()
+    .transform((v) => (v ? v : undefined)),
+  note: z
+    .string()
+    .max(500)
+    .optional()
+    .transform((v) => (v ? v : undefined)),
+})
+
+const contactsParser = z
+  .string()
+  .optional()
+  .transform((v, ctx) => {
+    if (!v) return [] as unknown[]
+    try {
+      const parsed = JSON.parse(v)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "İletişim listesi okunamadı" })
+      return z.NEVER
+    }
+  })
+  .pipe(z.array(brandContactSchema))
+
 export const brandSchema = z.object({
   name: z.string().min(1, "Marka adı zorunlu").max(100),
   aliases: aliasesParser,
@@ -47,7 +80,8 @@ export const brandSchema = z.object({
   priceUndercutBuffer: z.coerce.number().min(0).default(0),
   priceUndercutBufferPct: z.coerce.number().min(0).max(50).default(0),
   distributorInfo: z.string().max(500).optional().nullable(),
-  contactInfo: z.string().max(500).optional().nullable(),
+  contacts: contactsParser,
 })
 
 export type BrandFormValues = z.infer<typeof brandSchema>
+export type BrandContactValues = z.infer<typeof brandContactSchema>

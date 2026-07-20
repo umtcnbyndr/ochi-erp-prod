@@ -10,6 +10,7 @@ export async function buildBrandsWorkbook(): Promise<XLSX.WorkBook> {
       marketplaceFloors: {
         include: { marketplace: { select: { name: true } } },
       },
+      contacts: { select: { name: true, email: true, phone: true } },
     },
   })
 
@@ -31,7 +32,9 @@ export async function buildBrandsWorkbook(): Promise<XLSX.WorkBook> {
     "BuyBox Tampon (TL)": num(b.priceUndercutBuffer),
     "BuyBox Tampon (%)": num(b.priceUndercutBufferPct),
     "Distribütör": b.distributorInfo ?? "",
-    "İletişim": b.contactInfo ?? "",
+    "İletişim": b.contacts
+      .map((c) => [c.name, c.phone, c.email].filter(Boolean).join(" · "))
+      .join(" | "),
     "Oluşturulma": fmtDate(b.createdAt),
   }))
 

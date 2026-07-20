@@ -11,7 +11,10 @@ export default async function MarkalarPage() {
   const [brands, priceListStats] = await Promise.all([
     prisma.brand.findMany({
       orderBy: { name: "asc" },
-      include: { _count: { select: { products: true, priceListItems: true } } },
+      include: {
+        _count: { select: { products: true, priceListItems: true } },
+        contacts: { select: { name: true, email: true, phone: true, note: true } },
+      },
     }),
     // Marka başına en son liste fiyatı yükleme tarihi
     prisma.brandPriceList.groupBy({

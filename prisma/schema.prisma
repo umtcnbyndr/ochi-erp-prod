@@ -162,7 +162,6 @@ model Brand {
   priceUndercutBufferPct Decimal @default(0) @db.Decimal(5, 2)
 
   distributorInfo String?
-  contactInfo     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -173,8 +172,24 @@ model Brand {
   marketplaceFloors BrandMarketplaceFloor[]
   purchaseInvoices  PurchaseInvoice[]
   userAccess        UserAllowedBrand[]
+  contacts          BrandContact[]
 
   @@index([pharmacyId])
+}
+
+model BrandContact {
+  id      Int    @id @default(autoincrement())
+  brandId Int
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name    String
+  email   String?
+  phone   String?
+  note    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([brandId])
 }
 
 model Category {

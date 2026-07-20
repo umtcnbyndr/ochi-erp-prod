@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { createBrand, updateBrand } from "./actions"
+
+export interface BrandContactData {
+  name: string
+  email?: string | null
+  phone?: string | null
+  note?: string | null
+}
 
 interface BrandInitialData {
   id?: number
@@ -34,7 +41,13 @@ interface BrandInitialData {
   priceUndercutBuffer?: number | string
   priceUndercutBufferPct?: number | string
   distributorInfo?: string | null
-  contactInfo?: string | null
+  contacts?: BrandContactData[]
+}
+
+let contactRowSeq = 0
+function newContactRow(): BrandContactData & { rowId: number } {
+  contactRowSeq += 1
+  return { rowId: contactRowSeq, name: "", email: "", phone: "", note: "" }
 }
 
 interface BrandDialogProps {
@@ -46,8 +59,31 @@ interface BrandDialogProps {
 export function BrandDialog({ open, onOpenChange, initialData }: BrandDialogProps) {
   const [pending, startTransition] = useTransition()
   const isEdit = Boolean(initialData?.id)
+  const [contacts, setContacts] = useState<Array<BrandContactData & { rowId: number }>>(() => {
+    const initial = initialData?.contacts ?? []
+    return initial.length > 0
+      ? initial.map((c) => ({ ...c, rowId: ++contactRowSeq }))
+      : [newContactRow()]
+  })
+
+  function updateContact(rowId: number, field: keyof BrandContactData, value: string) {
+    setContacts((rows) => rows.map((r) => (r.rowId === rowId ? { ...r, [field]: value } : r)))
+  }
+
+  function addContactRow() {
+    setContacts((rows) => [...rows, newContactRow()])
+  }
+
+  function removeContactRow(rowId: number) {
+    setContacts((rows) => rows.filter((r) => r.rowId !== rowId))
+  }
 
   function onSubmit(formData: FormData) {
+    const cleanContacts = contacts
+      .filter((c) => c.name.trim().length > 0)
+      .map(({ name, email, phone, note }) => ({ name, email, phone, note }))
+    formData.set("contacts", JSON.stringify(cleanContacts))
+
     startTransition(async () => {
       const result = isEdit && initialData?.id
         ? await updateBrand(initialData.id, formData)
@@ -256,14 +292,57 @@ export function BrandDialog({ open, onOpenChange, initialData }: BrandDialogProp
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="contactInfo">İletişim</Label>
-            <Textarea
-              id="contactInfo"
-              name="contactInfo"
-              rows={2}
-              defaultValue={initialData?.contactInfo ?? ""}
-              placeholder="Marka satıcı telefon, e-posta"
-            />
+            <div className="flex items-center justify-between">
+              <Label>İletişim Kişileri</Label>
+              <Button type="button" variant="outline" size="sm" onClick={addContactRow}>
+                <Plus className="h-3.5 w-3.5" />
+                Kişi Ekle
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {contacts.map((c) => (
+                <div
+                  key={c.rowId}
+                  className="grid grid-cols-1 gap-2 rounded-lg border p-2 sm:grid-cols-[1fr_1fr_1fr_auto]"
+                >
+                  <Input
+                    placeholder="İsim"
+                    value={c.name}
+                    onChange={(e) => updateContact(c.rowId, "name", e.target.value)}
+                  />
+                  <Input
+                    type="email"
+                    placeholder="E-posta"
+                    value={c.email ?? ""}
+                    onChange={(e) => updateContact(c.rowId, "email", e.target.value)}
+                  />
+                  <Input
+                    placeholder="Telefon"
+                    value={c.phone ?? ""}
+                    onChange={(e) => updateContact(c.rowId, "phone", e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => removeContactRow(c.rowId)}
+                    aria-label="Kişiyi sil"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  <Textarea
+                    className="resize-none text-sm sm:col-span-4"
+                    rows={1}
+                    placeholder="Not (opsiyonel)"
+                    value={c.note ?? ""}
+                    onChange={(e) => updateContact(c.rowId, "note", e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Satıcı/marka temsilcisi iletişim kişileri — birden fazla eklenebilir.
+            </p>
           </div>
 
           <DialogFooter>

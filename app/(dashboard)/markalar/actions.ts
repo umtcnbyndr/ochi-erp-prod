@@ -16,7 +16,8 @@ export async function createBrand(formData: FormData): Promise<ActionResult> {
 
   try {
     await requirePermission("markalar", "edit")
-    await prisma.brand.create({ data: parsed.data })
+    const { contacts, ...brandData } = parsed.data
+    await prisma.brand.create({ data: { ...brandData, contacts: { create: contacts } } })
     revalidatePath("/markalar")
     return { success: true }
   } catch (err: unknown) {
@@ -53,10 +54,14 @@ export async function updateBrand(id: number, formData: FormData): Promise<Actio
       if (!already) aliases.push(existing.name)
     }
 
-    await prisma.brand.update({
-      where: { id },
-      data: { ...parsed.data, aliases },
-    })
+    const { contacts, ...brandData } = parsed.data
+    await prisma.$transaction([
+      prisma.brandContact.deleteMany({ where: { brandId: id } }),
+      prisma.brand.update({
+        where: { id },
+        data: { ...brandData, aliases, contacts: { create: contacts } },
+      }),
+    ])
     revalidatePath("/markalar")
     revalidatePath("/urunler")
     return { success: true }
