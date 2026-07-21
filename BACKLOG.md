@@ -36,8 +36,8 @@
 ## 🧠 Fikir Havuzu (2026-07-17 beyin fırtınası — önceliklendirilecek)
 
 *Denetim turu (modül modül, çoğu salt-okunur — `/denetim` skill'i ile):*
-Barkod eşleştirme mantığı · Raporlar · Markalar (satıcı iletişim alanları + liste yükleme) · Pazar Yerleri (veri doğru mu) · Cariler · Ayarlar
-~~Dopigo Aktarım~~ ✅ 2026-07-17 (madde 3 — bayatlık kontrolü + SET fiyat hesabı 2 bug bulundu/düzeltildi, bkz. CHANGELOG) · ~~SET ürünler~~ ✅ aynı tur (5 kopya SET fiyat mantığı tek kaynağa indirildi)
+Barkod eşleştirme mantığı · Raporlar · Pazar Yerleri (veri doğru mu) · Cariler · Ayarlar
+~~Dopigo Aktarım~~ ✅ 2026-07-17 (madde 3 — bayatlık kontrolü + SET fiyat hesabı 2 bug bulundu/düzeltildi, bkz. CHANGELOG) · ~~SET ürünler~~ ✅ aynı tur (5 kopya SET fiyat mantığı tek kaynağa indirildi) · ~~Markalar~~ ✅ 2026-07-21 (iletişim serbest metin → yapılandırılmış çoklu kişi BrandContact; ölü kod/mimari bulguları kod gerektirmedi)
 
 - [ ] **Kampanyalar denetimi — ERTELENDİ (kullanıcı kararı 2026-07-17), bulgular kayıp olmasın diye burada:** Prod'da 1 kampanya var (COLLECTED), 0 CampaignSale kaydıyla — otomatik satış-tahsilat izlemesinin (`recordCampaignSale`, product-exit.ts tetikli) gerçekten çalıştığına dair kanıt yok, tahsilat elle/eski yolla girilmiş görünüyor. Kod incelemesi 2 gerçek boşluk buldu: (1) `recordCampaignSale` hata verirse product-exit.ts sessizce yutuyor (`console.error`, kullanıcıya hiç gösterilmiyor) — tetiklenirse tahsilat fark edilmeden eksik kalır; (2) `updateCampaign` tarih/oran değiştirirken "aynı ürün 2 kampanyada olamaz" kontrolünü tekrar yapmıyor — tarih uzatmada çakışma sessiz oluşabilir. Ayrıca: `applyCampaignDiscount` (lib/pricing/campaign-discount.ts) hiç çağrılmıyor, aynı formül dopigo-sync.ts'te 3 yerde elle kopyalanmış (şu an tutarlı ama kırılgan — SET'teki gibi ayrışabilir); test kapsamı sıfır; `collectCampaign`+`searchProductsForCampaignAction` ölü/legacy kod adayı. Kullanıcı bu ay/gelecek ay kullanacak — geri dönüldüğünde önce (1) ve (2) düzeltilmeli (Kural 6: önce test).
 

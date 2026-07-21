@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-07-21
+
+**Denetim turu — Markalar (madde 8):**
+- ✅ **Marka iletişim bilgisi: serbest metin → yapılandırılmış çoklu kişi.** Denetim, `Brand.contactInfo`'nun (tek serbest metin) marka formu dışında hiçbir ekranda gösterilmediğini, sadece Excel export'a gittiğini buldu. Kullanıcı isteği: satıcı/temsilci iletişim kişilerini yapılandır (isim/mail/telefon/not, marka başına birden fazla). Yeni tablo `BrandContact` (`brandId` FK, onDelete Cascade, `@@index([brandId])`), Brand.contactInfo kaldırıldı. Migration `20260720153846_add_brand_contact` **eski contactInfo verisini kaybetmeden** yeni tabloya taşıdı (INSERT ... SELECT WHERE contactInfo dolu → `name` alanına), sonra kolonu düşürdü. Katmanlar: `lib/validators/brand.ts` (`brandContactSchema` + JSON `contactsParser`, e-posta validasyonu, boş→undefined), `actions.ts` (create → nested create; update → transaction: deleteMany + create, tam replace), `brand-dialog.tsx` (dinamik satır listesi: isim/mail/telefon inputları + not textarea + "Kişi Ekle"/sil, submit'te JSON serialize), `page.tsx`+`brand-list.tsx` (contacts fetch+prop), `lib/exports/brands.ts` (İletişim kolonu artık kişileri "isim · tel · mail | ..." birleştiriyor), `prisma/seed.ts`. Test: 184/184, typecheck+lint temiz. Deploy `925e046` — prod'da tablo + 5 eski kayıt (Mustela/Vichy/Skinceuticals/LRP/Cerave) doğrulandı. **Not:** eski veri tek `name` alanına birleşik geldi (isim+mail+tel satır satır) — kullanıcı UI'dan açıp alanlara bölebilir. Denetimin diğer bulguları (BrandMarketplaceFloor ölü kod — DB'de 7 satır teyit edildi, zaten BACKLOG'da; `brand.commissionRate` diye alan yok, komisyon Marketplace/CommissionTariff'te — doğru mimari) kod değişikliği gerektirmedi.
+- ✅ **Coolify MCP token yenilendi (kalıcı).** Eski token (id 3) iptal olmuş → her yazma işlemi 401. Yeni token (id 5, "claude-3") config'e yazıldı, adres stabil domain'e çekildi (`https://coolify.testdevumut.cloud`, ham IP:port yerine). Bilgisayar restart'ı sonrası MCP yeni env'i aldı, deploy MCP'den tetiklendi. Memory `coolify-mcp-config-lokasyonu` güncellendi (tek config dosyası + teşhis scripti + restart şartı).
+
 ## 2026-07-17
 
 **Kritik temizlik turu (23-madde beyin fırtınası — sıralı işleniyor, bkz. memory `sequential-backlog-workflow`):**
