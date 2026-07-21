@@ -1528,7 +1528,9 @@ model CommissionTariff {
 
   rawJson Json
 
-  @@unique([uploadId, barcode])
+  // Çok-dönemli tarife: aynı upload'da bir barkod için dönem başına bir satır
+  // (effectiveFrom farklı → 3 Gün / 4 Gün blokları çakışmaz).
+  @@unique([uploadId, barcode, effectiveFrom])
   @@index([productId, marketplace])
   @@index([marketplace, effectiveFrom, effectiveTo])
 }

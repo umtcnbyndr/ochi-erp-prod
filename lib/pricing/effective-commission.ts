@@ -63,6 +63,9 @@ export async function getEffectiveCommission(
       effectiveFrom: { lte: at },
       effectiveTo: { gte: at },
     },
+    // Çok-dönemli tarife: aynı ürün için tarih penceresi eşleşen tek dönem döner,
+    // sınır anında birden fazla eşleşirse en geç başlayanı seç (determinism).
+    orderBy: { effectiveFrom: "desc" },
     select: {
       id: true,
       effectiveFrom: true,
@@ -222,6 +225,9 @@ export async function loadCommissionTariffsForProducts(
       effectiveFrom: { lte: at },
       effectiveTo: { gte: at },
     },
+    // Çok-dönemli: `at` genelde tek dönemi kapsar; sınır anında birden fazla eşleşirse
+    // en geç başlayan map'te son yazılıp kazanır (aşağıdaki map.set determinism).
+    orderBy: { effectiveFrom: "asc" },
     select: {
       id: true,
       productId: true,

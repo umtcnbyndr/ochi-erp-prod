@@ -19,7 +19,14 @@ const uploadSchema = z.object({
 })
 
 export type UploadResult =
-  | { success: true; uploadId: number; rowCount: number; matchedCount: number; replaced: boolean }
+  | {
+      success: true
+      uploadId: number
+      rowCount: number
+      matchedCount: number
+      replaced: boolean
+      periodCount: number
+    }
   | { success: false; error: string }
 
 export async function uploadTariffAction(formData: FormData): Promise<UploadResult> {
@@ -72,6 +79,7 @@ export async function uploadTariffAction(formData: FormData): Promise<UploadResu
       rowCount: result.rowCount,
       matchedCount: result.matchedCount,
       replaced: result.replaced,
+      periodCount: result.periodCount,
     }
   } catch (err) {
     return {

@@ -157,9 +157,31 @@ export async function analyzeTariffs(
   const shipping = mp ? Number(mp.shippingCost) : 0
   const withholdingPct = mp ? Number(mp.withholdingTax) : 0
 
+  // Çok-dönemli tarife: aynı upload'da bir ürün için dönem başına bir satır var
+  // (3 Gün / 4 Gün). Fiyat LİMİTLERİ tüm dönemlerde aynı, seçim de ortak → ekranda
+  // ürün başına TEK satır göster: şu ANI kapsayan dönem, yoksa en erken başlayan.
+  // (Komisyon hesapları zaten tarihe göre doğru dönemi ayrıca çözüyor.)
+  const now = Date.now()
+  const byBarcode = new Map<string, (typeof tariffs)[number]>()
+  for (const t of tariffs) {
+    const existing = byBarcode.get(t.barcode)
+    if (!existing) {
+      byBarcode.set(t.barcode, t)
+      continue
+    }
+    const tCovers = t.effectiveFrom.getTime() <= now && t.effectiveTo.getTime() >= now
+    const eCovers =
+      existing.effectiveFrom.getTime() <= now && existing.effectiveTo.getTime() >= now
+    if (tCovers && !eCovers) byBarcode.set(t.barcode, t)
+    else if (tCovers === eCovers && t.effectiveFrom < existing.effectiveFrom) {
+      byBarcode.set(t.barcode, t)
+    }
+  }
+  const dedupedTariffs = [...byBarcode.values()]
+
   const rows: TariffRowAnalyzed[] = []
 
-  for (const t of tariffs) {
+  for (const t of dedupedTariffs) {
     const product = t.product
     const brandId = product?.brand?.id ?? null
     // Brand/category filter sadece ERP'de eşleşenlere uygulanır

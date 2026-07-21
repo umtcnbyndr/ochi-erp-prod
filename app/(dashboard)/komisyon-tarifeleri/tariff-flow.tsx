@@ -253,8 +253,10 @@ function UploadCard({
     startTransition(async () => {
       const res = await uploadTariffAction(fd)
       if (res.success) {
+        const periodNote =
+          res.periodCount > 1 ? ` · hafta ${res.periodCount} döneme bölündü` : ""
         toast.success(
-          `${res.rowCount} ürün yüklendi · ${res.matchedCount} eşleşti${res.replaced ? " (üzerine yazıldı)" : ""}`,
+          `${res.rowCount} ürün yüklendi · ${res.matchedCount} eşleşti${res.replaced ? " (üzerine yazıldı)" : ""}${periodNote}`,
         )
         setOpen(false)
         if (fileRef.current) fileRef.current.value = ""
