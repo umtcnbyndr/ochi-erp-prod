@@ -149,7 +149,14 @@ export const DOPIGO_HEADERS: string[] = [
   "Temu indirim yüzdesi",
   "Temu zam yüzdesi",
   "Temu hazırlık süresi",
-  // 93-101: Ek alanlar
+  // 93-97: Trendruum (Dopigo 2026-07 güncellemesiyle eklendi — kullanmıyoruz, hizalama için).
+  // ⚠️ Bu blok eksik olunca sonraki kolonlar (barkod/gtin dahil) kayar → Dopigo yükleme hatası.
+  "Trendruum Fiyatı",
+  "Trendruum Liste Fiyatı",
+  "Trendruum indirim yüzdesi",
+  "Trendruum zam yüzdesi",
+  "Trendruum hazırlık süresi",
+  // 98-106: Ek alanlar
   "Genel indirim yüzdesi",
   "Genel zam yüzdesi",
   "trendyol_disabled",
