@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-08-03
+
+**Eczane yükleme çökmesi (acil) + genel sistem denetimi:**
+- ✅ **Upload limiti 10→25 MB — eczane Excel'i sayfayı çökertiyordu.** Kullanıcı `/eczane-yukleme`'de "Application error: a server-side exception" (digest `352730481`) aldı. Prod logunda birebir sebep: cadde dosyası **10.3 MB**'a çıkmış, Next.js `experimental.serverActions.bodySizeLimit: '10mb'` sınırında gövdeyi kesmiş → `Unexpected end of form` → **uncaughtException** → sayfa çöktü. Kritik nokta: uygulamanın kendi `validateUploadedFile` boyut kontrolü (`MAX_UPLOAD_SIZE_MB=10`) **hiç çalışamıyordu**, çünkü istek ona ulaşmadan kopuyordu — kullanıcı düzgün "dosya çok büyük" mesajı yerine anlamsız bir çökme görüyordu. Fix 3 nokta: (a) `next.config.mjs` bodySizeLimit 10mb→**25mb**, (b) `MAX_UPLOAD_SIZE_MB` 10→**25** (ikisi ayrı kalırsa aynı sessiz çökme tekrarlar — her iki dosyaya karşılıklı uyarı yorumu eklendi), (c) `eczane-yukleme/upload-flow.tsx`'e **client-side boyut ön kontrolü** (limit aşılırsa anında net mesaj: "Dosya çok büyük: X MB — en fazla 25 MB", çökme yok). Test: `upload-size-limit.test.ts` (4 test) — `bodySizeLimit >= MAX_UPLOAD_SIZE_MB` invaryantını kilitler, bu hata sınıfı bir daha sessizce dönemez. **204/204 yeşil**, typecheck+lint temiz. Deploy `13d686b`, prod health 200. Diğer yükleme yolları (Dopigo, TY favoriler, ürün içe aktar, marka liste fiyat) da aynı global limitten faydalanıyor.
+- 📋 **Genel sistem denetimi (prod SQL sondajı, salt-okunur) — önem sıralı bulgular:**
+  - 🔴 **Eczane stoğu 7 gün bayat** — son başarılı yükleme 27 Tem 06:50 (yukarıdaki çökme yüzünden). 411 üründe cadde stoğu eski → Dopigo stok push'u, eczane fallback fiyatı, fırsat raporları etkileniyor. Bu deploy ile açıldı.
+  - 🔴 **Temmuz mutabakatı yüklenmemiş** — Tem: 2 HB kaydı; Haz: 1594 TY + 179 diğer. Temmuz kârı gerçek değil, tahmin. (Mutabakat işi paralel chat'te — bu chat dokunmadı, sadece raporlandı.)
+  - 🟡 **Komisyon tarifesi 04 Ağu 04:59'da bitiyor** — yenisi yüklenmezse kademeli tarifeden düz `Marketplace.commissionRate` (%19) fallback'e düşer. Not: 28 Tem haftası TEK blok geldi, 21 Tem haftası 3+4 bölünmüştü — 2026-07-21'de genelleştirilen parser ikisini de doğru işledi ✓.
+  - 🟡 **21 kalem / ₺34K satışta maliyet yok** (son 60g, iptal/iade hariç) — `buildPnlCTE` eşleşmemiş kalemde COGS'u `ELSE 0` sayıyor (tasarım: boşluğu "Eksik Alış"/`ManualPurchasePrice` doldurur) → bu 21 kalemde kâr şişik. İyi haber: eşleşmeyen ₺196K'nın **₺162K'sı zaten Eksik Alış'la maliyetlenmiş** (141/162 kalem) — mekanizma çalışıyor. En büyükleri: Vichy Capital Soleil ₺8.3K (HB), SkinCeuticals P-Tiox ₺7.6K (HB), Darphin ₺3.7K (N11). Ayrıca doğrulandı: eşleşmeyenlerin TrendyolListing kaydı var ama `productId` NULL → eşleştirme bug'ı DEĞİL, gerçekten katalog dışı (BACKLOG "Unmatched → ürün oluşturma akışı" maddesi bunu kapsıyor).
+  - 🟢 1 negatif ana stok (SkinCeuticals Metacell Renewal B 50ml, id 56: ana −1 / eczane 4) · 7 üründe hiç alış bilgisi yok (1'inde satış var).
+  - ✅ **Temiz çıkanlar:** Dopigo sipariş senkronu bugün SUCCESS · fiyat tarayıcı bugün SUCCESS (son snapshot 10:32) · SKT riski YOK (90 günde biten 0) · zararına manuel fiyat YOK · negatif eczane stok YOK · aktif kampanya 0.
+
 ## 2026-07-21
 
 **Dopigo Aktarım format düzeltmesi (acil — yükleme hatası):**
