@@ -19,22 +19,36 @@ function parseSizeToMb(v: string): number {
 }
 
 describe("upload boyut limitleri — Next ↔ uygulama senkronu", () => {
-  const bodyLimit = (
-    nextConfig as { experimental?: { serverActions?: { bodySizeLimit?: string } } }
-  ).experimental?.serverActions?.bodySizeLimit
+  const exp = (
+    nextConfig as {
+      experimental?: {
+        serverActions?: { bodySizeLimit?: string }
+        middlewareClientMaxBodySize?: string
+      }
+    }
+  ).experimental
 
-  it("next.config'de bodySizeLimit tanımlı", () => {
+  const bodyLimit = exp?.serverActions?.bodySizeLimit
+  // middleware.ts tanımlı olduğu için gövde AYRICA burada tamponlanır (varsayılan
+  // 10MB). 2026-08-03: sadece bodySizeLimit yükseltilmişti, asıl kesen bu limitti
+  // ve hata deploy'a rağmen sürdü. İkisi birden kilitleniyor.
+  const middlewareLimit = exp?.middlewareClientMaxBodySize
+
+  it("next.config'de HER İKİ limit de tanımlı", () => {
     expect(bodyLimit).toBeTruthy()
+    expect(middlewareLimit).toBeTruthy()
   })
 
-  it("bodySizeLimit uygulama limitinden küçük DEĞİL (küçükse çökme yaşanır)", () => {
+  it("her iki limit de uygulama limitinden küçük DEĞİL (küçükse çökme yaşanır)", () => {
     expect(parseSizeToMb(bodyLimit as string)).toBeGreaterThanOrEqual(MAX_UPLOAD_SIZE_MB)
+    expect(parseSizeToMb(middlewareLimit as string)).toBeGreaterThanOrEqual(MAX_UPLOAD_SIZE_MB)
   })
 
-  it("eczane cadde dosyası (10.3 MB) limite sığıyor", () => {
+  it("eczane cadde dosyası (10.3 MB) her iki limite de sığıyor", () => {
     const caddeFileMb = 10.3
     expect(MAX_UPLOAD_SIZE_MB).toBeGreaterThan(caddeFileMb)
     expect(parseSizeToMb(bodyLimit as string)).toBeGreaterThan(caddeFileMb)
+    expect(parseSizeToMb(middlewareLimit as string)).toBeGreaterThan(caddeFileMb)
   })
 
   it("MAX_UPLOAD_SIZE_BYTES türetimi doğru", () => {

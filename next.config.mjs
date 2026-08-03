@@ -2,13 +2,22 @@
 const nextConfig = {
   output: 'standalone',
   experimental: {
-    // Eczane cadde Excel'i her ay büyüyor (2026-07-21'de 10.3 MB ile eski 10mb
-    // limitini aştı → Next gövdeyi kesiyor, "Unexpected end of form" ile sayfa
-    // çöküyordu). Uygulama içi limit (MAX_UPLOAD_SIZE_MB) ile aynı tutulmalı —
-    // burası düşük kalırsa uygulamanın kendi "dosya çok büyük" mesajı hiç çalışamaz.
+    // ⚠️ İKİ AYRI LİMİT — ikisi de MAX_UPLOAD_SIZE_MB ile aynı tutulmalı.
+    // Eczane cadde Excel'i her ay büyüyor (2026-08-03'te 10.3 MB ile 10mb
+    // varsayılanını aştı → gövde kesiliyor → "Unexpected end of form" →
+    // uncaughtException → sayfa çöküyor; uygulamanın kendi "dosya çok büyük"
+    // mesajı hiç çalışamıyor çünkü istek ona ulaşmadan kopuyor).
+    //
+    // 1) Server action yükü:
     serverActions: {
       bodySizeLimit: '25mb',
     },
+    // 2) middleware.ts TANIMLI olduğu için gövde ayrıca burada tamponlanıyor
+    //    (varsayılan 10MB). middleware matcher'ı /eczane-yukleme dahil tüm
+    //    dashboard rotalarını kapsıyor → asıl kesen limit BURASIYDI.
+    //    Not: Next 15.5 bu anahtarı okuyor; sonraki sürümlerde adı
+    //    `proxyClientMaxBodySize` olacak (deprecation).
+    middlewareClientMaxBodySize: '25mb',
   },
   // Build memory tasarrufu icin ESLint runtime'da degil CI'da çalistirilir.
   // (typecheck ayri komutla, lint local'de kontrol ediliyor — production
