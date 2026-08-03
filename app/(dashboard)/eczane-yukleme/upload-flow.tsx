@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from "lucide-react"
 import { toast } from "sonner"
+import { MAX_UPLOAD_SIZE_BYTES, MAX_UPLOAD_SIZE_MB } from "@/lib/auth/file-validation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -88,6 +89,18 @@ export function PharmacyUploadFlow() {
   const onUpload = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
+
+    // Boyut ön kontrolü: limit aşılırsa Next gövdeyi keser ve sayfa "server-side
+    // exception" ile çöker (kullanıcı ne olduğunu anlamaz). Burada erken yakalayıp
+    // net mesaj veriyoruz.
+    const picked = formData.get("file")
+    if (picked instanceof File && picked.size > MAX_UPLOAD_SIZE_BYTES) {
+      toast.error(
+        `Dosya çok büyük: ${(picked.size / 1024 / 1024).toFixed(1)} MB — en fazla ${MAX_UPLOAD_SIZE_MB} MB`,
+      )
+      return
+    }
+
     startTransition(async () => {
       const r = await analyzePharmacyFileAction(formData)
       if (!r.success) {

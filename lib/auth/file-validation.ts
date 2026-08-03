@@ -9,7 +9,10 @@
  *   - markalar liste fiyat
  */
 
-export const MAX_UPLOAD_SIZE_MB = 10
+// ⚠️ next.config.mjs → experimental.serverActions.bodySizeLimit ile AYNI olmalı.
+// Next gövdeyi kendi limitinde keser; oradaki değer düşükse istek buraya hiç
+// ulaşmaz ve kullanıcı düzgün hata yerine sayfa çökmesi görür.
+export const MAX_UPLOAD_SIZE_MB = 25
 export const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
 export const ALLOWED_EXCEL_EXTENSIONS = ["xlsx", "xls", "csv"] as const
