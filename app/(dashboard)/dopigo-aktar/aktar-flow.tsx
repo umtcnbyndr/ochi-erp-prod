@@ -4,7 +4,6 @@ import { useState, useTransition, useMemo } from "react"
 import { toast } from "sonner"
 import {
   AlertTriangle,
-  Download,
   Sparkles,
   Eye,
   CheckCircle2,
@@ -40,7 +39,6 @@ import {
 } from "@/components/ui/table"
 import {
   previewProductsAction,
-  exportSelectedAction,
   refreshAndExportAction,
   type BrandOption,
   type MarketplaceLite,
@@ -218,65 +216,6 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
         toast.error(
           "İndirme hatası: " +
             (err instanceof Error ? err.message : "bilinmeyen"),
-        )
-      }
-    })
-  }
-
-  function handleDownload() {
-    if (selectedIds.size === 0) {
-      toast.error("En az bir ürün seçmelisiniz")
-      return
-    }
-    if (
-      !fields.purchasePrice &&
-      !fields.stock &&
-      !fields.websitePrices &&
-      !fields.marketplacePrices &&
-      !fields.status
-    ) {
-      toast.error("En az bir alan seçili olmalı")
-      return
-    }
-    startExport(async () => {
-      const result = await exportSelectedAction({
-        productIds: Array.from(selectedIds),
-        fields,
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      try {
-        const binary = atob(result.data.base64)
-        const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-        const blob = new Blob([bytes], {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = result.data.filename
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-        toast.success(`${result.data.rowCount} ürünlü Excel indirildi`)
-        if (
-          "unmatchedDopigo" in result.data &&
-          (result.data as { unmatchedDopigo: number }).unmatchedDopigo > 0
-        ) {
-          const n = (result.data as { unmatchedDopigo: number }).unmatchedDopigo
-          toast.warning(
-            `${n} ürün Dopigo snapshot'ında bulunamadı — bu satırlarda sadece sku/barkod yazıldı, diğer alanlar boş. Önce Dopigo Yükleme sayfasından son snapshot'ı yükle.`,
-            { duration: 8000 },
-          )
-        }
-      } catch (err) {
-        toast.error(
-          "İndirme hatası: " +
-            (err instanceof Error ? err.message : "bilinmeyen")
         )
       }
     })
@@ -655,19 +594,9 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
               title="Sadece Trendyol için güncel piyasa (Pazar Takip) verisiyle öneri hesaplar, sonra Excel indirir"
             >
               <Sparkles className="h-4 w-4" />
-              {exporting ? "Tazeleniyor + Hazırlanıyor…" : `Akıllı: Tazele + İndir`}
-            </Button>
-
-            <Button
-              onClick={handleDownload}
-              disabled={exporting}
-              size="sm"
-              variant="outline"
-              className="gap-1.5"
-              title="Mevcut fiyatlarla Excel indirir, öneri hesaplamaz"
-            >
-              <Download className="h-4 w-4" />
-              {exporting ? "Hazırlanıyor…" : `Sadece İndir (${selectedIds.size})`}
+              {exporting
+                ? "Tazeleniyor + Hazırlanıyor…"
+                : `Fiyatları Tazele + İndir (${selectedIds.size})`}
             </Button>
 
             <Button

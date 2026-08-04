@@ -130,24 +130,9 @@ export async function previewProductsAction(query: ProductQuery) {
   }
 }
 
-export async function exportSelectedAction(input: {
-  productIds: number[]
-  fields: ExportFields
-}) {
-  try {
-    await requirePermission("dopigo-aktar", "edit")
-    const result = await buildExportExcel({
-      productIds: input.productIds,
-      fields: input.fields,
-    })
-    return { success: true as const, data: result }
-  } catch (err) {
-    return {
-      success: false as const,
-      error: err instanceof Error ? err.message : "Excel oluşturulamadı",
-    }
-  }
-}
+// NOT: `exportSelectedAction` (tazelemeden düz indirme) 2026-08-04'te kaldırıldı —
+// "Sadece İndir" butonuyla birlikte. O buton önerileri hesaplamadan Excel üretiyordu,
+// bu yüzden Dopigo'ya bayat fiyat gidebiliyordu. Tek akış: refreshAndExportAction.
 
 export async function listLowStockAlertsCountAction() {
   try {
