@@ -11,6 +11,7 @@ function row(partial: Partial<RawBuyboxRow> & { productId: number; observedAt: D
     buyboxOrder: 1,
     hasMultipleSeller: false,
     ourPrice: null,
+    nextCompetitorPrice: null,
     ...partial,
   }
 }

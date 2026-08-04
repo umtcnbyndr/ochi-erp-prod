@@ -288,6 +288,7 @@ export async function getRecommendations(
                   ourPrice: buyboxObs.ourPrice ?? undefined,
                   ownsBuyBox: buyboxObs.buyboxOrder === 1,
                   competitorCount: buyboxObs.hasMultipleSeller ? 2 : 1,
+                  nextCompetitorPrice: buyboxObs.nextCompetitorPrice ?? undefined,
                 }
               : undefined,
         },
@@ -435,6 +436,8 @@ export interface RawBuyboxRow {
   buyboxOrder: number | null
   hasMultipleSeller: boolean
   ourPrice: number | null
+  /** BİZ HARİÇ en ucuz rakip fiyatı — vitrin bizdeyken yükseltme sinyali (RAISE_TO_SECOND) */
+  nextCompetitorPrice: number | null
   observedAt: Date
 }
 
@@ -444,6 +447,8 @@ export interface LatestBuyboxEntry {
   buyboxOrder: number | null
   hasMultipleSeller: boolean
   ourPrice: number | null
+  /** BİZ HARİÇ en ucuz rakip fiyatı — vitrin bizdeyken yükseltme sinyali (RAISE_TO_SECOND) */
+  nextCompetitorPrice: number | null
   observedAt: Date
 }
 
@@ -468,6 +473,8 @@ export function buildLatestBuyboxMap(
       buyboxOrder: r.buyboxOrder,
       hasMultipleSeller: r.hasMultipleSeller,
       ourPrice: r.ourPrice != null ? Number(r.ourPrice) : null,
+      nextCompetitorPrice:
+        r.nextCompetitorPrice != null ? Number(r.nextCompetitorPrice) : null,
       observedAt: r.observedAt,
     })
   }
@@ -508,12 +515,19 @@ export function snapshotToBuyboxRow(s: {
     ? (s.sellers as Array<{ seller?: string | null; price?: number | null }>)
     : []
   const ours = sellers.find((x) => isOurSeller(x.seller))
+  // Biz hariç en ucuz rakip — vitrin bizdeyken tek yükseltme sinyali bu.
+  // (competitorPrice o durumda bizim fiyatımız olduğu için rakip bilgisi taşımaz.)
+  const competitorPrices = sellers
+    .filter((x) => !isOurSeller(x.seller) && x.price != null)
+    .map((x) => Number(x.price))
+    .filter((n) => Number.isFinite(n) && n > 0)
   return {
     productId: s.productId,
     buyboxPrice: Number(s.buyboxPrice),
     buyboxOrder: isOurSeller(s.buyboxSeller) ? 1 : 2,
     hasMultipleSeller: s.sellerCount > 1,
     ourPrice: ours?.price != null ? Number(ours.price) : null,
+    nextCompetitorPrice: competitorPrices.length > 0 ? Math.min(...competitorPrices) : null,
     observedAt: s.observedAt,
   }
 }

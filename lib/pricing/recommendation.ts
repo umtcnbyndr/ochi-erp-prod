@@ -27,6 +27,7 @@ export type RecommendationBasis =
   | "AT_BUYBOX"
   | "UNDERCUT_BUYBOX"
   | "PRICE_UP_OPPORTUNITY"
+  | "RAISE_TO_SECOND"
   | "BLOCKED_BY_FLOOR"
   | "NO_PURCHASE_PRICE"
   | "CAMPAIGN_ACTIVE"
@@ -59,6 +60,13 @@ export interface RecommendPriceInput {
     ownsBuyBox?: boolean
     /** Rakip listesi (varsa loglanir) */
     competitorCount?: number
+    /**
+     * BIZ HARIC en ucuz rakip fiyati (2. sirada olan). Vitrin bizdeyken
+     * `competitorPrice` bizim fiyatimiz oldugu icin rakip sinyali tasimaz —
+     * yukseltme firsatini SADECE bu alan gorur (basis: RAISE_TO_SECOND).
+     * null/yok = tek saticiyiz veya veri yok.
+     */
+    nextCompetitorPrice?: NumericInput
   }
   /**
    * Kampanya aktif mi? Aktifse BuyBox baskisi atlanir — formul fiyati onerilir.
@@ -285,6 +293,34 @@ export function recommendPrice(input: RecommendPriceInput): RecommendationResult
       }
     }
 
+    // YUKSELTME FIRSATI: vitrin bizde ve arkamizdaki en ucuz rakip bizden pahali.
+    // Fiyati "rakip - tampon" seviyesine cikar — hala EN UCUZ biziz, yani vitrini
+    // kaybetme riski yok, ama aradaki farki kar olarak aliriz.
+    // Guvenlik: asla mevcut fiyatin ALTINA inmez (max ile), tampon rakibi bizim
+    // seviyemize dusururse yukseltme yapilmaz.
+    const nextCompetitor = toNumber(input.buybox?.nextCompetitorPrice, NaN)
+    if (Number.isFinite(nextCompetitor) && nextCompetitor > keepPrice) {
+      const raiseBuffer = resolveBufferAmount(input, nextCompetitor)
+      const target = round4(nextCompetitor - raiseBuffer)
+      if (target > keepPrice) {
+        return {
+          formulaPrice,
+          floorPrice,
+          buyboxPrice,
+          recommendedPrice: target,
+          basis: "RAISE_TO_SECOND",
+          marginAtRecommended: calculateMarginPct(
+            target,
+            purchase,
+            commission,
+            stopaj,
+            shipping + extraCost,
+          ),
+          warning: `BuyBox bizde — arkadaki en ucuz rakip ${round2(nextCompetitor)} TL. Fiyat ${round2(keepPrice)} → ${round2(target)} TL'ye çıkarıldı (hâlâ en ucuz biziz), ürün başına ${round2(target - keepPrice)} TL ek kâr.`,
+        }
+      }
+    }
+
     return {
       formulaPrice,
       floorPrice,
@@ -392,6 +428,7 @@ export const RECOMMENDATION_BASIS_LABELS: Record<RecommendationBasis, string> = 
   AT_BUYBOX: "Rakip ile esit — formul fiyat",
   UNDERCUT_BUYBOX: "Rakibin altina iniliyor (rakip > biz)",
   PRICE_UP_OPPORTUNITY: "Kar firsatı: rakibe yakin fiyat oneriliyor",
+  RAISE_TO_SECOND: "BuyBox bizde — 2. saticinin altina yukseltildi",
   BLOCKED_BY_FLOOR: "Kar tabani devreye girdi",
   NO_PURCHASE_PRICE: "Alis fiyati eksik",
   CAMPAIGN_ACTIVE: "Kampanya aktif — BuyBox baskisi atlandi",
