@@ -184,11 +184,17 @@ export async function refreshAndExportAction(input: {
     await requirePermission("dopigo-aktar", "edit")
 
     // 1. Önerileri hesapla + DB'ye yaz (sadece Trendyol, scraper BuyBox verisiyle)
+    //
+    // ⚠️ Kapsam AKTARILAN ÜRÜNLERİN TAMAMI — marka seçili olmasa da çalışır.
+    // (2026-08-04'e kadar `if (input.brandId)` ile kısıtlıydı: marka seçmeden
+    // aktarım yapıldığında öneriler hiç yenilenmiyordu, Excel'e bayat fiyat
+    // gidiyordu. getRecommendations'da brandId zaten opsiyonel ve productIds
+    // ile sınırlanıyor — teknik bir zorunluluk yoktu.)
     let recsWritten = 0
-    if (input.brandId) {
+    if (input.productIds.length > 0) {
       try {
         const rows = await getRecommendations({
-          brandId: input.brandId,
+          ...(input.brandId ? { brandId: input.brandId } : {}),
           marketplaceName: "Trendyol",
           productIds: input.productIds,
         })

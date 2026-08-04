@@ -170,12 +170,10 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
       toast.error("En az bir ürün seçmelisiniz")
       return
     }
-    if (brandId === "_all") {
-      toast.error(
-        "Akıllı export için tek bir marka seçmelisin (öneri hesaplama markaya bağlı)",
-      )
-      return
-    }
+    // Not: Eskiden burada "tek marka seç" zorunluluğu vardı ("öneri hesaplama
+    // markaya bağlı" gerekçesiyle) — bu doğru değildi: getRecommendations'da
+    // brandId opsiyonel ve kapsam zaten seçili productIds ile sınırlı.
+    // Kısıt kaldırıldı (2026-08-04): tüm markalarda da tazeleme çalışır.
     if (
       !fields.purchasePrice &&
       !fields.stock &&
@@ -193,7 +191,8 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
       const result = await refreshAndExportAction({
         productIds: Array.from(selectedIds),
         fields,
-        brandId: Number(brandId),
+        // "_all" seçiliyken marka filtresi gönderilmez (Number("_all") = NaN idi)
+        ...(brandId !== "_all" ? { brandId: Number(brandId) } : {}),
       })
       if (!result.success) {
         toast.error(result.error)
@@ -649,7 +648,7 @@ export function AktarFlow({ brands, marketplaces, lowStockCount }: Props) {
 
             <Button
               onClick={handleSmartExport}
-              disabled={exporting || brandId === "_all"}
+              disabled={exporting}
               size="sm"
               variant="default"
               className="gap-1.5 ml-auto bg-emerald-600 hover:bg-emerald-700"
