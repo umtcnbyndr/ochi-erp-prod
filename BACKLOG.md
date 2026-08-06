@@ -13,7 +13,7 @@
 **Kullanıcının aksiyonu (kod değil, veri/karar):**
 - [ ] **Eczane Excel'ini yükle** — son yükleme 27 Tem, 7 gün bayat (10 MB limiti çökertiyordu, 2026-08-03'te 25 MB'a çıkarıldı ve açıldı). Cadde stoğu güncellenene kadar Dopigo stok push'u + eczane fallback fiyatı eski veriyle çalışır.
 - [ ] **Temmuz mutabakatını yükle** — Tem'de 2 HB kaydı var (Haz: 1594 TY + 179 diğer). Yüklenene kadar Temmuz kârı tahmin, gerçek değil.
-- [ ] **Komisyon tarifesi 04 Ağu 04:59'da bitiyor** — yenisi yüklenmezse kademeli tarife düşer, düz %19 fallback devreye girer (fiyat + kâr hesabı yanlışlanır). Haftalık rutin.
+- [ ] 🔴 **Komisyon tarifesi SÜRESİ DOLDU — yeni haftayı yükle.** Son tarife 4 Ağu 04:59'da bitti; 6 Ağu itibarıyla geçerli tarife YOK → sistem düz %19 kullanıyor. Ağustos Trendyol komisyonu %26 fazla hesaplanıyor (21.585 yerine 17.054 ₺ olmalı), kâr o kadar düşük görünüyor. Yükleyince geçmişe dönük düzelir. Haftalık rutin (Salı).
 - [ ] **21 kalem / ₺34K satışta maliyet yok** (son 60g) — Eksik Alış'tan gir, yoksa o satışlarda kâr şişik görünüyor. En büyükleri: Vichy Capital Soleil ₺8.3K (HB), SkinCeuticals P-Tiox ₺7.6K (HB), Darphin Intral ₺3.7K (N11), Vichy Capital Soleil Yüz ₺3.4K (Pazarama). (2026-08-03 denetimi)
 - [ ] **Negatif stok:** SkinCeuticals Metacell Renewal B 50ml (id 56) ana stok −1, eczane 4 — düzelt.
 - [ ] **7 üründe hem ana hem eczane alışı yok** (CeraVe Yoğun Nemlendirici 236ml #904, Dermalogica Age Bright Serum #781, LRP Effaclar Duo #684, Dermalogica Sebum Masque #773, Vichy Neovadiol Phytosculpt #637, Caudalie Vinocrush Skin Tint #574) — hiçbirinde satış yok, düşük öncelik. Eksik Alış'tan gir istersen. (2026-07-17 doğrulandı — eski "79 ürün/COGS şişik" notu bayattı, eczane fallback zinciri sorunu çözmüş)
@@ -22,6 +22,8 @@
 - [ ] Vichy id=619 gerçek eczane kodu.
 
 **Kod — kritik/kısa:**
+- [ ] **Tarife bitince UYARI ver** — 2026-08-06'da tarife 2 gündür bitmişti, sistem sessizce düz %19'a düştü, kullanıcı ancak rakamlar tuhaf gelince fark etti. Geçerli tarife yoksa/48 saat içinde bitecekse: Komisyon Tarifeleri + Dopigo Aktarım + Panel'de kırmızı uyarı. (Sessiz bozulma kalıbı — bkz. CHANGELOG 2026-08-06)
+- [ ] **Deploy OOM kalıcı çözümü** — build "optimized production build" satırında hata mesajsız exit 255 ile düşüyor, retry ile geçiyor (2026-08-06'da yine oldu). Sunucuya swap eklemek veya build bellek ayarı. Şimdilik retry yeterli ama her deployda kumar.
 - [ ] Eski TY-Floor ölü kod temizliği (BrandMarketplaceFloor tablo+servis+applyTrendyolFloor+validator) — chip açıldı 2026-07-17
 - [ ] Güvenlik O1-O3: AUTH_SECRET'tan ayrı SECRET_ENCRYPTION_KEY · güvenlik header'ları (HSTS/CSP) · login rate-limit IP+username
 - [ ] Cron Coolify Scheduled Task kurulumu (endpoint hazır, otomatik tetik yok — Dopigo 20dk)
