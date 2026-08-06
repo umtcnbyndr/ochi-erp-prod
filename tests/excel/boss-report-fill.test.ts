@@ -94,13 +94,15 @@ async function loadOut(buf: Buffer): Promise<ExcelJS.Workbook> {
 }
 
 describe("fillOchiWorkbook — XML cerrahisi (grafik/stil kaybı olmadan)", () => {
-  it("ay sayfasının giriş hücrelerini yazar, formülleri KORUR, Getir'i sıfırlar", async () => {
+  it("ay sayfasının giriş hücrelerini yazar, formülleri KORUR, Getir'e DOKUNMAZ", async () => {
     const out = await loadOut(await fillOchiWorkbook(await buildTemplate(), 2026, 5, data))
     const m = out.getWorksheet("HAZİRAN 2026")!
     expect(m.getCell("B3").value).toBe(2144110) // bayat 111 üzerine yazıldı
     expect(m.getCell("C3").value).toBe(1499)
     expect(m.getCell("B10").value).toBe(74781) // Amazon (satır sırası)
-    expect(m.getCell("B14").value).toBe(0) // Getir sıfırlandı
+    // Getir Cadde (Quick Commerce) kullanıcının elle girdiği veri — aktarım
+    // KORUMALI. 2026-08-06'ya kadar 0 yazılıyordu ve her aktarımda siliniyordu.
+    expect(m.getCell("B14").value).toBe(32799)
     expect((m.getCell("B18").value as { formula?: string })?.formula).toBe("SUM(B27:H27)")
     expect((m.getCell("B23").value as { formula?: string })?.formula).toBe("B18-B19-B20-B21-B22")
     expect((m.getCell("B38").value as { formula?: string })?.formula).toBe("B27*1/100")

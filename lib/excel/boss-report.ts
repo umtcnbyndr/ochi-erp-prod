@@ -32,7 +32,7 @@ const SHEET_MP_ROWS = ["Trendyol", "Hepsiburada", "N11", "Trendyol Mikro", "Paza
 const MP_FIRST_ROW = 3 // Trendyol satırı
 const GETIR_ROW = 14
 const DETAIL_COLS = ["Trendyol", "Hepsiburada", "N11", "Pazarama", "Amazon", "PttAvm", "Farmazon"] // B..H
-const DETAIL_ROWS = { netSatis: 27, alis: 29, komisyon: 32, kargo: 35 }
+const DETAIL_ROWS = { netSatis: 27, alis: 29, komisyon: 32, kargo: 35, stopaj: 38 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 const colLetter = (n: number): string => {
@@ -163,8 +163,9 @@ function fillMonthSheetXml(xml: string, sst: string[], data: BossReportData): st
     xml = setCell(xml, `C${r}`, { value: v?.siparisAdedi ?? 0 })
     xml = setCell(xml, `D${r}`, { value: v?.satisAdedi ?? 0 })
   })
-  // Getir Cadde → 0 (elle doldurulur)
-  for (const c of ["B", "C", "D"]) xml = setCell(xml, `${c}${GETIR_ROW}`, { value: 0 })
+  // ⚠️ Getir Cadde (B14:D14) satırına DOKUNULMAZ — Quick Commerce verisini kullanıcı
+  // elle giriyor, sistemde bu kanal yok. (2026-08-06'ya kadar buraya 0 yazılıyordu →
+  // her aktarımda kullanıcının elle girdiği ciro siliniyordu.)
 
   // DETAY RAPOR: B..H kolonları
   const rows: [number, (m: BossReportData["marketplaces"][0]) => number][] = [
@@ -177,6 +178,14 @@ function fillMonthSheetXml(xml: string, sst: string[], data: BossReportData): st
     DETAIL_COLS.forEach((label, i) => {
       const v = byLabel.get(label)
       xml = setCell(xml, `${colLetter(2 + i)}${r}`, { value: v ? pick(v) : 0 })
+    })
+  }
+  // Stopaj satırı (38): şablonun kendi formülü — değer YAZMIYORUZ, Excel hesaplasın.
+  // Bazı ay sayfalarında bu formüller silinmiş durumda (Haziran 2026) → geri koyulur.
+  for (let c = 2; c <= 8; c++) {
+    const col = colLetter(c)
+    xml = setCell(xml, `${col}${DETAIL_ROWS.stopaj}`, {
+      formula: `${col}${DETAIL_ROWS.netSatis}*1/100`,
     })
   }
   return xml
@@ -311,7 +320,7 @@ function fillSummarySheetXml(xml: string, sst: string[], monthIdx: number, data:
     }
   }
   for (const m of data.marketplaces) put(m.label, round2(m.netSatis))
-  put("Getir Cadde", 0)
+  // Getir Cadde özet sayfada da elle yönetilir — dokunulmaz.
   return xml
 }
 
