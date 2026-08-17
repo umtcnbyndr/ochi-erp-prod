@@ -42,6 +42,12 @@ interface BuyboxHoverProps {
   isOurs: boolean
   /** BİZ HARİÇ en ucuz rakip — vitrin bizdeyken tek anlamlı rakip sinyali */
   nextCompetitorPrice?: number | null
+  /** Birim alış maliyeti (ana alış, yoksa cadde alışından çevrim) */
+  cost?: number | null
+  /** Maliyet hangi kaynaktan: ana depo mu cadde mi (etikette gösterilir) */
+  costSource?: "MAIN" | "STREET" | null
+  /** Zarar sınırı: kâr 0 fiyatı — altına inersen para kaybediyorsun */
+  breakEven?: number | null
   /** Trendyol ürün sayfası — verilirse "Trendyol'da aç" bağlantısı çıkar */
   tyProductUrl?: string | null
   /** Son gözlem tarihi */
@@ -65,6 +71,9 @@ export function BuyboxHover({
   ourPrice,
   isOurs,
   nextCompetitorPrice,
+  cost,
+  costSource,
+  breakEven,
   tyProductUrl,
   observedAt,
   marginAtMarket,
@@ -119,7 +128,23 @@ export function BuyboxHover({
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               BuyBox Karşılaştırma
             </p>
+            {/* Fiyat merdiveni: alış → zarar sınırı → piyasa → bizim fiyat.
+                Bir bakışta "bu fiyata satabilir miyim" görünür. */}
             <div className="space-y-1.5">
+              {cost != null && (
+                <Row
+                  label={costSource === "STREET" ? "Alış (cadde)" : "Alış"}
+                  value={formatCurrency(cost)}
+                  valueCls="text-muted-foreground"
+                />
+              )}
+              {breakEven != null && (
+                <Row
+                  label="Zarar sınırı"
+                  value={formatCurrency(breakEven)}
+                  valueCls="text-muted-foreground"
+                />
+              )}
               {/* Vitrin bizdeyse bu fiyat BİZİM canlı fiyatımız — "rakip" demek yanlış */}
               <Row
                 label={isOurs ? "Vitrin fiyatı (bizim)" : "Rakip (BuyBox)"}
@@ -163,7 +188,9 @@ export function BuyboxHover({
                 />
               )}
             </div>
-            {netAtMarket != null && !isOurs && (
+            {/* Vitrin fiyatına satarsak kâr/zarar — vitrin bizde olsa da gösterilir
+                (kullanıcı isteği 2026-08-17: "kaç kâra/zarara satıyoruz" tek bakışta) */}
+            {netAtMarket != null && (
               <div
                 className={cn(
                   "rounded-md border px-2 py-1.5",
@@ -173,7 +200,9 @@ export function BuyboxHover({
                 )}
               >
                 <p className="text-[10px] text-muted-foreground">
-                  Rakip fiyatına satarsan (birim başına)
+                  {isOurs
+                    ? "Bu fiyattan satıyorsun (birim başına)"
+                    : "Rakip fiyatına satarsan (birim başına)"}
                 </p>
                 <p
                   className={cn(

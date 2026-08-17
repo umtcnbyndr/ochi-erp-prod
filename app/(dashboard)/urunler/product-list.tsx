@@ -90,6 +90,12 @@ interface ProductRow {
   trendyolOurPrice?: number | null
   /** Rakip (BuyBox) fiyatına satarsak net marj % (tooltip için) */
   trendyolBuyboxMargin?: number | null
+  /** Birim alış (ana alış > cadde çevrimi) — kartta gösterilir */
+  trendyolCost?: number | null
+  /** Maliyet kaynağı: ana depo mu cadde mi */
+  trendyolCostSource?: "MAIN" | "STREET" | null
+  /** Zarar sınırı (kâr 0 fiyatı) */
+  trendyolBreakEven?: number | null
   trendyolListing?: {
     quantity: number
     approved: boolean
@@ -791,6 +797,9 @@ export function ProductList({
                             ourPrice={ourPrice}
                             isOurs={isOurs}
                             nextCompetitorPrice={p.trendyolBuybox.nextCompetitorPrice}
+                            cost={p.trendyolCost}
+                            costSource={p.trendyolCostSource}
+                            breakEven={p.trendyolBreakEven}
                             tyProductUrl={p.trendyolBuybox.tyProductUrl}
                             observedAt={p.trendyolBuybox.observedAt}
                             marginAtMarket={p.trendyolBuyboxMargin}

@@ -47,6 +47,13 @@ export interface MarketRow {
   /** Ham katalog liste fiyatı (BrandPriceList) — net alış öncesi, gösterim için */
   catalogListPrice: number | null
   costSource: CostSource
+  /**
+   * KART GÖSTERİMİ için maliyet — ana stok 0 ise cadde alışından çevrim
+   * (kullanıcı kararı 2026-08-17). Motorun kullandığı `unitCost` DEĞİŞMEDİ:
+   * fiyat kararları hâlâ sistemin COGS kuralıyla (ana alış > cadde) veriliyor.
+   */
+  displayCost: number | null
+  displayCostSource: "MAIN" | "STREET" | null
   stockState: StockState
   // Bizim fiyat
   ourPrice: number | null
@@ -198,6 +205,20 @@ export async function getMarketAnalysis(
     })
     let costSource: CostSource = unitCost != null ? (Number(p.mainPurchasePrice ?? 0) > 0 ? "MAIN" : "STREET") : "NONE"
 
+    // KART GÖSTERİMİ maliyeti (kullanıcı kararı 2026-08-17): ana stok 0 ise mal
+    // cadde'den çıkacağı için kartta cadde alışı gösterilir. Motorun `unitCost`u
+    // DEĞİŞMEZ — fiyat kararları sistemin COGS kuralıyla verilmeye devam eder.
+    const streetOnlyCostForDisplay = resolveProductUnitCost({
+      mainPurchasePrice: null, streetPurchasePrice: p.streetPurchasePrice,
+      vatRate: p.vatRate,
+      brand: brand ? { yearEndDiscount1: brand.yearEndDiscount1, yearEndDiscount2: brand.yearEndDiscount2, yearEndDiscount3: brand.yearEndDiscount3, pharmacyMargin: brand.pharmacyMargin } : null,
+    })
+    const preferStreetForDisplay = p.mainStock === 0 && streetOnlyCostForDisplay != null && streetOnlyCostForDisplay > 0
+    const displayCost = preferStreetForDisplay ? streetOnlyCostForDisplay : unitCost
+    const displayCostSource: "MAIN" | "STREET" | null =
+      displayCost == null ? null
+      : (!preferStreetForDisplay && Number(p.mainPurchasePrice ?? 0) > 0) ? "MAIN" : "STREET"
+
     // Stok durumu
     const rule = brand?.pharmacyStockRule ?? 0
     let stockState: StockState
@@ -272,7 +293,8 @@ export async function getMarketAnalysis(
       categoryId: p.categoryId, subcategoryId: p.subcategoryId, barcode: p.primaryBarcode,
       mainStock: p.mainStock, streetStock: p.streetStock,
       mainPurchasePrice: num(p.mainPurchasePrice), streetPurchasePrice: num(p.streetPurchasePrice),
-      unitCost, catalogListPrice: num(p.priceListItems[0]?.listPrice), costSource, stockState,
+      unitCost, catalogListPrice: num(p.priceListItems[0]?.listPrice), costSource,
+      displayCost, displayCostSource, stockState,
       ourPrice, isListed, formulaPrice: opportunity.formulaPrice,
       found: snap.found, buyboxPrice: num(snap.buyboxPrice), buyboxSeller, ownsBuybox,
       sellerCount: snap.sellerCount,

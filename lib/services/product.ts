@@ -6,8 +6,11 @@ import { recalculateSetsContainingComponents } from "./set-product"
 import { syncPrimaryTrendyolListing } from "./product-marketplace-listing"
 import {
   loadCommissionTariffsForProducts,
+  resolveEffectiveCommissionSync,
   resolveMarginAtMarket,
 } from "@/lib/pricing/effective-commission"
+import { resolveProductUnitCost } from "@/lib/pricing/effective-purchase-price"
+import { calculateSalePrice } from "@/lib/pricing/sale-price"
 import { calculateSetPurchasePrice, purchasePriceChanged } from "@/lib/pricing"
 // Satıcı listesi yardımcıları TEK KAYNAK — fiyat önerisi de aynısını kullanır.
 // (2026-08-06'ya kadar bu dosyada isOurSellerName'in ayrı bir kopyası vardı.)
@@ -303,8 +306,68 @@ export async function listProducts(options: ProductListOptions = {}) {
   // SET tipindeki ürünler için sanal stok / PSF / alış hesapla
   const itemsWithVirtualStock = items.map((p) => {
     const buybox = buyboxByProductId.get(p.id) ?? null
-    // Rakip (BuyBox) fiyatına satarsak net marj % (kademeli tarife öncelikli, tooltip için)
-    const cost = p.mainPurchasePrice != null ? Number(p.mainPurchasePrice) : null
+    // Maliyet: ana alış > (ana stok yoksa) cadde alışından çevrim.
+    // TEK KAYNAK resolveProductUnitCost — 2026-08-17'ye kadar burada SADECE
+    // mainPurchasePrice okunuyordu, bu yüzden eczaneden satılan 405 üründe
+    // BuyBox kartındaki marj BOŞ görünüyordu (hesaplanabilecekken).
+    const brandForCost = p.brand
+      ? {
+          yearEndDiscount1: p.brand.yearEndDiscount1,
+          yearEndDiscount2: p.brand.yearEndDiscount2,
+          yearEndDiscount3: p.brand.yearEndDiscount3,
+          pharmacyMargin: p.brand.pharmacyMargin,
+        }
+      : null
+    // Sistemin COGS kuralı: ana alış > cadde çevrimi (raporlarda bu kullanılır).
+    const ruleCost = resolveProductUnitCost({
+      mainPurchasePrice: p.mainPurchasePrice,
+      streetPurchasePrice: p.streetPurchasePrice,
+      vatRate: p.vatRate,
+      brand: brandForCost,
+    })
+    // Sadece cadde alışından çevrim (ana alış yok sayılarak).
+    const streetOnlyCost = resolveProductUnitCost({
+      mainPurchasePrice: null,
+      streetPurchasePrice: p.streetPurchasePrice,
+      vatRate: p.vatRate,
+      brand: brandForCost,
+    })
+    // ⚠️ KART GÖSTERİMİ — kullanıcı kararı 2026-08-17: ana stok 0 ise mal cadde'den
+    // çıkacağı için kartta CADDE alışı gösterilir (gerçek maliyete daha yakın).
+    // Bu SADECE karttaki alış/zarar sınırı/marj gösterimini etkiler; kâr
+    // raporlarının COGS kuralı (resolveProductUnitCost) DEĞİŞMEDİ — bilinçli fark.
+    const preferStreetForDisplay =
+      p.mainStock === 0 && streetOnlyCost != null && streetOnlyCost > 0
+    const cost = preferStreetForDisplay ? streetOnlyCost : ruleCost
+    const usesMainCost =
+      !preferStreetForDisplay && p.mainPurchasePrice != null && Number(p.mainPurchasePrice) > 0
+    const trendyolCostSource: "MAIN" | "STREET" | null =
+      cost == null ? null : usesMainCost ? "MAIN" : "STREET"
+    // Zarar sınırı: hedef kâr 0 ile formül → altına inersen para kaybediyorsun.
+    // Komisyon kademeli tarifeden gelir (fiyat kendisine bağlı olduğu için buybox
+    // fiyatının kademesini referans alıyoruz — kartta gösterim amaçlı).
+    const trendyolBreakEven =
+      cost != null && cost > 0 && tyConfig
+        ? (() => {
+            const rate = buybox
+              ? resolveEffectiveCommissionSync({
+                  productId: p.id,
+                  marketplaceName: "Trendyol",
+                  priceAtCalculation: buybox.buyboxPrice,
+                  tariffMap: tyTariffMap,
+                  fallbackRate: tyConfig.commissionRate,
+                }).rate
+              : tyConfig.commissionRate
+            try {
+              return calculateSalePrice({
+                netPurchasePrice: cost,
+                marketplace: { ...tyConfig, commissionRate: rate, targetProfit: 0 },
+              })
+            } catch {
+              return null
+            }
+          })()
+        : null
     const trendyolBuyboxMargin =
       buybox && tyConfig && cost != null && cost > 0
         ? resolveMarginAtMarket({
@@ -359,6 +422,9 @@ export async function listProducts(options: ProductListOptions = {}) {
         trendyolBuybox: buybox,
         trendyolOurPrice: trendyolPrice,
         trendyolBuyboxMargin,
+        trendyolCost: cost,
+        trendyolCostSource,
+        trendyolBreakEven,
         trendyolListing,
         stockSource,
       }
@@ -404,6 +470,9 @@ export async function listProducts(options: ProductListOptions = {}) {
       trendyolBuybox: buybox,
       trendyolOurPrice: trendyolPrice,
       trendyolBuyboxMargin,
+      trendyolCost: cost,
+      trendyolCostSource,
+      trendyolBreakEven,
       // stockSource bilinçli YOK: SET'te ana/eczane stok kavramı bileşenler üzerinden
       // işler, MAIN/PHARMACY/ZERO rozeti yanıltıcı olur (satır renklenmez).
       trendyolListing,
