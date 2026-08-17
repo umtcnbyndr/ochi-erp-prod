@@ -17,6 +17,11 @@ import {
   resolveEffectiveCommissionSync,
   type TariffMap,
 } from "@/lib/pricing/effective-commission"
+import {
+  cheapestCompetitorPrice,
+  isOurSellerName,
+  ourListedPrice,
+} from "@/lib/pricing/buybox-sellers"
 import { calculateEffectivePurchasePrice } from "@/lib/services/dopigo-sync"
 import { buildActiveCampaignMap, type ActiveCampaignInfo } from "@/lib/services/campaign"
 import type { Decimal } from "@prisma/client/runtime/library"
@@ -481,11 +486,9 @@ export function buildLatestBuyboxMap(
   return map
 }
 
-/** Bizim TY satıcı adımız — BuyBox bizde mi (market-analysis / sales-analysis ile aynı). */
-const OUR_SELLER_HINT = "ochi"
-function isOurSeller(name: string | null | undefined): boolean {
-  return !!name && name.toLowerCase().includes(OUR_SELLER_HINT)
-}
+// isOurSeller → lib/pricing/buybox-sellers'tan (yukarıda import edildi).
+// Bu dosyada ayrı kopyası vardı; 2026-08-06'da tek kaynağa bağlandı.
+const isOurSeller = isOurSellerName
 
 /** MarketPriceSnapshot ham satır tipi (DB → JS). */
 interface SnapshotRawRow {
@@ -514,20 +517,14 @@ export function snapshotToBuyboxRow(s: {
   const sellers = Array.isArray(s.sellers)
     ? (s.sellers as Array<{ seller?: string | null; price?: number | null }>)
     : []
-  const ours = sellers.find((x) => isOurSeller(x.seller))
-  // Biz hariç en ucuz rakip — vitrin bizdeyken tek yükseltme sinyali bu.
-  // (competitorPrice o durumda bizim fiyatımız olduğu için rakip bilgisi taşımaz.)
-  const competitorPrices = sellers
-    .filter((x) => !isOurSeller(x.seller) && x.price != null)
-    .map((x) => Number(x.price))
-    .filter((n) => Number.isFinite(n) && n > 0)
   return {
     productId: s.productId,
     buyboxPrice: Number(s.buyboxPrice),
     buyboxOrder: isOurSeller(s.buyboxSeller) ? 1 : 2,
     hasMultipleSeller: s.sellerCount > 1,
-    ourPrice: ours?.price != null ? Number(ours.price) : null,
-    nextCompetitorPrice: competitorPrices.length > 0 ? Math.min(...competitorPrices) : null,
+    // Tek kaynak: lib/pricing/buybox-sellers (Ürünler sayfası da aynısını kullanır)
+    ourPrice: ourListedPrice(s.sellers),
+    nextCompetitorPrice: cheapestCompetitorPrice(s.sellers),
     observedAt: s.observedAt,
   }
 }
@@ -560,19 +557,25 @@ export async function getLatestBuyboxMap(
 /** Bir ürün için en yeni BuyBox gözlemini döner (UI badge'i için) — scraper kaynağı. */
 export async function getLatestBuyboxForProduct(productId: number) {
   const rows = await prisma.$queryRaw<SnapshotRawRow[]>(Prisma.sql`
-    SELECT "productId", "buyboxPrice", "buyboxSeller", "sellerCount", "sellers", "observedAt"
+    SELECT "productId", "buyboxPrice", "buyboxSeller", "sellerCount", "sellers",
+           "observedAt", "tyProductUrl"
     FROM "MarketPriceSnapshot"
     WHERE "productId" = ${productId} AND "found" = true AND "buyboxPrice" IS NOT NULL
     ORDER BY "observedAt" DESC
     LIMIT 1
   `)
-  const row = rows[0] ? snapshotToBuyboxRow(rows[0]) : null
+  const raw = rows[0]
+  const row = raw ? snapshotToBuyboxRow(raw) : null
   if (!row) return null
   return {
     buyboxPrice: row.buyboxPrice,
     buyboxOrder: row.buyboxOrder,
     hasMultipleSeller: row.hasMultipleSeller,
     ourPrice: row.ourPrice,
+    /** BİZ HARİÇ en ucuz rakip — vitrin bizdeyken tek anlamlı rakip sinyali */
+    nextCompetitorPrice: row.nextCompetitorPrice,
+    /** Trendyol ürün sayfası (scraper cache'i) */
+    tyProductUrl: (raw as { tyProductUrl?: string | null }).tyProductUrl ?? null,
     observedAt: row.observedAt,
   }
 }

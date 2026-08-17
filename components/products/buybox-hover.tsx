@@ -1,5 +1,6 @@
 "use client"
 
+import { ExternalLink } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -8,19 +9,46 @@ import {
 } from "@/components/ui/tooltip"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 
+/** Trendyol turuncu "t" işareti — marka logosu değil, sade bir işaret. */
+function TrendyolMark({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "inline-flex items-center justify-center rounded-[3px] bg-orange-500 font-bold leading-none text-white",
+        className,
+      )}
+      style={{ fontSize: "8px" }}
+    >
+      t
+    </span>
+  )
+}
+
 interface BuyboxHoverProps {
   children: React.ReactNode
-  /** Rakip / BuyBox fiyatı */
+  /**
+   * Vitrindeki (BuyBox) fiyat. DİKKAT: vitrin BİZDEYSE bu bizim CANLI fiyatımızdır,
+   * rakibin değil — kart etiketi buna göre değişir (2026-08-06 düzeltmesi: eskiden
+   * her durumda "Rakip (BuyBox)" yazıyordu, vitrin bizdeyken yanlış bilgi veriyordu).
+   */
   buyboxPrice: number
-  /** Bizim Trendyol satış fiyatımız (yoksa null) */
+  /**
+   * Sistemin bizim için hesapladığı Trendyol fiyatı (elle sabit veya formül).
+   * Canlı fiyat DEĞİL — vitrin bizdeyse canlı fiyat `buyboxPrice`'tır.
+   */
   ourPrice?: number | null
   /** BuyBox bizde mi (sıra = 1) */
   isOurs: boolean
+  /** BİZ HARİÇ en ucuz rakip — vitrin bizdeyken tek anlamlı rakip sinyali */
+  nextCompetitorPrice?: number | null
+  /** Trendyol ürün sayfası — verilirse "Trendyol'da aç" bağlantısı çıkar */
+  tyProductUrl?: string | null
   /** Son gözlem tarihi */
   observedAt?: Date | string | null
   /**
-   * Rakip (BuyBox) fiyatına satarsak net marjımız (%). Verilirse
-   * "rakip fiyatına inersen bu kadar kâr/zarar" satırı gösterilir.
+   * Vitrin fiyatına satarsak net marjımız (%). Verilirse
+   * "o fiyata inersen bu kadar kâr/zarar" satırı gösterilir.
    * (komisyon + kargo + stopaj düşülmüş net)
    */
   marginAtMarket?: number | null
@@ -36,10 +64,12 @@ export function BuyboxHover({
   buyboxPrice,
   ourPrice,
   isOurs,
+  nextCompetitorPrice,
+  tyProductUrl,
   observedAt,
   marginAtMarket,
 }: BuyboxHoverProps) {
-  // Rakibin bizim fiyatımıza göre yüzde farkı
+  // Rakibin bizim fiyatımıza göre yüzde farkı (vitrin RAKİPTEyken anlamlı)
   const pct =
     !isOurs && ourPrice != null && ourPrice > 0
       ? ((buyboxPrice - ourPrice) / ourPrice) * 100
@@ -48,13 +78,29 @@ export function BuyboxHover({
   const higher = pct != null && pct > 0.5 // rakip pahalı → fırsat
   const pctLabel = pct != null ? Math.abs(pct).toFixed(1).replace(".", ",") : null
 
-  // Rakip fiyatına satarsak birim başına net kâr/zarar (₺) — marj %'den türetilir
+  // Vitrin fiyatına satarsak birim başına net kâr/zarar (₺) — marj %'den türetilir
   const netAtMarket =
     marginAtMarket != null ? (buyboxPrice * marginAtMarket) / 100 : null
   const loss = netAtMarket != null && netAtMarket < 0
 
+  // Vitrin bizdeyken: arkamızdaki en ucuz rakibe olan mesafe.
+  // Rakip bizden ucuzsa vitrini fiyatla değil puan/teslimatla tutuyoruz → uyar.
+  const gapToNext =
+    isOurs && nextCompetitorPrice != null ? nextCompetitorPrice - buyboxPrice : null
+  const undercutByRival = gapToNext != null && gapToNext < 0
+
   const durum = isOurs
-    ? { text: "BuyBox bizde — en iyi konumdasın", cls: "text-emerald-600 dark:text-emerald-400" }
+    ? undercutByRival
+      ? {
+          text: "Vitrin bizde ama rakip bizden ucuz — konum kırılgan",
+          cls: "text-amber-600 dark:text-amber-400",
+        }
+      : gapToNext != null && gapToNext > 0
+        ? {
+            text: `Vitrin bizde · rakip ${formatCurrency(nextCompetitorPrice!)} — fiyat yükseltme payı var`,
+            cls: "text-emerald-600 dark:text-emerald-400",
+          }
+        : { text: "Vitrin bizde — tek satıcıyız", cls: "text-emerald-600 dark:text-emerald-400" }
     : cheaper
       ? { text: "Rakip bizden ucuz — BuyBox'ı kaybediyoruz", cls: "text-rose-600 dark:text-rose-400" }
       : higher
@@ -74,15 +120,36 @@ export function BuyboxHover({
               BuyBox Karşılaştırma
             </p>
             <div className="space-y-1.5">
-              <Row label="Rakip (BuyBox)" value={formatCurrency(buyboxPrice)} strong />
+              {/* Vitrin bizdeyse bu fiyat BİZİM canlı fiyatımız — "rakip" demek yanlış */}
+              <Row
+                label={isOurs ? "Vitrin fiyatı (bizim)" : "Rakip (BuyBox)"}
+                value={formatCurrency(buyboxPrice)}
+                strong
+                valueCls={
+                  isOurs ? "text-emerald-600 dark:text-emerald-400" : undefined
+                }
+              />
+              {isOurs && nextCompetitorPrice != null && (
+                <Row
+                  label="En yakın rakip"
+                  value={formatCurrency(nextCompetitorPrice)}
+                  valueCls={
+                    undercutByRival
+                      ? "font-semibold text-amber-600 dark:text-amber-400"
+                      : undefined
+                  }
+                />
+              )}
               {ourPrice != null ? (
                 <Row
-                  label="Bizim TY fiyatı"
+                  label={isOurs ? "Sistem hedefi" : "Bizim TY fiyatı"}
                   value={formatCurrency(ourPrice)}
-                  valueCls={isOurs ? "font-semibold text-emerald-600 dark:text-emerald-400" : undefined}
+                  valueCls={!isOurs ? undefined : "text-muted-foreground"}
                 />
               ) : (
-                <Row label="Bizim TY fiyatı" value="—" valueCls="text-muted-foreground" />
+                !isOurs && (
+                  <Row label="Bizim TY fiyatı" value="—" valueCls="text-muted-foreground" />
+                )
               )}
               {pctLabel && (
                 <Row
@@ -129,6 +196,19 @@ export function BuyboxHover({
               <p className="text-[10px] text-muted-foreground">
                 Son gözlem: {formatDate(observedAt)}
               </p>
+            )}
+            {tyProductUrl && (
+              <a
+                href={tyProductUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 py-1.5 text-[11px] font-medium text-orange-700 transition-colors hover:bg-orange-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 dark:border-orange-900/50 dark:bg-orange-950/30 dark:text-orange-300 dark:hover:bg-orange-950/60"
+              >
+                <TrendyolMark className="h-3 w-3 shrink-0" />
+                Trendyol&apos;da aç
+                <ExternalLink className="ml-auto h-3 w-3 shrink-0 opacity-60" />
+              </a>
             )}
           </div>
         </TooltipContent>

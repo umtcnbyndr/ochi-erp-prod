@@ -9,11 +9,12 @@ import {
   resolveMarginAtMarket,
 } from "@/lib/pricing/effective-commission"
 import { calculateSetPurchasePrice, purchasePriceChanged } from "@/lib/pricing"
-
-/** Scraper satıcı adı bize mi ait (BuyBox bizde) — "ochi" içerir. */
-function isOurSellerName(name: string | null | undefined): boolean {
-  return !!name && name.toLowerCase().includes("ochi")
-}
+// Satıcı listesi yardımcıları TEK KAYNAK — fiyat önerisi de aynısını kullanır.
+// (2026-08-06'ya kadar bu dosyada isOurSellerName'in ayrı bir kopyası vardı.)
+import {
+  cheapestCompetitorPrice,
+  isOurSellerName,
+} from "@/lib/pricing/buybox-sellers"
 
 export interface ProductListFilters {
   search?: string
@@ -214,6 +215,9 @@ export async function listProducts(options: ProductListOptions = {}) {
             buyboxPrice: true,
             buyboxSeller: true,
             observedAt: true,
+            // Kartta "en yakın rakip" + Trendyol'a git linki için
+            sellers: true,
+            tyProductUrl: true,
           },
         })
       : []
@@ -249,6 +253,10 @@ export async function listProducts(options: ProductListOptions = {}) {
       buyboxPrice: number
       buyboxOrder: number | null
       observedAt: Date
+      /** BİZ HARİÇ en ucuz rakip — vitrin bizdeyken kartta gösterilir */
+      nextCompetitorPrice: number | null
+      /** Trendyol ürün sayfası (scraper cache'i) — karttan "Trendyol'da aç" */
+      tyProductUrl: string | null
     }
   >()
   for (const obs of latestBuyboxRows) {
@@ -259,6 +267,9 @@ export async function listProducts(options: ProductListOptions = {}) {
       // scraper satıcı adı "ochi" içeriyorsa BuyBox bizde → sıra 1
       buyboxOrder: isOurSellerName(obs.buyboxSeller) ? 1 : 2,
       observedAt: obs.observedAt,
+      // Tek kaynak: lib/pricing/buybox-sellers (fiyat önerisi de aynısını kullanır)
+      nextCompetitorPrice: cheapestCompetitorPrice(obs.sellers),
+      tyProductUrl: obs.tyProductUrl ?? null,
     })
   }
 

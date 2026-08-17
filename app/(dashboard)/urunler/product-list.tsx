@@ -82,6 +82,10 @@ interface ProductRow {
     buyboxPrice: number
     buyboxOrder: number | null
     observedAt: Date | string
+    /** BİZ HARİÇ en ucuz rakip — vitrin bizdeyken kartta gösterilir */
+    nextCompetitorPrice?: number | null
+    /** Trendyol ürün sayfası linki (scraper cache'i) */
+    tyProductUrl?: string | null
   } | null
   trendyolOurPrice?: number | null
   /** Rakip (BuyBox) fiyatına satarsak net marj % (tooltip için) */
@@ -786,6 +790,8 @@ export function ProductList({
                             buyboxPrice={bb}
                             ourPrice={ourPrice}
                             isOurs={isOurs}
+                            nextCompetitorPrice={p.trendyolBuybox.nextCompetitorPrice}
+                            tyProductUrl={p.trendyolBuybox.tyProductUrl}
                             observedAt={p.trendyolBuybox.observedAt}
                             marginAtMarket={p.trendyolBuyboxMargin}
                           >

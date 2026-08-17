@@ -24,11 +24,9 @@ import {
 import { calculateTrendScore } from "@/lib/pricing/demand-score"
 import { buildActiveCampaignMap } from "@/lib/services/campaign"
 
-/** Bizim TY satıcı adımız — BuyBox bizde mi kontrolü (market-analysis ile aynı). */
-const OUR_SELLER_HINT = "ochi"
-function isOurSeller(name: string | null | undefined): boolean {
-  return !!name && name.toLowerCase().includes(OUR_SELLER_HINT)
-}
+// isOurSeller TEK KAYNAK: lib/pricing/buybox-sellers
+// (2026-08-06'ya kadar bu dosyada ayrı kopyası vardı)
+import { isOurSellerName as isOurSeller } from "@/lib/pricing/buybox-sellers"
 
 // ─── Types ────────────────────────────────────────────────────
 

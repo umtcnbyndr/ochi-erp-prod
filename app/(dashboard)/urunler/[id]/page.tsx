@@ -688,17 +688,28 @@ export default async function ProductDetailPage({
               <CardContent>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
-                    <p className="text-xs text-muted-foreground">BuyBox Fiyatı</p>
+                    {/* Vitrin bizdeyse bu fiyat BİZİM canlı fiyatımız, rakibin değil */}
+                    <p className="text-xs text-muted-foreground">
+                      {latestBuybox.buyboxOrder === 1
+                        ? "Vitrin fiyatı (bizim)"
+                        : "BuyBox Fiyatı (rakip)"}
+                    </p>
                     <p className="text-lg font-bold tabular-nums">
                       {formatCurrency(latestBuybox.buyboxPrice)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Bizim Fiyat</p>
+                    <p className="text-xs text-muted-foreground">
+                      {latestBuybox.buyboxOrder === 1 ? "En yakın rakip" : "Bizim Fiyat"}
+                    </p>
                     <p className="text-lg font-bold tabular-nums">
-                      {latestBuybox.ourPrice
-                        ? formatCurrency(latestBuybox.ourPrice)
-                        : "—"}
+                      {latestBuybox.buyboxOrder === 1
+                        ? latestBuybox.nextCompetitorPrice != null
+                          ? formatCurrency(latestBuybox.nextCompetitorPrice)
+                          : "tek satıcıyız"
+                        : latestBuybox.ourPrice
+                          ? formatCurrency(latestBuybox.ourPrice)
+                          : "—"}
                     </p>
                   </div>
                   <div>
@@ -719,6 +730,23 @@ export default async function ProductDetailPage({
                     </p>
                   </div>
                 </div>
+                {latestBuybox.tyProductUrl && (
+                  <a
+                    href={latestBuybox.tyProductUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-medium text-orange-700 transition-colors hover:bg-orange-100 dark:border-orange-900/50 dark:bg-orange-950/30 dark:text-orange-300 dark:hover:bg-orange-950/60"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] bg-orange-500 text-[9px] font-bold leading-none text-white"
+                    >
+                      t
+                    </span>
+                    Trendyol&apos;da aç
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </a>
+                )}
               </CardContent>
             </Card>
           )}

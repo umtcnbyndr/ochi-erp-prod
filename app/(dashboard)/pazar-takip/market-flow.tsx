@@ -29,6 +29,7 @@ import type { MarketPriceChange } from "@/lib/services/market-price-changes"
 import type { OpportunityType } from "@/lib/pricing/market-opportunity"
 import { loadMarketAnalysisAction, applyMarketPriceAction } from "./actions"
 import { BuyboxHover } from "@/components/products/buybox-hover"
+import { cheapestCompetitorPrice } from "@/lib/pricing/buybox-sellers"
 
 type Opt = { id: number; name: string }
 type SubOpt = { id: number; name: string; categoryId: number }
@@ -84,7 +85,7 @@ const COL = {
   formul: { key: "formul", label: "Formül Satış", align: "center", sort: (r) => num(r.formulaPrice), render: (r) => <span className="tabular-nums">{tl(r.formulaPrice)}</span> },
   mevcut: { key: "mevcut", label: "Bizim Fiyat", align: "center", sort: (r) => num(r.ourPrice), render: (r) => <span className="tabular-nums">{tl(r.ourPrice)}{r.ownsBuybox && <span className="ml-1 text-emerald-600 text-xs" title="BuyBox bizde">★</span>}</span> },
   buybox: { key: "buybox", label: "BuyBox", align: "center", sort: (r) => num(r.buyboxPrice), render: (r) => (r.found && r.buyboxPrice != null ? (
-    <BuyboxHover buyboxPrice={r.buyboxPrice} ourPrice={r.ourPrice} isOurs={r.ownsBuybox} observedAt={r.observedAt} marginAtMarket={r.opportunity.marginAtMarket}>
+    <BuyboxHover buyboxPrice={r.buyboxPrice} ourPrice={r.ourPrice} isOurs={r.ownsBuybox} nextCompetitorPrice={r.lowestCompetitor} tyProductUrl={r.tyProductUrl} observedAt={r.observedAt} marginAtMarket={r.opportunity.marginAtMarket}>
       <span className="tabular-nums cursor-help">{tl(r.buyboxPrice)}</span>
     </BuyboxHover>
   ) : <span className="text-xs text-muted-foreground">yok</span>) },
@@ -104,9 +105,10 @@ const COL = {
   analiz: { key: "analiz", label: "Analiz (öneri)", sort: (r) => r.opportunity.priority, render: (r) => <AnalizCell r={r} /> },
 } satisfies Record<string, Col>
 
+// En düşük rakip — TEK KAYNAK: lib/pricing/buybox-sellers
+// (2026-08-06'ya kadar burada ayrı bir kopyası vardı)
 function lowestRival(r: MarketRow): number | null {
-  const rivals = r.sellers.filter((s) => s.seller && !s.seller.toLowerCase().includes("ochi") && s.price != null && s.price > 0).map((s) => s.price as number)
-  return rivals.length ? Math.min(...rivals) : null
+  return cheapestCompetitorPrice(r.sellers)
 }
 
 function MarketTable({ rows, columns, action, defaultSort }: { rows: MarketRow[]; columns: Col[]; action?: { label: string; onApply: (r: MarketRow) => Promise<void>; disabled: (r: MarketRow) => boolean }; defaultSort?: string }) {

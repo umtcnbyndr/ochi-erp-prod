@@ -21,12 +21,14 @@ import {
   type CostSource,
 } from "@/lib/pricing/market-opportunity"
 
-/** Bizim TY satıcı adımız — BuyBox bizde mi kontrolü. */
-const OUR_SELLER_HINT = "ochi"
-
-function isOurSeller(name: string | null | undefined): boolean {
-  return !!name && name.toLowerCase().includes(OUR_SELLER_HINT)
-}
+// Satıcı adı/fiyat yardımcıları TEK KAYNAK — bu dosyada ayrı kopyası vardı
+// (2026-08-06'da 4 ayrı kopya bulundu, hepsi lib/pricing/buybox-sellers'a bağlandı).
+import {
+  cheapestCompetitorPrice,
+  isOurSellerName as isOurSeller,
+  ourListedPrice,
+  toSellerList,
+} from "@/lib/pricing/buybox-sellers"
 
 export interface MarketRow {
   productId: number
@@ -59,6 +61,8 @@ export interface MarketRow {
   sellers: Array<{ seller: string | null; price: number | null }>
   /** En düşük rakip satıcı fiyatı (bizim hariç) — undercut referansı */
   lowestCompetitor: number | null
+  /** Trendyol ürün sayfası (scraper cache'i) — karttan "Trendyol'da aç" */
+  tyProductUrl: string | null
   observedAt: Date | null
   velocity: number
   // Motor sonucu
@@ -113,11 +117,12 @@ export async function getMarketAnalysis(
       sellers: unknown
       lowestPrice: string | null
       observedAt: Date
+      tyProductUrl: string | null
     }>
   >(Prisma.sql`
     SELECT DISTINCT ON ("productId")
       "productId", "barcode", "found", "buyboxPrice", "buyboxSeller",
-      "sellerCount", "sellers", "lowestPrice", "observedAt"
+      "sellerCount", "sellers", "lowestPrice", "observedAt", "tyProductUrl"
     FROM "MarketPriceSnapshot"
     WHERE "productId" IS NOT NULL
     ORDER BY "productId", "observedAt" DESC
@@ -213,18 +218,19 @@ export async function getMarketAnalysis(
       if (cat > 0) { unitCost = cat; costSource = "CATALOG"; stockState = "CATALOG_ONLY" }
     }
 
-    // Piyasa: satıcı listesinden bizim fiyat + en düşük rakip
-    const sellers = (Array.isArray(snap.sellers) ? snap.sellers : []) as Array<{ seller?: string | null; price?: number | null }>
+    // Piyasa: satıcı listesinden bizim fiyat + en düşük rakip.
+    // Satıcı listesi yardımcıları TEK KAYNAK: lib/pricing/buybox-sellers
+    // (aynı hesap Ürünler sayfası ve fiyat önerisinde de kullanılıyor).
+    const sellers = toSellerList(snap.sellers) as Array<{ seller?: string | null; price?: number | null }>
     const buyboxSeller = snap.buyboxSeller
     const ownsBuybox = isOurSeller(buyboxSeller)
-    const usSeller = sellers.find((s) => isOurSeller(s.seller))
-    const appearsAsSeller = !!usSeller
-    const competitorPrices = sellers.filter((s) => !isOurSeller(s.seller) && s.price != null && s.price > 0).map((s) => s.price as number)
-    const lowestCompetitor = competitorPrices.length > 0 ? Math.min(...competitorPrices) : null
+    const usListedPrice = ourListedPrice(snap.sellers)
+    const appearsAsSeller = usListedPrice != null
+    const lowestCompetitor = cheapestCompetitorPrice(snap.sellers)
 
     // Bizim fiyat: canlı satıcı fiyatımız > ProductMarketplacePrice
     const pmp = p.marketplacePrices[0]
-    const ourPrice = usSeller?.price ?? num(pmp?.manualOverride) ?? num(pmp?.recommendedPrice) ?? num(pmp?.calculatedPrice)
+    const ourPrice = usListedPrice ?? num(pmp?.manualOverride) ?? num(pmp?.recommendedPrice) ?? num(pmp?.calculatedPrice)
     const isListed = appearsAsSeller || !!pmp
 
     // Komisyon: piyasa fiyatına göre kademe çöz
@@ -272,6 +278,7 @@ export async function getMarketAnalysis(
       sellerCount: snap.sellerCount,
       sellers: sellers.map((s) => ({ seller: s.seller ?? null, price: s.price ?? null })),
       lowestCompetitor,
+      tyProductUrl: snap.tyProductUrl ?? null,
       observedAt: snap.observedAt, velocity: soldMap.get(p.id) ?? 0, opportunity,
     })
   }
