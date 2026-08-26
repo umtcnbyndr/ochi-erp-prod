@@ -46,8 +46,10 @@ interface BuyboxHoverProps {
   cost?: number | null
   /** Maliyet hangi kaynaktan: ana depo mu cadde mi (etikette gösterilir) */
   costSource?: "MAIN" | "STREET" | null
-  /** Zarar sınırı: kâr 0 fiyatı — altına inersen para kaybediyorsun */
-  breakEven?: number | null
+  /** Min satış: %5 kârla fiyat — altına inersen fiilen zarar (platform/iade payı) */
+  minSalePrice?: number | null
+  /** Trendyol'da GERÇEKTEN satılan fiyatımız (tarayıcının satıcı listesinden) */
+  livePrice?: number | null
   /** Trendyol ürün sayfası — verilirse "Trendyol'da aç" bağlantısı çıkar */
   tyProductUrl?: string | null
   /** Son gözlem tarihi */
@@ -73,15 +75,20 @@ export function BuyboxHover({
   nextCompetitorPrice,
   cost,
   costSource,
-  breakEven,
+  minSalePrice,
+  livePrice,
   tyProductUrl,
   observedAt,
   marginAtMarket,
 }: BuyboxHoverProps) {
-  // Rakibin bizim fiyatımıza göre yüzde farkı (vitrin RAKİPTEyken anlamlı)
+  // Rakibin bizim fiyatımıza göre yüzde farkı (vitrin RAKİPTEyken anlamlı).
+  // Referans: CANLI fiyatımız (gerçek konum). Yoksa sistemin hesapladığı fiyat.
+  // 2026-08-26'ya kadar hep sistem fiyatı kullanılıyordu → fark olduğundan
+  // küçük görünüyordu (örn. gerçek %42 iken kartta %24,8).
+  const compareBase = livePrice != null && livePrice > 0 ? livePrice : ourPrice
   const pct =
-    !isOurs && ourPrice != null && ourPrice > 0
-      ? ((buyboxPrice - ourPrice) / ourPrice) * 100
+    !isOurs && compareBase != null && compareBase > 0
+      ? ((buyboxPrice - compareBase) / compareBase) * 100
       : null
   const cheaper = pct != null && pct < -0.5 // rakip ucuz → kaybediyoruz
   const higher = pct != null && pct > 0.5 // rakip pahalı → fırsat
@@ -138,10 +145,10 @@ export function BuyboxHover({
                   valueCls="text-muted-foreground"
                 />
               )}
-              {breakEven != null && (
+              {minSalePrice != null && (
                 <Row
-                  label="Zarar sınırı"
-                  value={formatCurrency(breakEven)}
+                  label="Min satış (%5 kâr)"
+                  value={formatCurrency(minSalePrice)}
                   valueCls="text-muted-foreground"
                 />
               )}
@@ -165,16 +172,26 @@ export function BuyboxHover({
                   }
                 />
               )}
-              {ourPrice != null ? (
+              {/* Trendyol'daki GERÇEK fiyatımız — vitrin bizdeyse zaten üstte
+                  "Vitrin fiyatı" olarak görünüyor, tekrar etmeyelim. */}
+              {!isOurs && livePrice != null && (
                 <Row
-                  label={isOurs ? "Sistem hedefi" : "Bizim TY fiyatı"}
-                  value={formatCurrency(ourPrice)}
-                  valueCls={!isOurs ? undefined : "text-muted-foreground"}
+                  label="Bizim canlı fiyat"
+                  value={formatCurrency(livePrice)}
+                  strong
                 />
-              ) : (
-                !isOurs && (
-                  <Row label="Bizim TY fiyatı" value="—" valueCls="text-muted-foreground" />
-                )
+              )}
+              {/* Sistemin hesapladığı fiyat — canlı fiyat DEĞİL. Aradaki fark,
+                  hesabın Trendyol'a henüz gitmediğini gösterir. */}
+              {ourPrice != null && (
+                <Row
+                  label="Sistem hedefi"
+                  value={formatCurrency(ourPrice)}
+                  valueCls="text-muted-foreground"
+                />
+              )}
+              {!isOurs && livePrice == null && ourPrice == null && (
+                <Row label="Bizim fiyatımız" value="—" valueCls="text-muted-foreground" />
               )}
               {pctLabel && (
                 <Row

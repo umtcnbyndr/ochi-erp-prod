@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { resolveProductUnitCost } from "@/lib/pricing/effective-purchase-price"
+import { calculateSalePrice } from "@/lib/pricing/sale-price"
+import { MIN_SALE_TARGET_PROFIT_PCT } from "@/lib/services/product"
 
 /**
  * BuyBox kartındaki "Alış" satırının kuralı (kullanıcı kararı 2026-08-17):
@@ -69,5 +71,45 @@ describe("kart gösterim maliyeti — ana stok 0 ise cadde alışı", () => {
 
   it("cadde alışı 0 ise ana alış kullanılır", () => {
     expect(displayCost(0, { ...MUSTELA, streetPurchasePrice: 0 })).toBe(640)
+  })
+})
+
+/**
+ * "Min satış" satırı — kullanıcı kararı 2026-08-26: başabaş (0 kâr) DEĞİL, %5 kâr.
+ * Gerekçe: formülde olmayan gerçek giderler (platform ücreti/ceza ~%0,85, iade
+ * ~%0,3) yüzünden tam başabaşa satmak fiilen zarardır.
+ */
+describe("min satış fiyatı — %5 kâr", () => {
+  // Gerçek prod verisi: La Roche-Posay Effaclar Jel (ürün 677)
+  const TY = { commissionRate: 19, shippingCost: 99, extraCost: 13, withholdingTax: 1 }
+  const COST = 595
+
+  it("hedef kâr yüzdesi 5", () => {
+    expect(MIN_SALE_TARGET_PROFIT_PCT).toBe(5)
+  })
+
+  it("%5 ile min satış, başabaştan YÜKSEK çıkar", () => {
+    const basabas = calculateSalePrice({
+      netPurchasePrice: COST,
+      marketplace: { ...TY, targetProfit: 0 },
+    })
+    const minSatis = calculateSalePrice({
+      netPurchasePrice: COST,
+      marketplace: { ...TY, targetProfit: MIN_SALE_TARGET_PROFIT_PCT },
+    })
+    expect(basabas).toBeCloseTo(883.75, 2) // (595+99+13)/0.80
+    expect(minSatis).toBeCloseTo(942.67, 2) // (595+99+13)/0.75
+    expect(minSatis).toBeGreaterThan(basabas)
+  })
+
+  it("min satışta gerçekten %5 kâr kalıyor", () => {
+    const fiyat = calculateSalePrice({
+      netPurchasePrice: COST,
+      marketplace: { ...TY, targetProfit: MIN_SALE_TARGET_PROFIT_PCT },
+    })
+    const kalan =
+      fiyat - COST - fiyat * 0.19 - fiyat * 0.01 - TY.shippingCost - TY.extraCost
+    // round4 yuvarlaması nedeniyle 2 hane hassasiyet
+    expect((kalan / fiyat) * 100).toBeCloseTo(5, 2)
   })
 })

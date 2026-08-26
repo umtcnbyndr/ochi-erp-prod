@@ -17,7 +17,17 @@ import { calculateSetPurchasePrice, purchasePriceChanged } from "@/lib/pricing"
 import {
   cheapestCompetitorPrice,
   isOurSellerName,
+  ourListedPrice,
 } from "@/lib/pricing/buybox-sellers"
+
+/**
+ * BuyBox kartındaki "Min satış" satırının hedef kârı (%).
+ * Kullanıcı kararı 2026-08-26: 0 (başabaş) değil %5 — çünkü formülde OLMAYAN
+ * gerçek giderler var: platform ücreti/ceza (~ciro %0,85) ve iade maliyeti
+ * (~%0,3). Tam başabaşa satmak fiilen zarardır; %5 emniyet payı bırakır.
+ * Değiştirmek isteyen tek yeri burasıdır.
+ */
+export const MIN_SALE_TARGET_PROFIT_PCT = 5
 
 export interface ProductListFilters {
   search?: string
@@ -260,6 +270,8 @@ export async function listProducts(options: ProductListOptions = {}) {
       nextCompetitorPrice: number | null
       /** Trendyol ürün sayfası (scraper cache'i) — karttan "Trendyol'da aç" */
       tyProductUrl: string | null
+      /** Trendyol'da GERÇEKTEN satılan fiyatımız (satıcı listesinden) */
+      ourLivePrice: number | null
     }
   >()
   for (const obs of latestBuyboxRows) {
@@ -273,6 +285,7 @@ export async function listProducts(options: ProductListOptions = {}) {
       // Tek kaynak: lib/pricing/buybox-sellers (fiyat önerisi de aynısını kullanır)
       nextCompetitorPrice: cheapestCompetitorPrice(obs.sellers),
       tyProductUrl: obs.tyProductUrl ?? null,
+      ourLivePrice: ourListedPrice(obs.sellers),
     })
   }
 
@@ -343,10 +356,12 @@ export async function listProducts(options: ProductListOptions = {}) {
       !preferStreetForDisplay && p.mainPurchasePrice != null && Number(p.mainPurchasePrice) > 0
     const trendyolCostSource: "MAIN" | "STREET" | null =
       cost == null ? null : usesMainCost ? "MAIN" : "STREET"
-    // Zarar sınırı: hedef kâr 0 ile formül → altına inersen para kaybediyorsun.
-    // Komisyon kademeli tarifeden gelir (fiyat kendisine bağlı olduğu için buybox
-    // fiyatının kademesini referans alıyoruz — kartta gösterim amaçlı).
-    const trendyolBreakEven =
+    // Min satış fiyatı: hedef kâr %5 ile formül (kullanıcı kararı 2026-08-26).
+    // Neden 0 değil: formülde OLMAYAN gerçek giderler var — platform ücreti/ceza
+    // (~ciro %0,85) ve iade maliyeti (~%0,3). Tam başabaşa satmak fiilen zarar.
+    // %5 bunlara emniyet payı bırakır. Komisyon kademeli tarifeden gelir (fiyat
+    // kendisine bağlı olduğu için buybox fiyatının kademesi referans alınır).
+    const trendyolMinSalePrice =
       cost != null && cost > 0 && tyConfig
         ? (() => {
             const rate = buybox
@@ -361,7 +376,11 @@ export async function listProducts(options: ProductListOptions = {}) {
             try {
               return calculateSalePrice({
                 netPurchasePrice: cost,
-                marketplace: { ...tyConfig, commissionRate: rate, targetProfit: 0 },
+                marketplace: {
+                  ...tyConfig,
+                  commissionRate: rate,
+                  targetProfit: MIN_SALE_TARGET_PROFIT_PCT,
+                },
               })
             } catch {
               return null
@@ -379,6 +398,10 @@ export async function listProducts(options: ProductListOptions = {}) {
             tariffMap: tyTariffMap,
           })
         : null
+    // Trendyol'daki CANLI fiyatımız (tarayıcının satıcı listesinden). Sistemin
+    // hesapladığı fiyattan farklı olabilir — fark, hesabın TY'ye hiç gitmediğini
+    // gösterir. Kullanıcı isteği 2026-08-26: ikisi de kartta ayrı ayrı görünsün.
+    const trendyolLivePrice = buybox?.ourLivePrice ?? null
     const trendyolMp = p.marketplacePrices?.[0]
     const trendyolPrice = trendyolMp
       ? Number(trendyolMp.manualOverride ?? trendyolMp.calculatedPrice)
@@ -424,7 +447,8 @@ export async function listProducts(options: ProductListOptions = {}) {
         trendyolBuyboxMargin,
         trendyolCost: cost,
         trendyolCostSource,
-        trendyolBreakEven,
+        trendyolMinSalePrice,
+        trendyolLivePrice,
         trendyolListing,
         stockSource,
       }
@@ -472,7 +496,8 @@ export async function listProducts(options: ProductListOptions = {}) {
       trendyolBuyboxMargin,
       trendyolCost: cost,
       trendyolCostSource,
-      trendyolBreakEven,
+      trendyolMinSalePrice,
+      trendyolLivePrice,
       // stockSource bilinçli YOK: SET'te ana/eczane stok kavramı bileşenler üzerinden
       // işler, MAIN/PHARMACY/ZERO rozeti yanıltıcı olur (satır renklenmez).
       trendyolListing,

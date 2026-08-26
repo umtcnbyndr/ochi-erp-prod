@@ -94,8 +94,10 @@ interface ProductRow {
   trendyolCost?: number | null
   /** Maliyet kaynağı: ana depo mu cadde mi */
   trendyolCostSource?: "MAIN" | "STREET" | null
-  /** Zarar sınırı (kâr 0 fiyatı) */
-  trendyolBreakEven?: number | null
+  /** Min satış fiyatı (%5 kâr) */
+  trendyolMinSalePrice?: number | null
+  /** Trendyol'da gerçekten satılan fiyatımız (tarayıcıdan) */
+  trendyolLivePrice?: number | null
   trendyolListing?: {
     quantity: number
     approved: boolean
@@ -799,7 +801,8 @@ export function ProductList({
                             nextCompetitorPrice={p.trendyolBuybox.nextCompetitorPrice}
                             cost={p.trendyolCost}
                             costSource={p.trendyolCostSource}
-                            breakEven={p.trendyolBreakEven}
+                            minSalePrice={p.trendyolMinSalePrice}
+                            livePrice={p.trendyolLivePrice}
                             tyProductUrl={p.trendyolBuybox.tyProductUrl}
                             observedAt={p.trendyolBuybox.observedAt}
                             marginAtMarket={p.trendyolBuyboxMargin}
