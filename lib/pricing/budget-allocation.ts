@@ -139,3 +139,74 @@ export function netProceeds(
     toNumber(opts.extraCost, 0)
   return round4(Math.max(0, net))
 }
+
+// ---------- Kullanıcı seçimli dağıtım (2026-09-10 kararı) ----------
+
+/**
+ * Kullanıcının elle belirlediği dağıtım satırı.
+ * Otomatik dağıtımdan farkı: tutarı SİSTEM değil KULLANICI seçiyor.
+ */
+export interface ManualAllocationInput {
+  productId: number
+  /** Bu ürüne ayrılan toplam bütçe */
+  amount: NumericInput
+  /** Beklenen satış adedi — birim indirim = amount / units */
+  units: number
+  /** Mevcut alış fiyatı (indirim sonrası pozitif kalmalı) */
+  currentCost: number
+}
+
+export interface ManualAllocationResult {
+  allocations: BudgetAllocation[]
+  totalUsed: number
+  remaining: number
+}
+
+/**
+ * Kullanıcının seçtiği tutarları doğrular ve birim indirime çevirir.
+ * Para-kritik: geçersiz girdide sessizce 0'a düşmez, anlaşılır hata fırlatır.
+ */
+export function buildManualAllocations(
+  totalBudget: NumericInput,
+  lines: ManualAllocationInput[],
+): ManualAllocationResult {
+  const budget = toNumber(totalBudget, 0)
+  if (!(budget > 0)) throw new Error("Bütçe hesaplanmamış")
+  if (lines.length === 0) throw new Error("En az bir ürün seçilmeli")
+
+  const allocations: BudgetAllocation[] = []
+  let totalUsed = 0
+
+  for (const l of lines) {
+    const amount = toNumber(l.amount, NaN)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error(`Ürün ${l.productId}: ayrılan tutar sıfırdan büyük olmalı`)
+    }
+    if (!Number.isInteger(l.units) || l.units <= 0) {
+      throw new Error(`Ürün ${l.productId}: adet bilgisi geçersiz`)
+    }
+    const perUnit = round4(amount / l.units)
+    const newCost = round4(l.currentCost - perUnit)
+    if (newCost <= 0) {
+      throw new Error(
+        `Ürün ${l.productId}: ayrılan tutar alış fiyatını sıfırın altına düşürüyor (${l.currentCost} − ${perUnit})`,
+      )
+    }
+    allocations.push({
+      productId: l.productId,
+      perUnitDiscount: perUnit,
+      units: l.units,
+      used: round4(amount),
+      newCost,
+    })
+    totalUsed = round4(totalUsed + amount)
+  }
+
+  if (totalUsed > budget + 0.01) {
+    throw new Error(
+      `Dağıtılan tutar bütçeyi aşıyor (${totalUsed.toFixed(2)} > ${budget.toFixed(2)})`,
+    )
+  }
+
+  return { allocations, totalUsed, remaining: round4(budget - totalUsed) }
+}

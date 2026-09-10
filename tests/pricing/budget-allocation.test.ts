@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   allocateBudget,
+  buildManualAllocations,
   netProceeds,
   priceGapToCostCut,
   type BudgetCandidate,
@@ -137,5 +138,61 @@ describe("gerçek senaryo — bedelsiz parti 32.830 ₺", () => {
     expect(r.totalUsed).toBeLessThanOrEqual(butce)
     // Her ürünün yeni alışı pozitif kalmalı
     for (const a of r.allocations) expect(a.newCost).toBeGreaterThan(0)
+  })
+})
+
+describe("buildManualAllocations — kullanıcı seçimli dağıtım", () => {
+  const satir = (o: Partial<{ productId: number; amount: number; units: number; currentCost: number }> = {}) => ({
+    productId: 1, amount: 1000, units: 10, currentCost: 600, ...o,
+  })
+
+  it("tutarı adete bölerek birim indirimi bulur", () => {
+    const r = buildManualAllocations(5000, [satir()])
+    expect(r.allocations[0].perUnitDiscount).toBe(100) // 1000 / 10
+    expect(r.allocations[0].newCost).toBe(500) // 600 − 100
+    expect(r.totalUsed).toBe(1000)
+    expect(r.remaining).toBe(4000)
+  })
+
+  it("birden fazla ürünü toplar", () => {
+    const r = buildManualAllocations(5000, [
+      satir({ productId: 1, amount: 1000 }),
+      satir({ productId: 2, amount: 1500 }),
+    ])
+    expect(r.totalUsed).toBe(2500)
+    expect(r.remaining).toBe(2500)
+  })
+
+  it("bütçeyi aşan dağıtım REDDEDİLİR", () => {
+    expect(() => buildManualAllocations(1000, [satir({ amount: 1500 })])).toThrow(/bütçeyi aşıyor/)
+  })
+
+  it("alış fiyatını sıfırın altına düşüren tutar REDDEDİLİR", () => {
+    // 10 adet, 7000 ₺ → birim 700 > alış 600
+    expect(() => buildManualAllocations(50000, [satir({ amount: 7000 })])).toThrow(/sıfırın altına/)
+  })
+
+  it("sıfır/negatif tutar reddedilir", () => {
+    for (const a of [0, -100]) {
+      expect(() => buildManualAllocations(5000, [satir({ amount: a })])).toThrow(/sıfırdan büyük/)
+    }
+  })
+
+  it("geçersiz adet reddedilir", () => {
+    expect(() => buildManualAllocations(5000, [satir({ units: 0 })])).toThrow(/adet bilgisi/)
+    expect(() => buildManualAllocations(5000, [satir({ units: 1.5 })])).toThrow(/adet bilgisi/)
+  })
+
+  it("bütçe yoksa hata", () => {
+    expect(() => buildManualAllocations(0, [satir()])).toThrow(/Bütçe hesaplanmamış/)
+  })
+
+  it("hiç satır yoksa hata", () => {
+    expect(() => buildManualAllocations(5000, [])).toThrow(/En az bir ürün/)
+  })
+
+  it("bütçeye tam eşit dağıtım kabul edilir", () => {
+    const r = buildManualAllocations(1000, [satir({ amount: 1000 })])
+    expect(r.remaining).toBe(0)
   })
 })

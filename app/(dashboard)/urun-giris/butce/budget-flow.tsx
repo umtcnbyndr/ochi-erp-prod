@@ -1,29 +1,26 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Loader2, Plus, Trash2, Check, Gift, Target, Wallet } from "lucide-react"
+import { Loader2, Plus, Trash2, Check, Gift, Target, Wallet, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import {
   Table,
   TableBody,
   TableCell,
-  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/common/empty-state"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import {
   applyBudgetAction,
   computeBudgetAction,
-  loadCandidatesAction,
+  lookupCandidateAction,
   lookupForBudgetAction,
 } from "./actions"
 
@@ -37,17 +34,19 @@ interface FreeRow {
   netPerUnit: number
 }
 
-interface Candidate {
+interface TargetRow {
+  key: string
   productId: number
+  barcode: string
   name: string
-  brandName: string | null
+  buyboxPrice: number | null
   currentCost: number
-  minSalePrice: number
-  competitorPrice: number
-  targetPrice: number
   priceGap: number
   monthlyUnits: number
-  neededBudget: number
+  hasGap: boolean
+  ownsBuybox: boolean
+  /** Kullanıcının bu ürüne ayırdığı tutar (metin — serbest düzenlenebilir) */
+  amount: string
 }
 
 interface Gecmis {
@@ -60,62 +59,74 @@ interface Gecmis {
   urunler: Array<{ name: string; perUnitDiscount: number; units: number }>
 }
 
-/** Numaralı adım başlığı — sırayı ve nerede olduğunu görünür kılar. */
-function StepHeader({
-  no,
-  title,
-  hint,
-  state,
+/** Barkod okutma satırı — iki tabloda da aynı. */
+function BarcodeAdder({
+  placeholder,
+  onAdd,
+  busy,
 }: {
-  no: number
-  title: string
-  hint?: string
-  state: "active" | "done" | "waiting"
+  placeholder: string
+  onAdd: (code: string) => void | Promise<void>
+  busy: boolean
 }) {
+  const [code, setCode] = useState("")
   return (
-    <div className="flex items-start gap-3">
-      <div
-        className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-          state === "done" && "bg-emerald-600 text-white",
-          state === "active" && "bg-primary text-primary-foreground",
-          state === "waiting" && "bg-muted text-muted-foreground",
-        )}
+    <div className="flex gap-2">
+      <Input
+        placeholder={placeholder}
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            const v = code.trim()
+            if (v) {
+              void onAdd(v)
+              setCode("")
+            }
+          }
+        }}
+        className="h-9"
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 shrink-0"
+        disabled={busy}
+        onClick={() => {
+          const v = code.trim()
+          if (v) {
+            void onAdd(v)
+            setCode("")
+          }
+        }}
       >
-        {state === "done" ? <Check className="h-3.5 w-3.5" /> : no}
-      </div>
-      <div className="min-w-0">
-        <p className={cn("font-medium leading-7", state === "waiting" && "text-muted-foreground")}>
-          {title}
-        </p>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      </div>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+      </Button>
     </div>
   )
 }
 
 export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
-  const [rows, setRows] = useState<FreeRow[]>([])
-  const [barcode, setBarcode] = useState("")
-  const [looking, setLooking] = useState(false)
+  const [free, setFree] = useState<FreeRow[]>([])
+  const [targets, setTargets] = useState<TargetRow[]>([])
   const [budget, setBudget] = useState(0)
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null)
-  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [busyFree, setBusyFree] = useState(false)
+  const [busyTarget, setBusyTarget] = useState(false)
+  const [computing, setComputing] = useState(false)
   const [note, setNote] = useState("")
   const [pending, startTransition] = useTransition()
-  const [computing, setComputing] = useState(false)
 
-  async function addBarcode() {
-    const code = barcode.trim()
-    if (!code) return
-    setLooking(true)
+  // ---- bedelsiz taraf ----
+  async function addFree(code: string) {
+    setBusyFree(true)
     try {
       const r = await lookupForBudgetAction(code)
       if (!r.found) {
         toast.error(r.error ?? "Ürün bulunamadı")
         return
       }
-      setRows((p) => [
+      setFree((p) => [
         ...p,
         {
           key: `${r.product.id}-${Date.now()}`,
@@ -127,59 +138,90 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
           netPerUnit: 0,
         },
       ])
-      setBarcode("")
-      // Liste değişti → önceki hesap geçersiz
-      setBudget(0)
-      setCandidates(null)
-      setSelected(new Set())
+      setBudget(0) // liste değişti → yeniden hesaplanmalı
     } finally {
-      setLooking(false)
+      setBusyFree(false)
     }
   }
 
   async function hesapla() {
-    if (rows.length === 0) return
+    if (free.length === 0) return
     setComputing(true)
     try {
       const res = await computeBudgetAction(
-        rows.map((r) => ({ productId: r.productId, quantity: r.quantity })),
+        free.map((r) => ({ productId: r.productId, quantity: r.quantity })),
       )
       if (!res.success) {
         toast.error(res.error)
         return
       }
       const byId = new Map(res.data.items.map((i) => [i.productId, i]))
-      setRows((p) =>
+      setFree((p) =>
         p.map((r) => {
           const c = byId.get(r.productId)
           return c ? { ...r, buyboxPrice: c.buyboxPrice, netPerUnit: c.netPerUnit } : r
         }),
       )
       setBudget(res.data.totalBudget)
-
-      const cand = await loadCandidatesAction()
-      if (cand.success) {
-        setCandidates(cand.data)
-        // Otomatik seçim YOK — kullanıcı kararı 2026-09-10: bütçenin hangi ürünlere
-        // gideceğine kullanıcı karar verir, sistem sadece adayları ve tutarları gösterir.
-        setSelected(new Set())
-      }
     } finally {
       setComputing(false)
     }
   }
 
-  const secilenToplam = (candidates ?? [])
-    .filter((c) => selected.has(c.productId))
-    .reduce((s, c) => s + c.neededBudget, 0)
-  const kalan = budget - secilenToplam
+  // ---- dağıtım tarafı ----
+  async function addTarget(code: string) {
+    setBusyTarget(true)
+    try {
+      const r = await lookupCandidateAction(code)
+      if (!r.found) {
+        toast.error(r.error)
+        return
+      }
+      const i = r.info
+      if (targets.some((t) => t.productId === i.productId)) {
+        toast.error("Bu ürün zaten listede")
+        return
+      }
+      if (i.monthlyUnits <= 0) {
+        toast.error(`"${i.name}" son 30 günde satmamış — bütçe verilemez`)
+        return
+      }
+      setTargets((p) => [
+        ...p,
+        {
+          key: `${i.productId}-${Date.now()}`,
+          productId: i.productId,
+          barcode: i.barcode,
+          name: i.name,
+          buyboxPrice: i.buyboxPrice,
+          currentCost: i.currentCost,
+          priceGap: i.priceGap,
+          monthlyUnits: i.monthlyUnits,
+          hasGap: i.hasGap,
+          ownsBuybox: i.ownsBuybox,
+          amount: i.suggestedAmount > 0 ? String(i.suggestedAmount) : "",
+        },
+      ])
+    } finally {
+      setBusyTarget(false)
+    }
+  }
+
+  const kullanilan = targets.reduce((s, t) => {
+    const n = Number(t.amount)
+    return s + (Number.isFinite(n) && n > 0 ? n : 0)
+  }, 0)
+  const kalan = budget - kullanilan
   const asim = kalan < -0.005
+  const gecerliSatir = targets.filter((t) => Number(t.amount) > 0).length
 
   function uygula() {
     startTransition(async () => {
       const res = await applyBudgetAction({
-        freeItems: rows.map((r) => ({ productId: r.productId, quantity: r.quantity })),
-        selectedProductIds: Array.from(selected),
+        freeItems: free.map((r) => ({ productId: r.productId, quantity: r.quantity })),
+        allocations: targets
+          .filter((t) => Number(t.amount) > 0)
+          .map((t) => ({ productId: t.productId, amount: Number(t.amount) })),
         note: note.trim() || null,
       })
       if (!res.success) {
@@ -190,343 +232,309 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
       toast.success(
         `${d.applied.length} ürünün alış fiyatı düşürüldü — ${formatCurrency(d.usedBudget)} kullanıldı`,
       )
-      setRows([])
+      setFree([])
+      setTargets([])
       setBudget(0)
-      setCandidates(null)
-      setSelected(new Set())
       setNote("")
     })
   }
 
-  const adim1 = rows.length > 0 ? (budget > 0 ? "done" : "active") : "active"
-  const adim2 = budget > 0 ? "active" : "waiting"
-
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
-      {/* ───── SOL: akış ───── */}
-      <div className="min-w-0 space-y-4">
-        {/* ADIM 1 */}
-        <Card>
-          <CardContent className="space-y-4 pt-5">
-            <StepHeader
-              no={1}
-              title="Bedelsiz gelen ürünleri okut"
-              hint="Firmanın gönderdiği ürünler — bunların satış getirisi bütçeni oluşturur"
-              state={adim1}
-            />
+    <div className="space-y-4">
+      {/* ═══ BÜTÇE ŞERİDİ (en üstte) ═══ */}
+      <Card className="border-primary/20 bg-primary/[0.03]">
+        <CardContent className="py-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Wallet className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Bütçe</p>
+                  <p className="text-xl font-bold leading-tight tabular-nums">
+                    {formatCurrency(budget)}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Dağıtılan
+                </p>
+                <p className="text-xl font-bold leading-tight tabular-nums">
+                  {formatCurrency(kullanilan)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Kalan</p>
+                <p
+                  className={cn(
+                    "text-xl font-bold leading-tight tabular-nums",
+                    asim ? "text-rose-600" : kalan > 0 ? "text-emerald-600" : "text-muted-foreground",
+                  )}
+                >
+                  {formatCurrency(kalan)}
+                </p>
+              </div>
+            </div>
 
-            <div className="flex gap-2 pl-10">
+            <div className="flex items-center gap-2">
               <Input
-                placeholder="Barkod okut / yaz"
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
-                    void addBarcode()
-                  }
-                }}
-                className="max-w-xs"
-                autoFocus
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Not (ör. Eylül bedelsiz partisi)"
+                className="h-9 w-full md:w-56"
               />
-              <Button variant="outline" onClick={() => void addBarcode()} disabled={looking}>
-                {looking ? (
-                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              <Button
+                onClick={uygula}
+                disabled={pending || budget <= 0 || gecerliSatir === 0 || asim}
+                className="h-9 shrink-0"
+              >
+                {pending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <Plus className="mr-1.5 h-4 w-4" />
+                  <Check className="mr-2 h-4 w-4" />
                 )}
-                Ekle
+                Uygula
               </Button>
             </div>
+          </div>
 
-            {rows.length === 0 ? (
-              <div className="pl-10">
-                <EmptyState
-                  icon={Gift}
-                  title="Henüz ürün eklenmedi"
-                  description="Firmadan bedelsiz gelen ürünlerin barkodunu okut. Her ürünün Trendyol vitrin fiyatından komisyon, kargo ve stopaj düşülerek net getirisi hesaplanır."
-                  className="py-8"
-                />
-              </div>
-            ) : (
-              <div className="space-y-3 pl-10">
-                <div className="overflow-x-auto rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[140px]">Barkod</TableHead>
-                        <TableHead>Ürün</TableHead>
-                        <TableHead className="w-[80px] text-center">Adet</TableHead>
-                        <TableHead className="w-[120px] text-right">Buybox Fiyatı</TableHead>
-                        <TableHead className="w-[130px] text-right">Net Getiri</TableHead>
-                        <TableHead className="w-[44px]" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {rows.map((r, i) => (
-                        <TableRow key={r.key}>
-                          <TableCell className="font-mono text-xs text-muted-foreground">
-                            {r.barcode}
-                          </TableCell>
-                          <TableCell className="max-w-[260px] truncate font-medium">
-                            {r.name}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Input
-                              type="number"
-                              min={1}
-                              value={r.quantity}
-                              onChange={(e) =>
-                                setRows((p) =>
-                                  p.map((x, j) =>
-                                    j === i
-                                      ? { ...x, quantity: Math.max(1, Number(e.target.value)) }
-                                      : x,
-                                  ),
-                                )
-                              }
-                              className="mx-auto h-8 w-16 text-center"
-                            />
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums text-muted-foreground">
-                            {r.buyboxPrice ? formatCurrency(r.buyboxPrice) : "—"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {r.netPerUnit > 0 ? (
-                              <>
-                                <span className="font-semibold tabular-nums text-emerald-600">
-                                  {formatCurrency(r.netPerUnit * r.quantity)}
-                                </span>
-                                {r.quantity > 1 && (
-                                  <span className="block text-[11px] text-muted-foreground">
-                                    {formatCurrency(r.netPerUnit)} × {r.quantity}
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                    {budget > 0 && (
-                      <TableFooter>
-                        <TableRow>
-                          <TableCell colSpan={4} className="text-right font-medium">
-                            Toplam bütçe
-                          </TableCell>
-                          <TableCell className="text-right text-base font-bold tabular-nums text-emerald-600">
-                            {formatCurrency(budget)}
-                          </TableCell>
-                          <TableCell />
-                        </TableRow>
-                      </TableFooter>
-                    )}
-                  </Table>
-                </div>
+          {asim && (
+            <p className="mt-3 flex items-center gap-1.5 text-xs text-rose-600">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Dağıtılan tutar bütçeyi {formatCurrency(Math.abs(kalan))} aşıyor — tutarları düşür.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
-                {budget === 0 && (
-                  <Button onClick={() => void hesapla()} disabled={computing}>
-                    {computing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Bütçeyi hesapla
-                  </Button>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ADIM 2 */}
-        <Card className={cn(adim2 === "waiting" && "opacity-60")}>
-          <CardContent className="space-y-4 pt-5">
-            <StepHeader
-              no={2}
-              title="Bütçeyi dağıt"
-              hint="Bütçeyi vermek istediğin ürünleri sen seç — sistem sadece açığı ve gereken tutarı gösterir"
-              state={adim2}
-            />
-
-            {adim2 === "waiting" ? (
-              <p className="pl-10 text-sm text-muted-foreground">
-                Önce bedelsiz ürünleri ekleyip bütçeyi hesapla.
-              </p>
-            ) : candidates && candidates.length === 0 ? (
-              <div className="pl-10">
-                <EmptyState
-                  icon={Target}
-                  title="Bütçeye ihtiyaç duyan ürün yok"
-                  description="Maliyeti yüzünden sıkışan ürün bulunamadı. Vitrini kaybettiğin ürünler varsa sorun fiyatın Trendyol'a gönderilmemiş olması olabilir — Dopigo Aktarım yapmak yeterli."
-                  className="py-8"
-                />
-              </div>
-            ) : (
-              <div className="space-y-2 pl-10">
-                <div className="max-h-[420px] space-y-1.5 overflow-y-auto pr-1">
-                  {(candidates ?? []).map((c) => {
-                    const secili = selected.has(c.productId)
-                    return (
-                      <label
-                        key={c.productId}
-                        className={cn(
-                          "flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 text-sm transition-colors",
-                          secili ? "border-primary/40 bg-primary/5" : "bg-card hover:bg-muted/40",
-                        )}
-                      >
-                        <Checkbox
-                          checked={secili}
-                          onCheckedChange={() =>
-                            setSelected((p) => {
-                              const n = new Set(p)
-                              if (n.has(c.productId)) n.delete(c.productId)
-                              else n.add(c.productId)
-                              return n
-                            })
-                          }
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium">{c.name}</p>
-                          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                            <span>min satışım {formatCurrency(c.minSalePrice)}</span>
-                            <span>·</span>
-                            <span>rakip {formatCurrency(c.competitorPrice)}</span>
-                            <span>·</span>
-                            <span className="font-medium text-amber-600">
-                              açık {formatCurrency(c.priceGap)}
-                            </span>
-                            <span>·</span>
-                            <span>ayda {c.monthlyUnits} adet</span>
-                          </p>
-                        </div>
-                        <span className="shrink-0 text-right text-sm font-semibold tabular-nums">
-                          {formatCurrency(c.neededBudget)}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* GEÇMİŞ */}
-        {gecmis.length > 0 && (
-          <Card>
-            <CardContent className="space-y-2 pt-5">
-              <p className="text-sm font-medium">Geçmiş dağıtımlar</p>
-              {gecmis.map((b) => (
-                <div key={b.id} className="rounded-lg border bg-card p-2.5 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate font-medium">
-                      #{b.id} · {formatDate(b.createdAt)}
-                      {b.note && (
-                        <span className="ml-2 font-normal text-muted-foreground">{b.note}</span>
-                      )}
-                    </span>
-                    <Badge variant="secondary" className="shrink-0">
-                      {formatCurrency(b.usedBudget)}
-                    </Badge>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {b.urunSayisi} ürün ·{" "}
-                    {b.urunler
-                      .map((u) => `${u.name} (−${formatCurrency(u.perUnitDiscount)})`)
-                      .join(" · ")}
-                  </p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* ───── SAĞ: özet paneli ───── */}
-      <div className="lg:sticky lg:top-4 lg:self-start">
+      {/* ═══ İKİ TABLO YAN YANA ═══ */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        {/* ── SOL: bedelsiz gelenler ── */}
         <Card>
-          <CardContent className="space-y-4 pt-5">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Wallet className="h-3.5 w-3.5" />
-              Bütçe
-            </div>
-
-            <div>
-              <p className="text-2xl font-bold tabular-nums">{formatCurrency(budget)}</p>
-              <p className="text-xs text-muted-foreground">
-                {rows.length > 0
-                  ? `${rows.length} bedelsiz üründen net getiri`
-                  : "Ürün ekleyince hesaplanır"}
-              </p>
-            </div>
-
-            {budget > 0 && (
-              <>
-                <div className="space-y-1.5 border-t pt-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Seçili</span>
-                    <span className="tabular-nums">{selected.size} ürün</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Kullanılan</span>
-                    <span className="tabular-nums">{formatCurrency(secilenToplam)}</span>
-                  </div>
-                  <div className="flex justify-between font-medium">
-                    <span>Kalan</span>
-                    <span
-                      className={cn(
-                        "tabular-nums",
-                        asim ? "text-rose-600" : "text-emerald-600",
-                      )}
-                    >
-                      {formatCurrency(kalan)}
-                    </span>
-                  </div>
-                </div>
-
-                {asim && (
-                  <p className="rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">
-                    Seçim bütçeyi aşıyor — bazı ürünlerin işaretini kaldır.
-                  </p>
-                )}
-
-                <div className="space-y-1 border-t pt-3">
-                  <Label className="text-xs">Not (opsiyonel)</Label>
-                  <Input
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="ör. Eylül bedelsiz partisi"
-                    className="h-8 text-xs"
-                  />
-                </div>
-
-                <Button
-                  onClick={uygula}
-                  disabled={pending || selected.size === 0 || asim}
-                  className="w-full"
-                >
-                  {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  <Check className="mr-2 h-4 w-4" />
-                  Alış fiyatlarını düşür
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Gift className="h-4 w-4 text-muted-foreground" />
+                <p className="font-medium">Bedelsiz Gelenler</p>
+                {free.length > 0 && <Badge variant="secondary">{free.length}</Badge>}
+              </div>
+              {free.length > 0 && budget === 0 && (
+                <Button size="sm" onClick={() => void hesapla()} disabled={computing}>
+                  {computing && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                  Bütçeyi hesapla
                 </Button>
-                <p className="text-[11px] leading-snug text-muted-foreground">
-                  Seçili ürünlerin alış fiyatı kalıcı olarak düşer. Eski fiyat fiyat
-                  geçmişinde saklanır.
-                </p>
-              </>
+              )}
+            </div>
+
+            <BarcodeAdder placeholder="Barkod okut / yaz" onAdd={addFree} busy={busyFree} />
+
+            {free.length === 0 ? (
+              <EmptyState
+                icon={Gift}
+                title="Ürün ekle"
+                description="Firmadan bedelsiz gelen ürünlerin barkodunu okut. Vitrin fiyatından komisyon, kargo ve stopaj düşülerek net getirisi bulunur."
+                className="py-6"
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[118px]">Barkod</TableHead>
+                      <TableHead>Ürün</TableHead>
+                      <TableHead className="w-[70px] text-center">Adet</TableHead>
+                      <TableHead className="w-[100px] text-right">Buybox</TableHead>
+                      <TableHead className="w-[110px] text-right">Net Getiri</TableHead>
+                      <TableHead className="w-[40px]" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {free.map((r, i) => (
+                      <TableRow key={r.key}>
+                        <TableCell className="font-mono text-[11px] text-muted-foreground">
+                          {r.barcode}
+                        </TableCell>
+                        <TableCell className="max-w-[180px] truncate text-sm font-medium">
+                          {r.name}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={r.quantity}
+                            onChange={(e) => {
+                              const q = Math.max(1, Number(e.target.value))
+                              setFree((p) => p.map((x, j) => (j === i ? { ...x, quantity: q } : x)))
+                              setBudget(0)
+                            }}
+                            className="mx-auto h-8 w-14 px-1 text-center"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
+                          {r.buyboxPrice ? formatCurrency(r.buyboxPrice) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {r.netPerUnit > 0 ? (
+                            <span className="text-sm font-semibold tabular-nums text-emerald-600">
+                              {formatCurrency(r.netPerUnit * r.quantity)}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7"
+                            onClick={() => {
+                              setFree((p) => p.filter((_, j) => j !== i))
+                              setBudget(0)
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── SAĞ: bütçe verilecekler ── */}
+        <Card>
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex items-center gap-2">
+              <Target className="h-4 w-4 text-muted-foreground" />
+              <p className="font-medium">Bütçe Verilecekler</p>
+              {targets.length > 0 && <Badge variant="secondary">{targets.length}</Badge>}
+            </div>
+
+            <BarcodeAdder placeholder="Barkod okut / yaz" onAdd={addTarget} busy={busyTarget} />
+
+            {targets.length === 0 ? (
+              <EmptyState
+                icon={Target}
+                title="Ürün ekle"
+                description="Bütçeyi vermek istediğin ürünlerin barkodunu okut. Her ürünün rakibe göre açığı ve önerilen tutar gelir — tutarı istediğin gibi değiştirebilirsin."
+                className="py-6"
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[118px]">Barkod</TableHead>
+                      <TableHead>Ürün</TableHead>
+                      <TableHead className="w-[100px] text-right">Buybox</TableHead>
+                      <TableHead className="w-[90px] text-right">Açık</TableHead>
+                      <TableHead className="w-[110px] text-right">Ayrılan</TableHead>
+                      <TableHead className="w-[40px]" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {targets.map((t, i) => (
+                      <TableRow key={t.key}>
+                        <TableCell className="font-mono text-[11px] text-muted-foreground">
+                          {t.barcode}
+                        </TableCell>
+                        <TableCell className="max-w-[180px] text-sm">
+                          <p className="truncate font-medium">{t.name}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            alış {formatCurrency(t.currentCost)} · ay {t.monthlyUnits} adet
+                          </p>
+                        </TableCell>
+                        <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
+                          {t.buyboxPrice ? formatCurrency(t.buyboxPrice) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">
+                          {t.hasGap ? (
+                            <span className="font-medium text-amber-600">
+                              {formatCurrency(t.priceGap)}
+                            </span>
+                          ) : t.ownsBuybox ? (
+                            <span className="text-[11px] text-emerald-600">vitrin bizde</span>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">açık yok</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={t.amount}
+                            placeholder="0"
+                            onChange={(e) =>
+                              setTargets((p) =>
+                                p.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)),
+                              )
+                            }
+                            className="h-8 w-full px-2 text-right tabular-nums"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7"
+                            onClick={() => setTargets((p) => p.filter((_, j) => j !== i))}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {targets.some((t) => !t.hasGap) && (
+              <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
+                Açığı olmayan ürünler var — bunların fiyatı zaten rakiple yarışabiliyor, bütçeye
+                ihtiyaçları yok. Yine de vermek istersen tutarı elle yaz.
+              </p>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* ═══ GEÇMİŞ ═══ */}
+      {gecmis.length > 0 && (
+        <Card>
+          <CardContent className="space-y-2 pt-5">
+            <p className="text-sm font-medium">Geçmiş dağıtımlar</p>
+            {gecmis.map((b) => (
+              <div key={b.id} className="rounded-lg border bg-card p-2.5 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate font-medium">
+                    #{b.id} · {formatDate(b.createdAt)}
+                    {b.note && (
+                      <span className="ml-2 font-normal text-muted-foreground">{b.note}</span>
+                    )}
+                  </span>
+                  <Badge variant="secondary" className="shrink-0">
+                    {formatCurrency(b.usedBudget)}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {b.urunSayisi} ürün ·{" "}
+                  {b.urunler
+                    .map((u) => `${u.name} (−${formatCurrency(u.perUnitDiscount)})`)
+                    .join(" · ")}
+                </p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

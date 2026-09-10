@@ -7,6 +7,7 @@ import {
   applyBudget,
   computeFreeItems,
   findCandidates,
+  getProductBudgetInfo,
   type FreeItemInput,
 } from "@/lib/services/budget-batch"
 
@@ -42,9 +43,22 @@ export async function loadCandidatesAction() {
   }
 }
 
+/** Barkodla dağıtım listesine ürün ekleme — buybox + açık + önerilen tutar döner. */
+export async function lookupCandidateAction(barcode: string) {
+  await requirePermission("urun-giris", "view")
+  const p = await findProductByBarcode(barcode.trim())
+  if (!p) return { found: false as const, error: "Ürün bulunamadı" }
+  if (p.productType === "SET") {
+    return { found: false as const, error: `"${p.name}" set ürün — bütçe alamaz` }
+  }
+  const info = await getProductBudgetInfo(p.id)
+  if (!info) return { found: false as const, error: "Ürün bilgisi okunamadı" }
+  return { found: true as const, info }
+}
+
 export async function applyBudgetAction(input: {
   freeItems: FreeItemInput[]
-  selectedProductIds: number[]
+  allocations: Array<{ productId: number; amount: number }>
   note?: string | null
 }) {
   try {

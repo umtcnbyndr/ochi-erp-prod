@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db"
 import { Prisma } from "@prisma/client"
 import {
   allocateBudget,
+  buildManualAllocations,
   netProceeds,
   type BudgetCandidate,
 } from "@/lib/pricing/budget-allocation"
@@ -229,10 +230,101 @@ export async function findCandidates(): Promise<CandidateRow[]> {
   return out.sort((a, b) => b.neededBudget - a.neededBudget)
 }
 
+
+/**
+ * TEK ürün için bütçe bilgisi — kullanıcı barkodla eklerken çağrılır.
+ * Açığı olmasa bile döner (kullanıcı yine de bütçe vermek isteyebilir);
+ * `hasGap` false ise UI uyarır.
+ */
+export async function getProductBudgetInfo(productId: number): Promise<{
+  productId: number
+  name: string
+  barcode: string
+  currentCost: number
+  buyboxPrice: number | null
+  ownsBuybox: boolean
+  minSalePrice: number | null
+  targetPrice: number | null
+  priceGap: number
+  monthlyUnits: number
+  suggestedAmount: number
+  hasGap: boolean
+} | null> {
+  const mp = await tyConfig()
+  const p = await prisma.product.findUnique({
+    where: { id: productId },
+    select: {
+      id: true,
+      name: true,
+      primaryBarcode: true,
+      mainPurchasePrice: true,
+      brand: { select: { priceUndercutBuffer: true } },
+    },
+  })
+  if (!p) return null
+
+  const [snaps, tariffs, sold] = await Promise.all([
+    latestSnapshots([productId]),
+    loadCommissionTariffsForProducts([productId], ["Trendyol"]),
+    prisma.$queryRaw<Array<{ sold: number }>>(Prisma.sql`
+      SELECT COALESCE(SUM(i.amount),0)::int AS sold
+      FROM "DopigoOrderItem" i JOIN "DopigoOrder" o ON o.id = i."orderId"
+      WHERE i."productId" = ${productId}
+        AND o."serviceCreatedAt" >= now() - interval '30 days'
+        AND o."derivedStatus" NOT IN ('CANCELLED','RETURNED') AND o.archived = false
+    `),
+  ])
+  const snap = snaps.get(productId) ?? null
+  const monthlyUnits = sold[0]?.sold ?? 0
+  const cost = Number(p.mainPurchasePrice ?? 0)
+  const buffer = Number(p.brand?.priceUndercutBuffer ?? 0)
+
+  let minSalePrice: number | null = null
+  let targetPrice: number | null = null
+  let priceGap = 0
+  let suggestedAmount = 0
+
+  if (snap && cost > 0) {
+    targetPrice = snap.buyboxPrice - buffer
+    const rate = resolveEffectiveCommissionSync({
+      productId,
+      marketplaceName: "Trendyol",
+      priceAtCalculation: targetPrice > 0 ? targetPrice : snap.buyboxPrice,
+      tariffMap: tariffs,
+      fallbackRate: Number(mp.commissionRate),
+    }).rate
+    const factor = 1 - (rate + Number(mp.withholdingTax) + BUDGET_MIN_PROFIT_PCT) / 100
+    if (factor > 0) {
+      minSalePrice = (cost + Number(mp.shippingCost) + Number(mp.extraCost ?? 0)) / factor
+      priceGap = Math.max(0, minSalePrice - targetPrice)
+      // Fiyat açığını maliyet açığına çevir, aylık satışla çarp
+      suggestedAmount = Math.round(priceGap * factor * monthlyUnits * 100) / 100
+    }
+  }
+
+  return {
+    productId,
+    name: p.name,
+    barcode: p.primaryBarcode,
+    currentCost: cost,
+    buyboxPrice: snap?.buyboxPrice ?? null,
+    ownsBuybox: snap?.ownsBuybox ?? false,
+    minSalePrice: minSalePrice != null ? Math.round(minSalePrice * 100) / 100 : null,
+    targetPrice: targetPrice != null ? Math.round(targetPrice * 100) / 100 : null,
+    priceGap: Math.round(priceGap * 100) / 100,
+    monthlyUnits,
+    suggestedAmount,
+    hasGap: priceGap > 0 && monthlyUnits > 0,
+  }
+}
+
 export interface ApplyBudgetInput {
   freeItems: FreeItemInput[]
-  /** Kullanıcının seçtiği aday ürün id'leri (boşsa otomatik sıraya göre hepsi denenir) */
-  selectedProductIds: number[]
+  /**
+   * Kullanıcının belirlediği dağıtım — hangi ürüne ne kadar (2026-09-10 kararı:
+   * tutarı sistem değil KULLANICI seçer).
+   */
+  allocations: Array<{ productId: number; amount: number }>
   note?: string | null
 }
 
@@ -242,7 +334,6 @@ export interface ApplyBudgetResult {
   usedBudget: number
   remaining: number
   applied: Array<{ productId: number; name: string; perUnitDiscount: number; units: number; oldCost: number; newCost: number }>
-  skipped: Array<{ productId: number; name: string; needed: number }>
 }
 
 /** Bütçeyi hesaplar, seçili ürünlere dağıtır, alış fiyatlarını düşürür. */
@@ -254,37 +345,36 @@ export async function applyBudget(input: ApplyBudgetInput): Promise<ApplyBudgetR
     throw new Error("Bütçe hesaplanamadı — bedelsiz ürünlerin buybox fiyatı bulunamadı")
   }
 
-  const allCandidates = await findCandidates()
-  const selected = new Set(input.selectedProductIds)
-  const candidates = selected.size > 0
-    ? allCandidates.filter((c) => selected.has(c.productId))
-    : allCandidates
-  const nameById = new Map(allCandidates.map((c) => [c.productId, c.name]))
+  if (input.allocations.length === 0) {
+    throw new Error("En az bir ürün seçilmeli")
+  }
 
-  const mp = await tyConfig()
-  const tariffs = await loadCommissionTariffsForProducts(
-    candidates.map((c) => c.productId),
-    ["Trendyol"],
+  // Her ürünün güncel maliyeti ve beklenen adedi — kullanıcının verdiği tutarı
+  // birim indirime çevirmek için gerekli.
+  const infos = await Promise.all(
+    input.allocations.map((a) => getProductBudgetInfo(a.productId)),
   )
-  const engineInput: BudgetCandidate[] = candidates.map((c) => {
-    const rate = resolveEffectiveCommissionSync({
-      productId: c.productId,
-      marketplaceName: "Trendyol",
-      priceAtCalculation: c.targetPrice,
-      tariffMap: tariffs,
-      fallbackRate: Number(mp.commissionRate),
-    }).rate
+  const nameById = new Map<number, string>()
+  const manualLines = input.allocations.map((a, i) => {
+    const info = infos[i]
+    if (!info) throw new Error(`Ürün bulunamadı: ${a.productId}`)
+    if (!(info.currentCost > 0)) {
+      throw new Error(`"${info.name}" için alış fiyatı yok — bütçe dağıtılamaz`)
+    }
+    if (info.monthlyUnits <= 0) {
+      throw new Error(`"${info.name}" son 30 günde satmamış — beklenen adet yok`)
+    }
+    nameById.set(a.productId, info.name)
     return {
-      productId: c.productId,
-      minSalePrice: c.minSalePrice,
-      targetPrice: c.targetPrice,
-      monthlyUnits: c.monthlyUnits,
-      currentCost: c.currentCost,
-      ratesPct: rate + Number(mp.withholdingTax) + BUDGET_MIN_PROFIT_PCT,
+      productId: a.productId,
+      amount: a.amount,
+      units: info.monthlyUnits,
+      currentCost: info.currentCost,
     }
   })
+  const costById = new Map(manualLines.map((l) => [l.productId, l.currentCost]))
 
-  const result = allocateBudget(totalBudget, engineInput)
+  const result = buildManualAllocations(totalBudget, manualLines)
 
   const affected: number[] = []
   const batchId = await prisma.$transaction(async (tx) => {
@@ -349,13 +439,8 @@ export async function applyBudget(input: ApplyBudgetInput): Promise<ApplyBudgetR
       name: nameById.get(a.productId) ?? `#${a.productId}`,
       perUnitDiscount: a.perUnitDiscount,
       units: a.units,
-      oldCost: candidates.find((c) => c.productId === a.productId)?.currentCost ?? 0,
+      oldCost: costById.get(a.productId) ?? 0,
       newCost: a.newCost,
-    })),
-    skipped: result.skipped.map((s) => ({
-      productId: s.productId,
-      name: nameById.get(s.productId) ?? `#${s.productId}`,
-      needed: s.needed,
     })),
   }
 }
