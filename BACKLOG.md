@@ -23,6 +23,7 @@
 
 **Kod — kritik/kısa:**
 - [ ] **Tarife bitince UYARI ver** — 2026-08-06'da tarife 2 gündür bitmişti, sistem sessizce düz %19'a düştü, kullanıcı ancak rakamlar tuhaf gelince fark etti. Geçerli tarife yoksa/48 saat içinde bitecekse: Komisyon Tarifeleri + Dopigo Aktarım + Panel'de kırmızı uyarı. (Sessiz bozulma kalıbı — bkz. CHANGELOG 2026-08-06)
+- [ ] **Sunucu disk temizliği** — 2026-09-10 deploy'u "exporting layers" adımında düştü (build başarılıydı, imaj yazılamadı). Sunucuda 12 uygulama + 8 DB var; eski Docker imaj katmanları birikiyor olabilir. `docker system prune` benzeri bir bakım gerekebilir. Retry ile geçti ama tekrar edecek.
 - [ ] **Deploy OOM kalıcı çözümü** — build "optimized production build" satırında hata mesajsız exit 255 ile düşüyor, retry ile geçiyor (2026-08-06'da yine oldu). Sunucuya swap eklemek veya build bellek ayarı. Şimdilik retry yeterli ama her deployda kumar.
 - [ ] Eski TY-Floor ölü kod temizliği (BrandMarketplaceFloor tablo+servis+applyTrendyolFloor+validator) — chip açıldı 2026-07-17
 - [ ] Güvenlik O1-O3: AUTH_SECRET'tan ayrı SECRET_ENCRYPTION_KEY · güvenlik header'ları (HSTS/CSP) · login rate-limit IP+username
