@@ -17,7 +17,10 @@ export async function lookupForBudgetAction(barcode: string) {
   if (p.productType === "SET") {
     return { found: false as const, error: `"${p.name}" set ürün — bütçe partisine giremez` }
   }
-  return { found: true as const, product: { id: p.id, name: p.name } }
+  return {
+    found: true as const,
+    product: { id: p.id, name: p.name, barcode: p.primaryBarcode },
+  }
 }
 
 export async function computeBudgetAction(items: FreeItemInput[]) {

@@ -1,13 +1,22 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Loader2, Plus, Trash2, Check, Gift, Target, Wallet, ArrowRight } from "lucide-react"
+import { Loader2, Plus, Trash2, Check, Gift, Target, Wallet } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/common/empty-state"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
@@ -21,6 +30,7 @@ import {
 interface FreeRow {
   key: string
   productId: number
+  barcode: string
   name: string
   quantity: number
   buyboxPrice: number | null
@@ -110,6 +120,7 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
         {
           key: `${r.product.id}-${Date.now()}`,
           productId: r.product.id,
+          barcode: r.product.barcode,
           name: r.product.name,
           quantity: 1,
           buyboxPrice: null,
@@ -149,15 +160,9 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
       const cand = await loadCandidatesAction()
       if (cand.success) {
         setCandidates(cand.data)
-        const auto = new Set<number>()
-        let kalan = res.data.totalBudget
-        for (const c of cand.data) {
-          if (c.neededBudget <= kalan) {
-            auto.add(c.productId)
-            kalan -= c.neededBudget
-          }
-        }
-        setSelected(auto)
+        // Otomatik seçim YOK — kullanıcı kararı 2026-09-10: bütçenin hangi ürünlere
+        // gideceğine kullanıcı karar verir, sistem sadece adayları ve tutarları gösterir.
+        setSelected(new Set())
       }
     } finally {
       setComputing(false)
@@ -244,47 +249,95 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
                 />
               </div>
             ) : (
-              <div className="space-y-1.5 pl-10">
-                {rows.map((r, i) => (
-                  <div
-                    key={r.key}
-                    className="flex items-center gap-3 rounded-lg border bg-card p-2.5 text-sm"
-                  >
-                    <span className="min-w-0 flex-1 truncate font-medium">{r.name}</span>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={r.quantity}
-                      onChange={(e) =>
-                        setRows((p) =>
-                          p.map((x, j) =>
-                            j === i ? { ...x, quantity: Math.max(1, Number(e.target.value)) } : x,
-                          ),
-                        )
-                      }
-                      className="h-8 w-16 shrink-0"
-                    />
-                    {r.buyboxPrice ? (
-                      <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-                        {formatCurrency(r.buyboxPrice)}
-                        <ArrowRight className="mx-1 inline h-3 w-3" />
-                      </span>
-                    ) : null}
-                    <span className="w-24 shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-600">
-                      {r.netPerUnit > 0 ? formatCurrency(r.netPerUnit * r.quantity) : "—"}
-                    </span>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 shrink-0"
-                      onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ))}
+              <div className="space-y-3 pl-10">
+                <div className="overflow-x-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[140px]">Barkod</TableHead>
+                        <TableHead>Ürün</TableHead>
+                        <TableHead className="w-[80px] text-center">Adet</TableHead>
+                        <TableHead className="w-[120px] text-right">Buybox Fiyatı</TableHead>
+                        <TableHead className="w-[130px] text-right">Net Getiri</TableHead>
+                        <TableHead className="w-[44px]" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((r, i) => (
+                        <TableRow key={r.key}>
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {r.barcode}
+                          </TableCell>
+                          <TableCell className="max-w-[260px] truncate font-medium">
+                            {r.name}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Input
+                              type="number"
+                              min={1}
+                              value={r.quantity}
+                              onChange={(e) =>
+                                setRows((p) =>
+                                  p.map((x, j) =>
+                                    j === i
+                                      ? { ...x, quantity: Math.max(1, Number(e.target.value)) }
+                                      : x,
+                                  ),
+                                )
+                              }
+                              className="mx-auto h-8 w-16 text-center"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">
+                            {r.buyboxPrice ? formatCurrency(r.buyboxPrice) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {r.netPerUnit > 0 ? (
+                              <>
+                                <span className="font-semibold tabular-nums text-emerald-600">
+                                  {formatCurrency(r.netPerUnit * r.quantity)}
+                                </span>
+                                {r.quantity > 1 && (
+                                  <span className="block text-[11px] text-muted-foreground">
+                                    {formatCurrency(r.netPerUnit)} × {r.quantity}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                    {budget > 0 && (
+                      <TableFooter>
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-right font-medium">
+                            Toplam bütçe
+                          </TableCell>
+                          <TableCell className="text-right text-base font-bold tabular-nums text-emerald-600">
+                            {formatCurrency(budget)}
+                          </TableCell>
+                          <TableCell />
+                        </TableRow>
+                      </TableFooter>
+                    )}
+                  </Table>
+                </div>
+
                 {budget === 0 && (
-                  <Button onClick={() => void hesapla()} disabled={computing} className="mt-2">
+                  <Button onClick={() => void hesapla()} disabled={computing}>
                     {computing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Bütçeyi hesapla
                   </Button>
@@ -300,7 +353,7 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
             <StepHeader
               no={2}
               title="Bütçeyi dağıt"
-              hint="Sadece maliyeti yüzünden rakibin altına inemeyen ürünler listelenir"
+              hint="Bütçeyi vermek istediğin ürünleri sen seç — sistem sadece açığı ve gereken tutarı gösterir"
               state={adim2}
             />
 
