@@ -574,22 +574,29 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
                           </TableCell>
 
                           <TableCell className="py-2">
-                            <Input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={t.amount}
-                              placeholder={t.hasGap ? String(t.requiredDiscount) : "0"}
-                              onChange={(e) =>
-                                setTargets((p) =>
-                                  p.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)),
-                                )
-                              }
-                              className={cn(
-                                "h-8 w-full px-2 text-right tabular-nums",
-                                eksik && "border-amber-400",
-                              )}
-                            />
+                            {/* type=number formatlı para gösteremez (tarayıcı ₺ ve binlik
+                                ayracı kabul etmez) → ₺ simgesini kutunun içine sabitliyoruz. */}
+                            <div className="relative">
+                              <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                                ₺
+                              </span>
+                              <Input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={t.amount}
+                                placeholder={t.hasGap ? String(t.requiredDiscount) : "0"}
+                                onChange={(e) =>
+                                  setTargets((p) =>
+                                    p.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)),
+                                  )
+                                }
+                                className={cn(
+                                  "h-8 w-full pl-5 pr-2 text-right tabular-nums",
+                                  eksik && "border-amber-400",
+                                )}
+                              />
+                            </div>
                             {t.hasGap && (
                               <p className="mt-0.5 text-right text-[10px] leading-tight text-muted-foreground">
                                 gereken {formatCurrency(t.requiredDiscount)}
@@ -617,152 +624,6 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
           </CardContent>
         </Card>
 
-        {/* ── SAĞ: bütçe verilecekler ── */}
-        <Card className={cn(budget <= 0 && "opacity-60")}>
-          <CardContent className="space-y-4 p-5 sm:p-6">
-            <div className="flex items-center gap-2.5">
-              <StepBadge no={2} state={budget > 0 ? "active" : "locked"} />
-              <div>
-                <p className="font-medium leading-tight">Bütçe Verilecek Ürünler</p>
-                <p className="text-xs text-muted-foreground">
-                  {budget > 0 ? "Tutarı sen belirlersin" : "Önce bütçeyi hesapla"}
-                </p>
-              </div>
-              {targets.length > 0 && <Badge variant="secondary">{targets.length}</Badge>}
-            </div>
-
-            <BarcodeAdder placeholder="Barkod okut / yaz" onAdd={addTarget} busy={busyTarget} />
-
-            {targets.length === 0 ? (
-              <EmptyState
-                icon={Target}
-                title="Hedef ürün ekle"
-                description="Barkodu okut — stok, alış, hedef alış ve gereken indirim gelir. Tutarı istediğin gibi değiştirebilirsin. Bütçe yalnızca ANA DEPO stoğuna uygulanır."
-                className="py-7"
-              />
-            ) : (
-              <div className="overflow-x-auto rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[112px]">Barkod</TableHead>
-                      <TableHead className="min-w-[150px]">Ürün Adı</TableHead>
-                      <TableHead className="w-[60px] text-center">Stok</TableHead>
-                      <TableHead className="w-[92px] text-right">Alış</TableHead>
-                      <TableHead className="w-[92px] text-right">Satış</TableHead>
-                      <TableHead className="w-[92px] text-right">Buybox</TableHead>
-                      <TableHead className="w-[104px] text-right">Toplam Değer</TableHead>
-                      <TableHead className="w-[118px] text-right">Gereken İndirim</TableHead>
-                      <TableHead className="w-[40px]" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {targets.map((t, i) => {
-                      const girilen = Number(t.amount)
-                      const birim = girilen > 0 ? girilen / t.mainStock : 0
-                      const yeniAlis = t.currentCost - birim
-                      // Girilen tutar gerekenin altındaysa vitrine giremez — uyar
-                      const eksik = t.hasGap && girilen > 0 && girilen < t.requiredDiscount - 0.01
-                      return (
-                        <TableRow key={t.key}>
-                          <TableCell className="font-mono text-[11px] text-muted-foreground">
-                            {t.barcode}
-                          </TableCell>
-                          <TableCell className="max-w-[190px] text-sm">
-                            <p className="truncate font-medium">{t.name}</p>
-                            <p className="text-[11px] text-muted-foreground">
-                              {t.targetCost != null ? (
-                                <>
-                                  hedef alış{" "}
-                                  <span className="font-medium text-foreground">
-                                    {formatCurrency(t.targetCost)}
-                                  </span>
-                                  {girilen > 0 && (
-                                    <>
-                                      {" · "}
-                                      <span
-                                        className={cn(
-                                          "font-medium",
-                                          eksik ? "text-amber-600" : "text-emerald-600",
-                                        )}
-                                      >
-                                        yeni {formatCurrency(yeniAlis)}
-                                      </span>
-                                    </>
-                                  )}
-                                </>
-                              ) : t.ownsBuybox ? (
-                                "vitrin bizde"
-                              ) : (
-                                "piyasa verisi yok"
-                              )}
-                            </p>
-                          </TableCell>
-                          <TableCell className="text-center text-sm tabular-nums">
-                            {t.mainStock}
-                          </TableCell>
-                          <TableCell className="text-right text-sm tabular-nums">
-                            {formatCurrency(t.currentCost)}
-                          </TableCell>
-                          <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                            {t.systemSalePrice ? formatCurrency(t.systemSalePrice) : "—"}
-                          </TableCell>
-                          <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                            {t.buyboxPrice ? formatCurrency(t.buyboxPrice) : "—"}
-                          </TableCell>
-                          <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                            {formatCurrency(t.totalValue)}
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={t.amount}
-                              placeholder={t.hasGap ? String(t.requiredDiscount) : "0"}
-                              onChange={(e) =>
-                                setTargets((p) =>
-                                  p.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)),
-                                )
-                              }
-                              className={cn(
-                                "h-8 w-full px-2 text-right tabular-nums",
-                                eksik && "border-amber-400",
-                              )}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => setTargets((p) => p.filter((_, j) => j !== i))}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-
-            {targets.some(
-              (t) => t.hasGap && Number(t.amount) > 0 && Number(t.amount) < t.requiredDiscount - 0.01,
-            ) && (
-              <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
-                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
-                <span>
-                  Turuncu kutulu satırlarda gerekenden <strong className="text-foreground">az</strong>{" "}
-                  tutar var — alış yeterince düşmeyeceği için vitrine giremezsin, ama kâr marjın
-                  yine de iyileşir.
-                </span>
-              </p>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {/* ═══ GEÇMİŞ ═══ */}
