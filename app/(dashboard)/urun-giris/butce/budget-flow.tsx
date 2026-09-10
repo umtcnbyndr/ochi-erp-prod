@@ -42,7 +42,10 @@ interface TargetRow {
   buyboxPrice: number | null
   currentCost: number
   priceGap: number
-  monthlyUnits: number
+  /** Beklenen aylık satış — varsayılan son 30 gün, KULLANICI değiştirebilir */
+  units: string
+  /** Sistemin gördüğü son 30 gün satışı (referans) */
+  soldLast30: number
   hasGap: boolean
   ownsBuybox: boolean
   /** Kullanıcının bu ürüne ayırdığı tutar (metin — serbest düzenlenebilir) */
@@ -198,10 +201,6 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
         toast.error("Bu ürün zaten listede")
         return
       }
-      if (i.monthlyUnits <= 0) {
-        toast.error(`"${i.name}" son 30 günde satmamış — bütçe verilemez`)
-        return
-      }
       setTargets((p) => [
         ...p,
         {
@@ -212,7 +211,8 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
           buyboxPrice: i.buyboxPrice,
           currentCost: i.currentCost,
           priceGap: i.priceGap,
-          monthlyUnits: i.monthlyUnits,
+          units: i.monthlyUnits > 0 ? String(i.monthlyUnits) : "",
+          soldLast30: i.monthlyUnits,
           hasGap: i.hasGap,
           ownsBuybox: i.ownsBuybox,
           amount: i.suggestedAmount > 0 ? String(i.suggestedAmount) : "",
@@ -229,15 +229,21 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
   }, 0)
   const kalan = budget - kullanilan
   const asim = kalan < -0.005
-  const gecerliSatir = targets.filter((t) => Number(t.amount) > 0).length
+  const gecerliSatir = targets.filter(
+    (t) => Number(t.amount) > 0 && Number(t.units) > 0,
+  ).length
 
   function uygula() {
     startTransition(async () => {
       const res = await applyBudgetAction({
         freeItems: free.map((r) => ({ productId: r.productId, quantity: r.quantity })),
         allocations: targets
-          .filter((t) => Number(t.amount) > 0)
-          .map((t) => ({ productId: t.productId, amount: Number(t.amount) })),
+          .filter((t) => Number(t.amount) > 0 && Number(t.units) > 0)
+          .map((t) => ({
+            productId: t.productId,
+            amount: Number(t.amount),
+            units: Math.floor(Number(t.units)),
+          })),
         note: note.trim() || null,
       })
       if (!res.success) {
@@ -472,9 +478,10 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
                     <TableRow>
                       <TableHead className="w-[118px]">Barkod</TableHead>
                       <TableHead>Ürün</TableHead>
-                      <TableHead className="w-[100px] text-right">Buybox</TableHead>
-                      <TableHead className="w-[90px] text-right">Açık</TableHead>
-                      <TableHead className="w-[110px] text-right">Ayrılan</TableHead>
+                      <TableHead className="w-[95px] text-right">Buybox</TableHead>
+                      <TableHead className="w-[85px] text-right">Açık</TableHead>
+                      <TableHead className="w-[72px] text-center">Adet</TableHead>
+                      <TableHead className="w-[105px] text-right">Ayrılan</TableHead>
                       <TableHead className="w-[40px]" />
                     </TableRow>
                   </TableHeader>
@@ -487,7 +494,10 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
                         <TableCell className="max-w-[180px] text-sm">
                           <p className="truncate font-medium">{t.name}</p>
                           <p className="text-[11px] text-muted-foreground">
-                            alış {formatCurrency(t.currentCost)} · ay {t.monthlyUnits} adet
+                            alış {formatCurrency(t.currentCost)}
+                            {t.soldLast30 > 0
+                              ? ` · son 30g ${t.soldLast30} adet`
+                              : " · son 30g satış yok"}
                           </p>
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
@@ -503,6 +513,20 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
                           ) : (
                             <span className="text-[11px] text-muted-foreground">açık yok</span>
                           )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={t.units}
+                            placeholder="?"
+                            onChange={(e) =>
+                              setTargets((p) =>
+                                p.map((x, j) => (j === i ? { ...x, units: e.target.value } : x)),
+                              )
+                            }
+                            className="mx-auto h-8 w-14 px-1 text-center"
+                          />
                         </TableCell>
                         <TableCell>
                           <Input
@@ -536,11 +560,21 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
               </div>
             )}
 
+            {targets.some((t) => !Number(t.units)) && (
+              <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
+                <span>
+                  <strong className="text-foreground">Adet</strong> boş olan ürünler var. Son 30
+                  günde satmamış olabilir — fiyatı tutmadığı için satmıyorsa zaten hedefin o.
+                  Ayda kaç satmasını beklediğini yaz; bütçe buna göre bölünür.
+                </span>
+              </p>
+            )}
             {targets.some((t) => !t.hasGap) && (
               <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
-                Açığı olmayan ürünler var — bunların fiyatı zaten rakiple yarışabiliyor, bütçeye
-                ihtiyaçları yok. Yine de vermek istersen tutarı elle yaz.
+                Açığı olmayan ürünler var — fiyatı zaten rakiple yarışabiliyor, bütçeye ihtiyacı
+                yok. Yine de vermek istersen tutarı elle yaz.
               </p>
             )}
           </CardContent>

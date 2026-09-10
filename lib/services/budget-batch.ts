@@ -19,10 +19,8 @@ import {
   netProceeds,
   type BudgetCandidate,
 } from "@/lib/pricing/budget-allocation"
-import {
-  loadCommissionTariffsForProducts,
-  resolveEffectiveCommissionSync,
-} from "@/lib/pricing/effective-commission"
+// NOT: kademeli tarife (resolveEffectiveCommissionSync) bu modülde KULLANILMAZ —
+// bütçe hesabı bilinçli olarak pazaryerinin SABİT oranıyla yapılır (2026-09-10).
 import { recalculateMarketplacePrices } from "./marketplace-price"
 import { recalculateSetsContainingComponents } from "./set-product"
 
@@ -96,10 +94,9 @@ export async function computeFreeItems(items: FreeItemInput[]): Promise<{
   if (items.length === 0) return { items: [], totalBudget: 0 }
   const mp = await tyConfig()
   const ids = items.map((i) => i.productId)
-  const [products, snaps, tariffs] = await Promise.all([
+  const [products, snaps] = await Promise.all([
     prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }),
     latestSnapshots(ids),
-    loadCommissionTariffsForProducts(ids, ["Trendyol"]),
   ])
   const byId = new Map(products.map((p) => [p.id, p]))
 
@@ -110,15 +107,12 @@ export async function computeFreeItems(items: FreeItemInput[]): Promise<{
     if (!p) throw new Error(`Ürün bulunamadı: ${it.productId}`)
     const snap = snaps.get(it.productId)
     const buybox = snap?.buyboxPrice ?? null
-    const rate = buybox
-      ? resolveEffectiveCommissionSync({
-          productId: it.productId,
-          marketplaceName: "Trendyol",
-          priceAtCalculation: buybox,
-          tariffMap: tariffs,
-          fallbackRate: Number(mp.commissionRate),
-        }).rate
-      : Number(mp.commissionRate)
+    // ⚠️ SABİT komisyon (kademeli DEĞİL) — kullanıcı kararı 2026-09-10.
+    // Kademeli oran o ANKİ fiyata göre düşük çıkabiliyor (ör. %12,7). Mal o fiyattan
+    // satılmaz da fiyat yukarı kayarsa komisyon %19'a çıkar ve bütçeyi olduğundan
+    // BÜYÜK hesaplamış oluruz → dağıttığımız para elimize geçmez, zarar ederiz.
+    // Temkinli taraf: her zaman pazaryerinin taban oranı.
+    const rate = Number(mp.commissionRate)
     const net = buybox
       ? netProceeds(buybox, {
           commissionPct: rate,
@@ -164,9 +158,8 @@ export async function findCandidates(): Promise<CandidateRow[]> {
   if (products.length === 0) return []
   const ids = products.map((p) => p.id)
 
-  const [snaps, tariffs, soldRows] = await Promise.all([
+  const [snaps, soldRows] = await Promise.all([
     latestSnapshots(ids),
-    loadCommissionTariffsForProducts(ids, ["Trendyol"]),
     prisma.$queryRaw<Array<{ pid: number; sold: number }>>(Prisma.sql`
       SELECT i."productId" AS pid, SUM(i.amount)::int AS sold
       FROM "DopigoOrderItem" i JOIN "DopigoOrder" o ON o.id = i."orderId"
@@ -186,21 +179,20 @@ export async function findCandidates(): Promise<CandidateRow[]> {
   for (const p of products) {
     const snap = snaps.get(p.id)
     if (!snap || snap.ownsBuybox) continue // vitrin bizdeyse bütçeye gerek yok
+    // NOT: satış şartı YOK (kullanıcı kararı 2026-09-10). Amaç zaten "fiyatı
+    // tutmadığı için satmayan" ürünü rekabete sokmak — onları engellemek işin
+    // mantığına ters. Adet, kullanıcının tahmini olarak UI'dan gelir.
     const monthlyUnits = soldMap.get(p.id) ?? 0
-    if (monthlyUnits <= 0) continue // satmayan ürüne para vermek israf
 
     const cost = Number(p.mainPurchasePrice)
     const buffer = Number(p.brand?.priceUndercutBuffer ?? 0)
     const targetPrice = snap.buyboxPrice - buffer
     if (!(targetPrice > 0)) continue
 
-    const rate = resolveEffectiveCommissionSync({
-      productId: p.id,
-      marketplaceName: "Trendyol",
-      priceAtCalculation: targetPrice,
-      tariffMap: tariffs,
-      fallbackRate: Number(mp.commissionRate),
-    }).rate
+    // SABİT komisyon — bkz. computeFreeItems'teki gerekçe. Burada da temkinli
+    // taraf: yüksek oranla hesaplanan min satış fiyatı, açığı olduğundan KÜÇÜK
+    // göstermez; düşük oran kullansak açığı eksik hesaplar, yetersiz bütçe veririz.
+    const rate = Number(mp.commissionRate)
 
     const ratesPct = rate + stopaj + BUDGET_MIN_PROFIT_PCT
     const factor = 1 - ratesPct / 100
@@ -263,9 +255,8 @@ export async function getProductBudgetInfo(productId: number): Promise<{
   })
   if (!p) return null
 
-  const [snaps, tariffs, sold] = await Promise.all([
+  const [snaps, sold] = await Promise.all([
     latestSnapshots([productId]),
-    loadCommissionTariffsForProducts([productId], ["Trendyol"]),
     prisma.$queryRaw<Array<{ sold: number }>>(Prisma.sql`
       SELECT COALESCE(SUM(i.amount),0)::int AS sold
       FROM "DopigoOrderItem" i JOIN "DopigoOrder" o ON o.id = i."orderId"
@@ -286,13 +277,8 @@ export async function getProductBudgetInfo(productId: number): Promise<{
 
   if (snap && cost > 0) {
     targetPrice = snap.buyboxPrice - buffer
-    const rate = resolveEffectiveCommissionSync({
-      productId,
-      marketplaceName: "Trendyol",
-      priceAtCalculation: targetPrice > 0 ? targetPrice : snap.buyboxPrice,
-      tariffMap: tariffs,
-      fallbackRate: Number(mp.commissionRate),
-    }).rate
+    // SABİT komisyon — bkz. computeFreeItems'teki gerekçe.
+    const rate = Number(mp.commissionRate)
     const factor = 1 - (rate + Number(mp.withholdingTax) + BUDGET_MIN_PROFIT_PCT) / 100
     if (factor > 0) {
       minSalePrice = (cost + Number(mp.shippingCost) + Number(mp.extraCost ?? 0)) / factor
@@ -324,7 +310,7 @@ export interface ApplyBudgetInput {
    * Kullanıcının belirlediği dağıtım — hangi ürüne ne kadar (2026-09-10 kararı:
    * tutarı sistem değil KULLANICI seçer).
    */
-  allocations: Array<{ productId: number; amount: number }>
+  allocations: Array<{ productId: number; amount: number; units: number }>
   note?: string | null
 }
 
@@ -361,14 +347,13 @@ export async function applyBudget(input: ApplyBudgetInput): Promise<ApplyBudgetR
     if (!(info.currentCost > 0)) {
       throw new Error(`"${info.name}" için alış fiyatı yok — bütçe dağıtılamaz`)
     }
-    if (info.monthlyUnits <= 0) {
-      throw new Error(`"${info.name}" son 30 günde satmamış — beklenen adet yok`)
-    }
     nameById.set(a.productId, info.name)
+    // Adet KULLANICIDAN gelir (tahmini). Son 30 gün satışı sadece varsayılan öneri;
+    // hiç satmamış ürüne de bütçe verilebilir — zaten amaç o.
     return {
       productId: a.productId,
       amount: a.amount,
-      units: info.monthlyUnits,
+      units: a.units,
       currentCost: info.currentCost,
     }
   })

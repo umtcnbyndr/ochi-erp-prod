@@ -196,3 +196,33 @@ describe("buildManualAllocations — kullanıcı seçimli dağıtım", () => {
     expect(r.remaining).toBe(0)
   })
 })
+
+/**
+ * SABİT komisyon kararı (2026-09-10): bütçe hesabında kademeli tarife DEĞİL,
+ * pazaryerinin taban oranı kullanılır. Gerekçe: kademeli oran o anki fiyata göre
+ * düşük çıkabilir; mal satılmayıp fiyat yukarı kayarsa komisyon artar ve bütçeyi
+ * olduğundan büyük hesaplamış oluruz.
+ */
+describe("sabit komisyon — temkinli bütçe", () => {
+  const SABIT = { commissionPct: 19, withholdingPct: 1, shippingCost: 93, extraCost: 13 }
+  const KADEMELI = { ...SABIT, commissionPct: 12.7 }
+
+  it("sabit oranla hesaplanan net getiri DAHA DÜŞÜK (temkinli)", () => {
+    const sabit = netProceeds(10000, SABIT)
+    const kademeli = netProceeds(10000, KADEMELI)
+    expect(sabit).toBeLessThan(kademeli)
+    // %19 ile: 10000 − 1900 − 100 − 93 − 13 = 7894
+    expect(sabit).toBe(7894)
+    // %12,7 ile 630 ₺ daha fazla görünürdü — bu fark dağıtılıp elimize geçmeyebilirdi
+    expect(kademeli - sabit).toBeCloseTo(630, 0)
+  })
+
+  it("adet 0 olan ürün de dağıtıma girebilir (kullanıcı tahmini adetle)", () => {
+    // Hiç satmamış ürün: kullanıcı ayda 5 satacağını tahmin ediyor
+    const r = buildManualAllocations(10000, [
+      { productId: 1, amount: 2000, units: 5, currentCost: 800 },
+    ])
+    expect(r.allocations[0].perUnitDiscount).toBe(400)
+    expect(r.allocations[0].newCost).toBe(400)
+  })
+})
