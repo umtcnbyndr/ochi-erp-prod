@@ -6,7 +6,6 @@ import { findProductByBarcode } from "@/lib/services/product-match"
 import {
   applyBudget,
   computeFreeItems,
-  findCandidates,
   getProductBudgetInfo,
   type FreeItemInput,
 } from "@/lib/services/budget-batch"
@@ -31,15 +30,6 @@ export async function computeBudgetAction(items: FreeItemInput[]) {
     return { success: true as const, data: r }
   } catch (err) {
     return { success: false as const, error: err instanceof Error ? err.message : "Hesaplanamadı" }
-  }
-}
-
-export async function loadCandidatesAction() {
-  try {
-    await requirePermission("urun-giris", "view")
-    return { success: true as const, data: await findCandidates() }
-  } catch (err) {
-    return { success: false as const, error: err instanceof Error ? err.message : "Yüklenemedi" }
   }
 }
 

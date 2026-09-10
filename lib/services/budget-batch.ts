@@ -13,12 +13,7 @@
  */
 import { prisma } from "@/lib/db"
 import { Prisma } from "@prisma/client"
-import {
-  allocateBudget,
-  buildManualAllocations,
-  netProceeds,
-  type BudgetCandidate,
-} from "@/lib/pricing/budget-allocation"
+import { buildManualAllocations, netProceeds } from "@/lib/pricing/budget-allocation"
 // NOT: kademeli tarife (resolveEffectiveCommissionSync) bu modülde KULLANILMAZ —
 // bütçe hesabı bilinçli olarak pazaryerinin SABİT oranıyla yapılır (2026-09-10).
 import { recalculateMarketplacePrices } from "./marketplace-price"
@@ -39,21 +34,6 @@ export interface FreeItemComputed {
   buyboxPrice: number | null
   netPerUnit: number
   netTotal: number
-}
-
-export interface CandidateRow {
-  productId: number
-  name: string
-  brandName: string | null
-  currentCost: number
-  minSalePrice: number
-  competitorPrice: number
-  buffer: number
-  targetPrice: number
-  priceGap: number
-  monthlyUnits: number
-  /** Bu ürünü rekabete sokmanın aylık bütçe maliyeti */
-  neededBudget: number
 }
 
 async function tyConfig() {
@@ -134,94 +114,6 @@ export async function computeFreeItems(items: FreeItemInput[]): Promise<{
   }
   return { items: computed, totalBudget: Math.round(totalBudget * 10000) / 10000 }
 }
-
-/**
- * Bütçeden faydalanabilecek ürünleri bulur: vitrin bizde DEĞİL + stok var +
- * min satış fiyatı hedefin ÜSTÜNDE (yani maliyet sıkıştırıyor) + satışı var.
- */
-export async function findCandidates(): Promise<CandidateRow[]> {
-  const mp = await tyConfig()
-  const products = await prisma.product.findMany({
-    where: {
-      status: "ACTIVE",
-      productType: "SINGLE",
-      mainPurchasePrice: { gt: 0 },
-      OR: [{ mainStock: { gt: 0 } }, { streetStock: { gt: 0 } }],
-    },
-    select: {
-      id: true,
-      name: true,
-      mainPurchasePrice: true,
-      brand: { select: { name: true, priceUndercutBuffer: true } },
-    },
-  })
-  if (products.length === 0) return []
-  const ids = products.map((p) => p.id)
-
-  const [snaps, soldRows] = await Promise.all([
-    latestSnapshots(ids),
-    prisma.$queryRaw<Array<{ pid: number; sold: number }>>(Prisma.sql`
-      SELECT i."productId" AS pid, SUM(i.amount)::int AS sold
-      FROM "DopigoOrderItem" i JOIN "DopigoOrder" o ON o.id = i."orderId"
-      WHERE i."productId" IN (${Prisma.join(ids)})
-        AND o."serviceCreatedAt" >= now() - interval '30 days'
-        AND o."derivedStatus" NOT IN ('CANCELLED','RETURNED') AND o.archived = false
-      GROUP BY i."productId"
-    `),
-  ])
-  const soldMap = new Map(soldRows.map((r) => [r.pid, r.sold]))
-
-  const shipping = Number(mp.shippingCost)
-  const extra = Number(mp.extraCost ?? 0)
-  const stopaj = Number(mp.withholdingTax)
-
-  const out: CandidateRow[] = []
-  for (const p of products) {
-    const snap = snaps.get(p.id)
-    if (!snap || snap.ownsBuybox) continue // vitrin bizdeyse bütçeye gerek yok
-    // NOT: satış şartı YOK (kullanıcı kararı 2026-09-10). Amaç zaten "fiyatı
-    // tutmadığı için satmayan" ürünü rekabete sokmak — onları engellemek işin
-    // mantığına ters. Adet, kullanıcının tahmini olarak UI'dan gelir.
-    const monthlyUnits = soldMap.get(p.id) ?? 0
-
-    const cost = Number(p.mainPurchasePrice)
-    const buffer = Number(p.brand?.priceUndercutBuffer ?? 0)
-    const targetPrice = snap.buyboxPrice - buffer
-    if (!(targetPrice > 0)) continue
-
-    // SABİT komisyon — bkz. computeFreeItems'teki gerekçe. Burada da temkinli
-    // taraf: yüksek oranla hesaplanan min satış fiyatı, açığı olduğundan KÜÇÜK
-    // göstermez; düşük oran kullansak açığı eksik hesaplar, yetersiz bütçe veririz.
-    const rate = Number(mp.commissionRate)
-
-    const ratesPct = rate + stopaj + BUDGET_MIN_PROFIT_PCT
-    const factor = 1 - ratesPct / 100
-    if (factor <= 0) continue
-    const minSalePrice = (cost + shipping + extra) / factor
-    const priceGap = minSalePrice - targetPrice
-    if (priceGap <= 0) continue // maliyet sıkıştırmıyor — fiyatı güncellemek yeterli
-
-    const costCut = priceGap * factor
-    if (cost - costCut <= 0) continue
-
-    out.push({
-      productId: p.id,
-      name: p.name,
-      brandName: p.brand?.name ?? null,
-      currentCost: cost,
-      minSalePrice: Math.round(minSalePrice * 100) / 100,
-      competitorPrice: snap.buyboxPrice,
-      buffer,
-      targetPrice: Math.round(targetPrice * 100) / 100,
-      priceGap: Math.round(priceGap * 100) / 100,
-      monthlyUnits,
-      neededBudget: Math.round(costCut * monthlyUnits * 100) / 100,
-    })
-  }
-  // En çok satış kazandıracak önce
-  return out.sort((a, b) => b.neededBudget - a.neededBudget)
-}
-
 
 /**
  * TEK ürün için bütçe bilgisi — kullanıcı barkodla eklerken çağrılır.
