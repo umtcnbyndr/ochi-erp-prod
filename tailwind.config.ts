@@ -21,6 +21,23 @@ const config: Config = {
       },
     },
     extend: {
+      // Font zinciri AÇIKÇA tanımlı — 2026-09-10'a kadar hiçbir yerde font yoktu,
+      // tarayıcı varsayılanına kalıyordu. Sonuç: ₺ (Türk lirası) glifi olmayan bir
+      // fonta düşüp "Ł" gibi görünebiliyordu. Buradaki zincirin tamamı ₺ taşır.
+      fontFamily: {
+        sans: [
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "Noto Sans",
+          "sans-serif",
+          "Apple Color Emoji",
+          "Segoe UI Emoji",
+        ],
+      },
       screens: {
         xs: "475px",
       },

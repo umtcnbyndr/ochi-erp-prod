@@ -59,6 +59,22 @@ interface Gecmis {
   urunler: Array<{ name: string; perUnitDiscount: number; units: number }>
 }
 
+/** Adım numarası rozeti — akışın sırasını görünür kılar. */
+function StepBadge({ no, state }: { no: number; state: "active" | "done" | "locked" }) {
+  return (
+    <span
+      className={cn(
+        "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+        state === "done" && "bg-emerald-600 text-white",
+        state === "active" && "bg-primary text-primary-foreground",
+        state === "locked" && "bg-muted text-muted-foreground",
+      )}
+    >
+      {state === "done" ? <Check className="h-3.5 w-3.5" /> : no}
+    </span>
+  )
+}
+
 /** Barkod okutma satırı — iki tabloda da aynı. */
 function BarcodeAdder({
   placeholder,
@@ -243,34 +259,43 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
     <div className="space-y-4">
       {/* ═══ BÜTÇE ŞERİDİ (en üstte) ═══ */}
       <Card className="border-primary/20 bg-primary/[0.03]">
-        <CardContent className="py-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Wallet className="h-4.5 w-4.5" />
+        <CardContent className="p-5 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+            {/* Metrikler eşit paylaşır — ortada ölü alan kalmaz */}
+            <div className="grid flex-1 grid-cols-3 divide-x divide-border">
+              <div className="flex items-center gap-3 pr-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Wallet className="h-5 w-5" />
                 </div>
-                <div>
-                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Bütçe</p>
-                  <p className="text-xl font-bold leading-tight tabular-nums">
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Bütçe
+                  </p>
+                  <p className="truncate text-xl font-bold leading-tight tabular-nums">
                     {formatCurrency(budget)}
                   </p>
                 </div>
               </div>
-              <div>
+
+              <div className="px-4">
                 <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
                   Dağıtılan
                 </p>
-                <p className="text-xl font-bold leading-tight tabular-nums">
+                <p className="truncate text-xl font-bold leading-tight tabular-nums">
                   {formatCurrency(kullanilan)}
                 </p>
               </div>
-              <div>
+
+              <div className="pl-4">
                 <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Kalan</p>
                 <p
                   className={cn(
-                    "text-xl font-bold leading-tight tabular-nums",
-                    asim ? "text-rose-600" : kalan > 0 ? "text-emerald-600" : "text-muted-foreground",
+                    "truncate text-xl font-bold leading-tight tabular-nums",
+                    asim
+                      ? "text-rose-600"
+                      : kalan > 0
+                        ? "text-emerald-600"
+                        : "text-muted-foreground",
                   )}
                 >
                   {formatCurrency(kalan)}
@@ -278,26 +303,34 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Not (ör. Eylül bedelsiz partisi)"
-                className="h-9 w-full md:w-56"
-              />
-              <Button
-                onClick={uygula}
-                disabled={pending || budget <= 0 || gecerliSatir === 0 || asim}
-                className="h-9 shrink-0"
-              >
-                {pending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Check className="mr-2 h-4 w-4" />
-                )}
-                Uygula
-              </Button>
-            </div>
+            {/* Aksiyon: yapacak iş yokken hiç görünmez */}
+            {budget > 0 ? (
+              <div className="flex items-center gap-2 lg:w-auto">
+                <Input
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Not (opsiyonel)"
+                  className="h-10 w-full lg:w-52"
+                />
+                <Button
+                  onClick={uygula}
+                  disabled={pending || gecerliSatir === 0 || asim}
+                  className="h-10 shrink-0"
+                >
+                  {pending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="mr-2 h-4 w-4" />
+                  )}
+                  Uygula
+                </Button>
+              </div>
+            ) : (
+              <p className="shrink-0 text-sm text-muted-foreground lg:max-w-[240px]">
+                Soldaki tabloya bedelsiz ürünleri ekleyip{" "}
+                <strong className="font-medium text-foreground">Bütçeyi hesapla</strong>&apos;ya bas.
+              </p>
+            )}
           </div>
 
           {asim && (
@@ -313,11 +346,14 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
       <div className="grid gap-4 xl:grid-cols-2">
         {/* ── SOL: bedelsiz gelenler ── */}
         <Card>
-          <CardContent className="space-y-3 pt-5">
+          <CardContent className="space-y-4 p-5 sm:p-6">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Gift className="h-4 w-4 text-muted-foreground" />
-                <p className="font-medium">Bedelsiz Gelenler</p>
+              <div className="flex items-center gap-2.5">
+                <StepBadge no={1} state={budget > 0 ? "done" : "active"} />
+                <div>
+                  <p className="font-medium leading-tight">Bedelsiz Gelenler</p>
+                  <p className="text-xs text-muted-foreground">Bütçeyi bunlar oluşturur</p>
+                </div>
                 {free.length > 0 && <Badge variant="secondary">{free.length}</Badge>}
               </div>
               {free.length > 0 && budget === 0 && (
@@ -333,9 +369,9 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
             {free.length === 0 ? (
               <EmptyState
                 icon={Gift}
-                title="Ürün ekle"
-                description="Firmadan bedelsiz gelen ürünlerin barkodunu okut. Vitrin fiyatından komisyon, kargo ve stopaj düşülerek net getirisi bulunur."
-                className="py-6"
+                title="Bedelsiz ürün ekle"
+                description="Barkodu okut — vitrin fiyatından komisyon, kargo ve stopaj düşülüp net getirisi bulunur."
+                className="py-7"
               />
             ) : (
               <div className="overflow-x-auto rounded-lg border">
@@ -407,11 +443,16 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
         </Card>
 
         {/* ── SAĞ: bütçe verilecekler ── */}
-        <Card>
-          <CardContent className="space-y-3 pt-5">
-            <div className="flex items-center gap-2">
-              <Target className="h-4 w-4 text-muted-foreground" />
-              <p className="font-medium">Bütçe Verilecekler</p>
+        <Card className={cn(budget <= 0 && "opacity-60")}>
+          <CardContent className="space-y-4 p-5 sm:p-6">
+            <div className="flex items-center gap-2.5">
+              <StepBadge no={2} state={budget > 0 ? "active" : "locked"} />
+              <div>
+                <p className="font-medium leading-tight">Bütçe Verilecek Ürünler</p>
+                <p className="text-xs text-muted-foreground">
+                  {budget > 0 ? "Tutarı sen belirlersin" : "Önce bütçeyi hesapla"}
+                </p>
+              </div>
               {targets.length > 0 && <Badge variant="secondary">{targets.length}</Badge>}
             </div>
 
@@ -420,9 +461,9 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
             {targets.length === 0 ? (
               <EmptyState
                 icon={Target}
-                title="Ürün ekle"
-                description="Bütçeyi vermek istediğin ürünlerin barkodunu okut. Her ürünün rakibe göre açığı ve önerilen tutar gelir — tutarı istediğin gibi değiştirebilirsin."
-                className="py-6"
+                title="Hedef ürün ekle"
+                description="Barkodu okut — rakibe göre açığı ve önerilen tutar gelir, tutarı istediğin gibi değiştirebilirsin."
+                className="py-7"
               />
             ) : (
               <div className="overflow-x-auto rounded-lg border">
@@ -509,7 +550,7 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
       {/* ═══ GEÇMİŞ ═══ */}
       {gecmis.length > 0 && (
         <Card>
-          <CardContent className="space-y-2 pt-5">
+          <CardContent className="space-y-3 p-5 sm:p-6">
             <p className="text-sm font-medium">Geçmiş dağıtımlar</p>
             {gecmis.map((b) => (
               <div key={b.id} className="rounded-lg border bg-card p-2.5 text-sm">
