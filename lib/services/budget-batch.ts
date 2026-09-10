@@ -20,8 +20,29 @@ import { weightedAveragePrice, purchasePriceChanged } from "@/lib/pricing"
 import { recalculateMarketplacePrices } from "./marketplace-price"
 import { recalculateSetsContainingComponents } from "./set-product"
 
-/** Bütçe hesabında kullanılan hedef kâr (%) — min satış fiyatı bununla bulunur. */
-export const BUDGET_MIN_PROFIT_PCT = 5
+/**
+ * Bütçe hesabında kullanılan hedef kâr — kullanıcı kararı 2026-09-10.
+ *
+ * ⚠️ Sabit bir oran DEĞİL: ürünün kendi hedef kârı kullanılır (marka bazlı varsa o,
+ * yoksa pazaryerinin `targetProfit`i — fiyat formülüyle AYNI öncelik).
+ *
+ * Önceden burada `BUDGET_MIN_PROFIT_PCT = 5` vardı; o oran BuyBox kartındaki
+ * "min satış" satırından ödünç alınmıştı ve YANLIŞTI. İki ayrı kavram:
+ *   - min satış %5  → "bunun altına inersen kesin zarar" (kart gösterimi)
+ *   - hedef kâr %20 → "bu kârla satmak istiyorum" (fiyat formülü, bütçe hesabı)
+ * Bütçenin amacı rakibin fiyatına inip YİNE DE hedef kârı kazanmak, kıl payı
+ * kurtulmak değil. Fark büyük: LRP Effaclar'da %5 ile "gerek yok" çıkıyordu,
+ * %20 ile 19.698 ₺ gerekiyor.
+ */
+function resolveTargetProfit(
+  brandTargetProfit: unknown,
+  marketplaceTargetProfit: unknown,
+): number {
+  const brand = Number(brandTargetProfit)
+  if (Number.isFinite(brand) && brand > 0) return brand
+  const mp = Number(marketplaceTargetProfit)
+  return Number.isFinite(mp) ? mp : 0
+}
 
 export interface FreeItemInput {
   productId: number
@@ -151,7 +172,7 @@ export async function getProductBudgetInfo(productId: number): Promise<{
       primaryBarcode: true,
       mainStock: true,
       mainPurchasePrice: true,
-      brand: { select: { priceUndercutBuffer: true } },
+      brand: { select: { priceUndercutBuffer: true, targetProfit: true } },
       marketplacePrices: {
         where: { marketplace: { name: "Trendyol" } },
         select: { manualOverride: true, calculatedPrice: true },
@@ -179,16 +200,18 @@ export async function getProductBudgetInfo(productId: number): Promise<{
     ? Number(tymp.manualOverride ?? tymp.calculatedPrice ?? 0) || null
     : null
 
-  // HEDEF ALIŞ: rakip fiyatından geriye doğru çözüm.
-  //   min satış = (alış + kargo + ek) / (1 − oranlar) ≤ (buybox − tampon)
-  //   → alış ≤ (buybox − tampon) × (1 − oranlar) − kargo − ek
+  // HEDEF ALIŞ: "rakibin fiyatına inip HEDEF KÂRIMI kazanmak için alışım kaç olmalı?"
+  //   satış = (alış + kargo + ek) / (1 − komisyon − stopaj − hedefKâr) ≤ (buybox − tampon)
+  //   → alış ≤ (buybox − tampon) × (1 − komisyon − stopaj − hedefKâr) − kargo − ek
   // Komisyon SABİT (kademeli değil) — bkz. computeFreeItems'teki gerekçe.
+  // Hedef kâr ürünün kendi oranı (marka > pazaryeri), sabit bir sayı değil.
   let targetCost: number | null = null
   let requiredDiscount = 0
   if (snap && cost > 0) {
     const hedefFiyat = snap.buyboxPrice - buffer
+    const hedefKar = resolveTargetProfit(p.brand?.targetProfit, mp.targetProfit)
     const factor =
-      1 - (Number(mp.commissionRate) + Number(mp.withholdingTax) + BUDGET_MIN_PROFIT_PCT) / 100
+      1 - (Number(mp.commissionRate) + Number(mp.withholdingTax) + hedefKar) / 100
     if (factor > 0 && hedefFiyat > 0) {
       const tc = hedefFiyat * factor - Number(mp.shippingCost) - Number(mp.extraCost ?? 0)
       targetCost = Math.round(tc * 100) / 100
