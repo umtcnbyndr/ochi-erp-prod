@@ -19,6 +19,18 @@
 - Deploy `cf386db`: **ilk deneme "exporting layers" adımında düştü** (exit 255) — bu her zamanki OOM DEĞİL: build tamamen başarılıydı (tip kontrolü geçti, 7/7 sayfa üretildi, tüm katmanlar kopyalandı), ölüm noktası imajı diske yazma. Sunucuda 12 uygulama + 8 veritabanı var, disk baskısı şüphesi. Retry ile geçti. Prod'da doğrulandı: `ExchangeSettlement` tablosu (6 kolon) + `Exchange.settlementId` oluştu, migration `finished_at` dolu, health 200.
 - Doğrulama: gerçek DB'de uçtan uca senaryo koşuldu — 3 verildi (stok 10→7, takasta 3, maliyet 1.000 mühürlendi) → kapatıldı (3×1.000 ↔ 2×1.500, fark 0, takasta 0) → gelen stok 4→6, alış (4×1200+2×1500)/6 = **1.300** ✓ → kısmi kapatmada 1 adet açık kaldı ✓. Test: `exchange-settlement.test.ts` 16 test (hatalı girdi sessizce 0'a düşmüyor — para-kritik). **250/250 yeşil.**
 
+
+**Bütçe Dağıtımı — bedelsiz gelen ürünleri satışa çevirme (yeni özellik):**
+- 🎯 **İhtiyaç:** Firma bazen bedelsiz ürün gönderiyor ("bütçe"). Bunları satıp elde edilen parayı, maliyeti yüzünden rakibin altına inemeyen ürünlere aktarmak isteniyor. Sistemde bedelsiz ürün kavramı hiç yoktu (`EntrySource` sadece PURCHASE/RETURN).
+- ✅ **Akış (Ürün Giriş → Bütçe Dağıtımı):** bedelsiz ürünleri barkodla okut → her birinin buybox fiyatı gelir, pazaryeri giderleri (kademeli komisyon + stopaj + kargo + ek) düşülür → **net getiri = bütçe** → aday ürünler listelenir, bütçeye sığanlar otomatik seçilir → onayla, alış fiyatları düşer.
+- ⚖️ **Kullanıcı kararı — dağıtım "satış kazanmak" için.** Yalnızca **gerçekten açığı olan** ürünler pay alır: açık = *(%5 kârla satabileceğim en düşük fiyat)* − *(rakip fiyatı − marka tamponu)*. Bu pozitif değilse ürünün bütçeye ihtiyacı yok, sadece fiyatı güncellenmemiş olabilir — oraya para vermek israf. **Prod verisiyle doğrulandı:** vitrin kaybettiğimiz 144 üründen **71'i sadece fiyat güncellenmeli**, **73'ünde maliyet gerçekten sıkıştırıyor** (satışı olan 16 tanesinin aylık ihtiyacı ~3.136 ₺).
+- ⚖️ **Kullanıcı kararı — açık YARIM kapatılmaz.** Sırayla tam finanse edilir (öncelik: açık × aylık satış), bütçe bitince durulur. Gerekçe: açığı yarım kapatan indirim hâlâ rakibin üstünde bırakır, vitrini kazandırmaz — 5 ürünü tam çözmek 20 ürüne yarım para vermekten iyidir.
+- ⚖️ **Kullanıcı kararı — alış fiyatı DOĞRUDAN düşer** (ayrı "sübvansiyon" alanı değil). Gerçek alış `PriceHistory`'de *"Bütçe dağıtımı #N"* notuyla saklanır, kaybolmaz.
+- 🔑 **Fiyat açığı ≠ maliyet açığı:** fiyatı ΔP düşürmek için maliyeti `ΔP × (1 − komisyon% − stopaj% − hedef%)` kadar düşürmek yeter (komisyon/stopaj da o oranda azalır). Bu çevrimi atlarsak bütçe %25-30 fazla harcanmış olurdu.
+- 📌 **Geçmiş kâr güvende:** `costAtSale` mührü sayesinde alış fiyatını değiştirmek geçmiş ayların raporunu bozmuyor (2026-07-17 kararı).
+- Sade tutuldu (kullanıcı isteği): 2 tablo (`BudgetBatch` + `BudgetAllocation`), gelen kalemler JSON'da, tek ekran.
+- Doğrulama: gerçek DB'de uçtan uca — bedelsiz ürün ×2 (buybox 10.000 → net 7.894/adet) → bütçe 15.788 → sıkışan ürün (alış 800, min satış 1.208, hedef 650) açığı 557,73 → maliyet indirimi 418,30/adet × 10 = 4.183 kullanıldı → alış 800 → 381,70 → **yeni min satış 650 < rakip 1.150 ✓ artık rekabet edebiliyor**. Test: `budget-allocation.test.ts` 16 test. **266/266 yeşil.**
+
 ## 2026-08-06
 
 **Patron raporu (Ochi Health 2026.xlsx) — 2 gerçek hata + Haziran/Temmuz dolduruldu:**

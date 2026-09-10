@@ -427,6 +427,8 @@ model Product {
   commissionTariffs           CommissionTariff[]
   marketPriceSnapshots        MarketPriceSnapshot[]
 
+  budgetAllocations BudgetAllocation[]
+
   @@index([pharmacyId])
   @@index([brandId])
   @@index([categoryId])
@@ -557,6 +559,49 @@ model Exchange {
   @@index([productId])
   @@index([linkedExchangeId])
   @@index([settlementId])
+}
+
+/// Bütçe Partisi — firmadan bedelsiz gelen ürünlerin oluşturduğu bütçe.
+///
+/// Kullanıcı kararı 2026-09-10: bedelsiz ürünlerin net getirisi (buybox − pazaryeri
+/// gideri) bir bütçe oluşturur; bu bütçe, MALİYETİ yüzünden rakibin altına inemeyen
+/// ürünlerin alış fiyatını düşürerek onları rekabete sokar.
+///
+/// Sade tutuldu (kullanıcı isteği): gelen kalemler ayrı tablo değil, `items` JSON'unda
+/// (sadece bütçenin nereden geldiğini göstermek için — operasyonel veri değil).
+model BudgetBatch {
+  id          Int      @id @default(autoincrement())
+  /// Bedelsiz gelen kalemler — [{productId, name, quantity, buyboxPrice, netPerUnit}]
+  items       Json
+  /// Net getiri toplamı = dağıtılacak bütçe
+  totalBudget Decimal  @db.Decimal(14, 4)
+  /// Fiilen dağıtılan (bütçe yetmediyse totalBudget'ten küçük olabilir)
+  usedBudget  Decimal  @db.Decimal(14, 4)
+  note        String?
+  createdAt   DateTime @default(now())
+
+  allocations BudgetAllocation[]
+}
+
+/// Bütçeden pay alan ürün — alış fiyatı bu kadar düşürüldü.
+/// `oldCost` geri alma ve denetim için saklanır (PriceHistory'de de kayıt var).
+model BudgetAllocation {
+  id              Int      @id @default(autoincrement())
+  batchId         Int
+  productId       Int
+  /// Adet başına alış fiyatından düşülen tutar
+  perUnitDiscount Decimal  @db.Decimal(14, 4)
+  /// Kaç adet için ayrıldı (son 30 gün satışı)
+  units           Int
+  oldCost         Decimal  @db.Decimal(14, 4)
+  newCost         Decimal  @db.Decimal(14, 4)
+  createdAt       DateTime @default(now())
+
+  batch   BudgetBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  product Product     @relation(fields: [productId], references: [id])
+
+  @@index([batchId])
+  @@index([productId])
 }
 
 /// Takas Kapatma — bir cariye verdiklerimizin, gelen ürünlerle MALİYET üzerinden

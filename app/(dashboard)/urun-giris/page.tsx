@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ArrowLeft, FileSpreadsheet } from "lucide-react"
+import { ArrowLeft, FileSpreadsheet, Wallet } from "lucide-react"
 import { prisma } from "@/lib/db"
 import { getPurchaseOrder } from "@/lib/services/purchase-order"
 import { PageHeader } from "@/components/common/page-header"
@@ -92,12 +92,20 @@ export default async function UrunGirisPage({
           title="Ürün Giriş"
           description="Seans tabanlı mal kabul — barkod okutun, kalem ekleyin, tamamlayın"
           actions={
-            <Link href="/urun-giris/toplu">
-              <Button variant="outline" size="sm">
-                <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" />
-                Toplu Excel ile Gir
-              </Button>
-            </Link>
+            <div className="flex gap-2">
+              <Link href="/urun-giris/butce">
+                <Button variant="outline" size="sm">
+                  <Wallet className="h-3.5 w-3.5 mr-1.5" />
+                  Bütçe Dağıtımı
+                </Button>
+              </Link>
+              <Link href="/urun-giris/toplu">
+                <Button variant="outline" size="sm">
+                  <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" />
+                  Toplu Excel ile Gir
+                </Button>
+              </Link>
+            </div>
           }
         />
       )}
