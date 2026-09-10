@@ -384,7 +384,7 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
               <EmptyState
                 icon={Gift}
                 title="Bedelsiz ürün ekle"
-                description="Barkodu okut — vitrin fiyatından komisyon, kargo ve stopaj düşülüp net getirisi bulunur."
+                description="Barkodu okut — vitrin fiyatından komisyon, kargo, stopaj ve hedef kâr düşülerek bütçeye katkısı bulunur. Ürün bu maliyetle stoğa girer, böylece vitrin fiyatına satılabilir ve hedef kârını kazanır."
                 className="py-7"
               />
             ) : (
@@ -395,7 +395,7 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
                       <TableHead className="min-w-[150px]">Ürün</TableHead>
                       <TableHead className="w-[64px] text-center">Adet</TableHead>
                       <TableHead className="w-[98px] text-right">Buybox</TableHead>
-                      <TableHead className="w-[106px] text-right">Net Getiri</TableHead>
+                      <TableHead className="w-[112px] text-right">Bütçe Katkısı</TableHead>
                       <TableHead className="w-[38px]" />
                     </TableRow>
                   </TableHeader>

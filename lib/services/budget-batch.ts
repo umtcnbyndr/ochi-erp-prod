@@ -97,7 +97,10 @@ export async function computeFreeItems(items: FreeItemInput[]): Promise<{
   const mp = await tyConfig()
   const ids = items.map((i) => i.productId)
   const [products, snaps] = await Promise.all([
-    prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }),
+    prisma.product.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, brand: { select: { targetProfit: true } } },
+    }),
     latestSnapshots(ids),
   ])
   const byId = new Map(products.map((p) => [p.id, p]))
@@ -115,12 +118,15 @@ export async function computeFreeItems(items: FreeItemInput[]): Promise<{
     // BÜYÜK hesaplamış oluruz → dağıttığımız para elimize geçmez, zarar ederiz.
     // Temkinli taraf: her zaman pazaryerinin taban oranı.
     const rate = Number(mp.commissionRate)
+    // Hedef kâr ürünün kendi oranı (marka > pazaryeri) — dağıtım tarafıyla aynı kural
+    const hedefKar = resolveTargetProfit(p.brand?.targetProfit, mp.targetProfit)
     const net = buybox
       ? netProceeds(buybox, {
           commissionPct: rate,
           withholdingPct: Number(mp.withholdingTax),
           shippingCost: Number(mp.shippingCost),
           extraCost: Number(mp.extraCost ?? 0),
+          targetProfitPct: hedefKar,
         })
       : 0
     const netTotal = net * it.quantity
@@ -315,11 +321,12 @@ export async function applyBudget(input: ApplyBudgetInput): Promise<ApplyBudgetR
     })
 
     // ── 1) BEDELSİZ GELENLERİ STOĞA AL ──
-    // Kullanıcı kararı 2026-09-10: maliyet olarak NET GETİRİSİ yazılır.
-    // Neden: o para zaten diğer ürünlere aktarıldı; bedelsizi 0 maliyetle girersek
-    // aynı kazanç iki kere sayılır (hem bedelsiz satışında hem diğer üründe).
-    // Net değerle girince bedelsiz satışı NÖTR kalır, kazanç yalnızca dağıtılan
-    // ürünlerde görünür. Defterde iki taraf birbirini götürür.
+    // Kullanıcı kararı 2026-09-10: maliyet = HEDEF KÂRLI maliyet (netProceeds).
+    // 0 maliyetle girersek aynı kazanç iki kere sayılır. Salt "net getiri" ile
+    // girersek de maliyet çok yüksek kalır ve sistem ürünü piyasanın üstünde
+    // fiyatlayıp satılamaz hale getirir (ilk tasarımın hatası). Hedef kâr da
+    // düşülünce maliyet, ürünün TAM BUYBOX fiyatına satılıp hedef kârı
+    // kazanmasını sağlayacak seviyeye iner.
     for (const it of items) {
       if (!(it.netPerUnit > 0) || it.quantity <= 0) continue
       const fp = await tx.product.findUnique({
@@ -353,9 +360,9 @@ export async function applyBudget(input: ApplyBudgetInput): Promise<ApplyBudgetR
           unitPrice: it.netPerUnit,
           note:
             `Bütçe partisi #${batch.id} — BEDELSİZ gelen ürün. ` +
-            `Maliyet olarak net getirisi yazıldı (buybox ${it.buyboxPrice ?? "?"} − pazaryeri giderleri = ` +
-            `${it.netPerUnit.toFixed(2)}/adet). Bu tutar bütçeye eklenip diğer ürünlerin alışından düşüldü, ` +
-            `bu yüzden bu ürünün satışı kâr/zarar açısından nötrdür.`,
+            `Maliyet, buybox fiyatından (${it.buyboxPrice ?? "?"}) komisyon+stopaj+kargo+ek VE hedef kâr ` +
+            `düşülerek hesaplandı: ${it.netPerUnit.toFixed(2)}/adet. Böylece ürün vitrin fiyatına ` +
+            `satılabilir ve hedef kârını kazanır. Aynı tutar bütçeye eklenip diğer ürünlerin alışından düşüldü.`,
         },
       })
       if (changed && newAvg != null) {
@@ -366,7 +373,7 @@ export async function applyBudget(input: ApplyBudgetInput): Promise<ApplyBudgetR
             oldValue: oldPrice || null,
             newValue: newAvg,
             enteredValue: it.netPerUnit,
-            reason: `Bütçe partisi #${batch.id} — bedelsiz gelen ${it.quantity} adet, net getirisiyle stoğa alındı`,
+            reason: `Bütçe partisi #${batch.id} — bedelsiz gelen ${it.quantity} adet, hedef kârlı maliyetle stoğa alındı`,
           },
         })
       }

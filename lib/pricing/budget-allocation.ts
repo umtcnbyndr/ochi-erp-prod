@@ -49,7 +49,26 @@ export function priceGapToCostCut(priceGap: NumericInput, ratesPct: NumericInput
   return round4(gap * factor)
 }
 
-/** Bedelsiz gelen bir kalemin net getirisi = buybox − komisyon − stopaj − kargo − ek. */
+/**
+ * Bedelsiz gelen bir kalemin bütçeye katkısı = **hedef kârlı maliyet**.
+ *
+ * Kullanıcı kararı 2026-09-10 (ikinci tur — ilk tasarım hatalıydı):
+ *
+ * Önce "net getiri" (buybox − komisyon − stopaj − kargo − ek) kullanılıyordu ve
+ * bu tutar ürünün maliyeti olarak kaydediliyordu. HATA: sistem satış fiyatını
+ * maliyetten türetiyor, o yüzden bedelsiz ürün piyasanın çok üstünde fiyatlanıp
+ * hiç satılamıyordu. Örnek (Vichy Liftactiv, buybox 2.819,90):
+ *   net getiri 2.143,92 maliyet yazılınca → sistem fiyatı (2143,92+112)/0,60 = 3.759,87
+ *   → buybox'ın %33 üstü, ürün rafta kalır.
+ *
+ * Doğrusu: maliyeti, buybox fiyatından HEDEF KÂR da düşülerek hesapla.
+ *   maliyet = buybox × (1 − komisyon% − stopaj% − hedefKâr%) − kargo − ek
+ *   Vichy: 2.819,90 × 0,60 − 112 = 1.579,94
+ *   → sistem fiyatı (1579,94+112)/0,60 = 2.819,90 = TAM BUYBOX ✓, kâr %20 ✓
+ *
+ * Toplam fayda değişmez, ikiye bölünür: bir kısmı bedelsiz ürünün kendi kârı,
+ * kalanı dağıtılacak bütçe. Kritik kazanç: ürün artık satılabilir fiyatta.
+ */
 export function netProceeds(
   buyboxPrice: NumericInput,
   opts: {
@@ -57,16 +76,19 @@ export function netProceeds(
     withholdingPct: NumericInput
     shippingCost: NumericInput
     extraCost: NumericInput
+    /** Hedef kâr % — ürünün kendi oranı (marka > pazaryeri) */
+    targetProfitPct: NumericInput
   },
 ): number {
   const p = toNumber(buyboxPrice, 0)
   if (!(p > 0)) return 0
-  const net =
-    p -
-    (p * toNumber(opts.commissionPct, 0)) / 100 -
-    (p * toNumber(opts.withholdingPct, 0)) / 100 -
-    toNumber(opts.shippingCost, 0) -
-    toNumber(opts.extraCost, 0)
+  const oranlar =
+    toNumber(opts.commissionPct, 0) +
+    toNumber(opts.withholdingPct, 0) +
+    toNumber(opts.targetProfitPct, 0)
+  const factor = 1 - oranlar / 100
+  if (factor <= 0) return 0
+  const net = p * factor - toNumber(opts.shippingCost, 0) - toNumber(opts.extraCost, 0)
   return round4(Math.max(0, net))
 }
 
