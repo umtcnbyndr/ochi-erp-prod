@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-09-10
+
+**Takas Kapatma — maliyet denkliğiyle toplu kapatma (yeni özellik):**
+- 🎯 **Sorun:** Loreal Ergin bizden 3 ürün aldı, karşılığında 2 farklı ürün getirdi — maliyetler denk. Sistem bunu yapamıyordu: tamamlama tek kayıt ↔ tek ürün çalışıyordu, birden fazla açık kaydı tek hamlede kapatmak ve **değer üzerinden** denkleştirmek mümkün değildi.
+- ✅ **Yeni akış:** `ExchangeSettlement` tablosu + `Exchange.settlementId`. Bir kapatma = seçilen "verilen" kalemler + gelen ürünler; ikisi de aynı kapatmaya bağlanır → geçmişte "bu 4 ürün şu 2 ürünle kapandı" görünür. Ekran: Takas → Çıkış sekmesinde cari bazında **"Maliyet üzerinden kapat"** düğmeleri.
+- ⚖️ **Kullanıcı kararı — denklik ALIŞ MALİYETİ üzerinden, PSF değil.** Gerekçe: kaybettiğimiz şey rafiyat değil, malın bize maliyeti. (Ergin'in açık hesabı PSF ile 58.439 ₺, maliyetle 23.215 ₺ — %40'ı.) Gelen ürünlerin alış fiyatı **elle girilir**, stoğa o fiyatla ağırlıklı ortalamayla işlenir.
+- ⚖️ **Kullanıcı kararı — adetler eşit olmak zorunda değil, fark bakiye olarak TAKİP EDİLMEZ.** Fark nota otomatik yazılır ("Verilen X · Gelen Y · fark Z bizim lehimize açık kaldı") ve kapatılır. Bilinçli sadelik: kullanıcı zaten karşı tarafla anlaşıyor, sistem cari hesap tutmasın.
+- ⚖️ **Kısmi kapatmada kayıt BÖLÜNÜR.** 2 adetlik kaydın 1'i kapatılırsa: orijinal 1 adete inip COMPLETED olur, kalan 1 adet için yeni PENDING kayıt açılır. Böylece "yarım kapalı kayıt" diye bir durum oluşmaz — her kayıt ya açık ya kapalı, takibi kolay.
+- 🔒 **Maliyet artık kayıt anında mühürleniyor** (`createGivenExchanges` → `unitPrice`). Önceden boş bırakılıyordu: 18 açık kaydın sadece 3'ünde fiyat vardı, Ergin'in 6 kaydının hiçbirinde yoktu. Bu yüzden aylar sonra kapatırken "o gün kaça mal oluyordu" bilgisi kayıptı ve bugünkü fiyatla denkleştirmek gerekiyordu. Mevcut kayıtlar için bugünkü COGS kullanılır, kartta `~` işaretiyle belirtilir.
+- Stok etkisi: kapatılan verilenler `exchangeStock` düşer (EXCHANGE_COMPLETE), gelenler `mainStock` artar + ağırlıklı ortalama alış güncellenir (EXCHANGE_IN + PriceHistory).
+- Doğrulama: gerçek DB'de uçtan uca senaryo koşuldu — 3 verildi (stok 10→7, takasta 3, maliyet 1.000 mühürlendi) → kapatıldı (3×1.000 ↔ 2×1.500, fark 0, takasta 0) → gelen stok 4→6, alış (4×1200+2×1500)/6 = **1.300** ✓ → kısmi kapatmada 1 adet açık kaldı ✓. Test: `exchange-settlement.test.ts` 16 test (hatalı girdi sessizce 0'a düşmüyor — para-kritik). **250/250 yeşil.**
+
 ## 2026-08-06
 
 **Patron raporu (Ochi Health 2026.xlsx) — 2 gerçek hata + Haziran/Temmuz dolduruldu:**

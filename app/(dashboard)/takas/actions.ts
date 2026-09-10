@@ -11,6 +11,7 @@ import {
   completeExchange,
   completeExchangesBatch,
   cancelExchange,
+  settleExchanges,
   type CompleteMode,
   type BatchCompleteMode,
   type ReceivedLineInput,
@@ -151,6 +152,29 @@ export async function completeExchangesBatchAction(input: {
     return {
       success: false as const,
       error: err instanceof Error ? err.message : "Toplu tamamlama başarısız",
+    }
+  }
+}
+
+// ---------- Takas Kapatma (maliyet denkliği) ----------
+
+export async function settleExchangesAction(input: {
+  counterpartyId: number
+  given: Array<{ exchangeId: number; settleQuantity: number }>
+  received: Array<{ productId: number; quantity: number; unitPrice: number; note?: string | null }>
+  note?: string | null
+}) {
+  try {
+    await requirePermission("takas", "edit")
+    const result = await settleExchanges(input)
+    revalidatePath("/takas")
+    revalidatePath("/urunler")
+    revalidatePath("/stok-hareketleri")
+    return { success: true as const, data: result }
+  } catch (err) {
+    return {
+      success: false as const,
+      error: err instanceof Error ? err.message : "Kapatma başarısız",
     }
   }
 }

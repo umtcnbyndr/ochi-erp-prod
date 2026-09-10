@@ -178,9 +178,9 @@ model Brand {
 }
 
 model BrandContact {
-  id      Int    @id @default(autoincrement())
+  id      Int     @id @default(autoincrement())
   brandId Int
-  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brand   Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
   name    String
   email   String?
   phone   String?
@@ -512,6 +512,7 @@ model Counterparty {
   stockMovements   StockMovement[]
   entrySessions    EntrySession[]
   purchaseInvoices PurchaseInvoice[]
+  settlements      ExchangeSettlement[]
 }
 
 model Exchange {
@@ -530,6 +531,10 @@ model Exchange {
   // Senaryo C'de farklı ürünle karşılık: verilen kayıt ile gelen kayıt birbirine bağlanır
   linkedExchangeId Int?
 
+  // Toplu kapatma (ExchangeSettlement): kapatılan verilenler VE karşılık gelen ürünler
+  // aynı settlement'a bağlanır → "bu 4 ürün şu 2 ürünle kapandı" geçmişi.
+  settlementId Int?
+
   expirationDate DateTime?
   addedToStock   Boolean        @default(false)
   status         ExchangeStatus @default(PENDING)
@@ -544,11 +549,36 @@ model Exchange {
   linkedExchange Exchange?  @relation("LinkedExchange", fields: [linkedExchangeId], references: [id])
   linkedBy       Exchange[] @relation("LinkedExchange")
 
+  settlement ExchangeSettlement? @relation(fields: [settlementId], references: [id])
+
   @@index([direction])
   @@index([status])
   @@index([counterpartyId])
   @@index([productId])
   @@index([linkedExchangeId])
+  @@index([settlementId])
+}
+
+/// Takas Kapatma — bir cariye verdiklerimizin, gelen ürünlerle MALİYET üzerinden
+/// denkleştirilmesi. (Kullanıcı kararı 2026-09-10: denklik PSF değil ALIŞ MALİYETİ
+/// üzerinden — kaybettiğimiz şey rafiyat değil, malın bize maliyeti.)
+///
+/// Fark ayrı alan değil: givenCost - receivedCost. Tam denk gelmesi beklenmez,
+/// fark nota yazılıp kapatılır (kullanıcı kararı: bakiye takibi YOK, sade kalsın).
+model ExchangeSettlement {
+  id             Int      @id @default(autoincrement())
+  counterpartyId Int
+  /// Kapatılan "verilen" kalemlerin maliyet toplamı (kapatma anında mühürlenir)
+  givenCost      Decimal  @db.Decimal(14, 4)
+  /// Gelen ürünler için elle girilen alış fiyatlarının toplamı
+  receivedCost   Decimal  @db.Decimal(14, 4)
+  note           String?
+  createdAt      DateTime @default(now())
+
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+  lines        Exchange[]
+
+  @@index([counterpartyId])
 }
 
 model EntrySession {

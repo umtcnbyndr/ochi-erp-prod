@@ -21,6 +21,12 @@
  */
 import { prisma } from "@/lib/db"
 import { weightedAveragePrice, purchasePriceChanged } from "@/lib/pricing"
+import { resolveProductUnitCost } from "@/lib/pricing/effective-purchase-price"
+import {
+  calculateSettlement,
+  formatSettlementNote,
+  type SettlementGivenLine,
+} from "@/lib/pricing/exchange-settlement"
 import { recalculateMarketplacePrices } from "./marketplace-price"
 import { recalculateSetsContainingComponents } from "./set-product"
 
@@ -241,9 +247,20 @@ export async function createGivenExchanges(
     for (const line of input.lines) {
       // SELECT ... FOR UPDATE — ürün satırını kilitler (F6).
       const productRows = await tx.$queryRaw<
-        Array<{ id: number; name: string; productType: string; mainStock: number; exchangeStock: number }>
+        Array<{
+          id: number
+          name: string
+          productType: string
+          mainStock: number
+          exchangeStock: number
+          mainPurchasePrice: string | null
+          streetPurchasePrice: string | null
+          vatRate: string | null
+          brandId: number | null
+        }>
       >`
-        SELECT id, name, "productType", "mainStock", "exchangeStock"
+        SELECT id, name, "productType", "mainStock", "exchangeStock",
+               "mainPurchasePrice", "streetPurchasePrice", "vatRate", "brandId"
         FROM "Product" WHERE id = ${line.productId} FOR UPDATE
       `
       const product = productRows[0]
@@ -255,6 +272,30 @@ export async function createGivenExchanges(
       }
 
       const finalNote = line.note ?? input.generalNote ?? null
+
+      // MALİYETİ MÜHÜRLE (2026-09-10): takas kapatması maliyet üzerinden yapılıyor.
+      // Kayıt anında maliyeti yazmazsak, aylar sonra kapatırken "o gün kaça mal
+      // oluyordu" bilgisi kaybolur ve bugünkü fiyatla denkleştirmek zorunda kalırız.
+      // Kullanıcı fiyat girdiyse o geçerli; yoksa sistemin COGS kuralı.
+      const brandForCost = product.brandId
+        ? await tx.brand.findUnique({
+            where: { id: product.brandId },
+            select: {
+              yearEndDiscount1: true,
+              yearEndDiscount2: true,
+              yearEndDiscount3: true,
+              pharmacyMargin: true,
+            },
+          })
+        : null
+      const sealedUnitCost =
+        line.unitPrice ??
+        resolveProductUnitCost({
+          mainPurchasePrice: product.mainPurchasePrice,
+          streetPurchasePrice: product.streetPurchasePrice,
+          vatRate: product.vatRate,
+          brand: brandForCost,
+        })
 
       // Stok 0 altına inmez (uyar-ama-izin-ver); yetersizlik movement note'una işlenir
       const insufficientStock = product.mainStock < line.quantity
@@ -285,7 +326,7 @@ export async function createGivenExchanges(
           counterpartyId: input.counterpartyId,
           productId: line.productId,
           quantity: line.quantity,
-          unitPrice: line.unitPrice ?? null,
+          unitPrice: sealedUnitCost,
           status: "PENDING",
           note: finalNote,
         },
@@ -792,4 +833,306 @@ export async function listExchanges(filters: ListExchangesInput = {}) {
     },
     take: 500,
   })
+}
+
+// ---------- Takas Kapatma (Settlement) ----------
+
+export interface SettleGivenInput {
+  exchangeId: number
+  /** Bu kapatmada kapanacak adet. Kayıttaki adetten azsa kayıt BÖLÜNÜR. */
+  settleQuantity: number
+}
+
+export interface SettleReceivedInput {
+  productId: number
+  quantity: number
+  /** Elle girilen alış fiyatı (KDV dahil) — denklik bunun üzerinden kurulur */
+  unitPrice: number
+  note?: string | null
+}
+
+export interface SettleExchangesInput {
+  counterpartyId: number
+  given: SettleGivenInput[]
+  received: SettleReceivedInput[]
+  note?: string | null
+}
+
+export interface SettleExchangesResult {
+  settlementId: number
+  givenCost: number
+  receivedCost: number
+  difference: number
+  closedExchangeIds: number[]
+  /** Kısmi kapatmada kalan adet için oluşturulan yeni açık kayıtlar */
+  splitExchangeIds: number[]
+  affectedProductIds: number[]
+}
+
+/**
+ * Toplu takas kapatma — MALİYET bazlı denklik.
+ *
+ * Kullanıcı kararı 2026-09-10 (Loreal Ergin senaryosu: 3 verdik, 2 farklı ürün geldi,
+ * maliyetler denk):
+ *  - Denklik PSF değil ALIŞ MALİYETİ üzerinden.
+ *  - Adetlerin eşit olması GEREKMEZ.
+ *  - Fark nota yazılır, kapatılır — bakiye takibi YOK (sade kalsın).
+ *  - Kısmi kapatmada kayıt BÖLÜNÜR: kapanan kadarı COMPLETED olur, kalan için yeni
+ *    PENDING kayıt açılır. Böylece "yarım kapalı kayıt" diye bir durum oluşmaz.
+ *
+ * Stok etkisi:
+ *  - Kapatılan verilenler: exchangeStock -= adet (borç bitti), EXCHANGE_COMPLETE
+ *  - Gelen ürünler: mainStock += adet, ağırlıklı ortalama alış güncellenir, EXCHANGE_IN
+ */
+export async function settleExchanges(
+  input: SettleExchangesInput,
+): Promise<SettleExchangesResult> {
+  if (input.given.length === 0) {
+    throw new Error("En az bir 'verilen' kalem seçilmeli")
+  }
+
+  const affectedProductIds = new Set<number>()
+  const closedExchangeIds: number[] = []
+  const splitExchangeIds: number[] = []
+
+  const result = await prisma.$transaction(async (tx) => {
+    // 1) Verilen kayıtları oku + doğrula
+    const exchanges = await tx.exchange.findMany({
+      where: { id: { in: input.given.map((g) => g.exchangeId) } },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            exchangeStock: true,
+            mainPurchasePrice: true,
+            streetPurchasePrice: true,
+            vatRate: true,
+            brand: {
+              select: {
+                yearEndDiscount1: true,
+                yearEndDiscount2: true,
+                yearEndDiscount3: true,
+                pharmacyMargin: true,
+              },
+            },
+          },
+        },
+      },
+    })
+    const exById = new Map(exchanges.map((e) => [e.id, e]))
+
+    // unitCost burada KESİN sayı (aşağıda doğrulanıyor) — Prisma Decimal alanına
+    // yazılacağı için tipi daraltıyoruz.
+    const givenLines: Array<SettlementGivenLine & { unitCost: number }> = []
+    for (const g of input.given) {
+      const ex = exById.get(g.exchangeId)
+      if (!ex) throw new Error(`Takas kaydı bulunamadı: ${g.exchangeId}`)
+      if (ex.status !== "PENDING") {
+        throw new Error(`Takas ${g.exchangeId} zaten kapatılmış veya iptal edilmiş`)
+      }
+      if (ex.direction !== "GIVEN") {
+        throw new Error(`Takas ${g.exchangeId} bir "verilen" kaydı değil`)
+      }
+      if (ex.counterpartyId !== input.counterpartyId) {
+        throw new Error(`Takas ${g.exchangeId} bu cariye ait değil`)
+      }
+      // Maliyet: kayda mühürlenmiş fiyat > sistemin COGS kuralı (ana > cadde çevrimi)
+      const sealed = ex.unitPrice != null ? Number(ex.unitPrice) : null
+      const unitCost =
+        sealed != null && sealed > 0
+          ? sealed
+          : resolveProductUnitCost({
+              mainPurchasePrice: ex.product.mainPurchasePrice,
+              streetPurchasePrice: ex.product.streetPurchasePrice,
+              vatRate: ex.product.vatRate,
+              brand: ex.product.brand,
+            })
+      if (unitCost == null || !(unitCost > 0)) {
+        throw new Error(
+          `"${ex.product.name}" için alış maliyeti yok — kapatmadan önce ürünün alış fiyatını gir`,
+        )
+      }
+      givenLines.push({
+        exchangeId: ex.id,
+        totalQuantity: ex.quantity,
+        settleQuantity: g.settleQuantity,
+        unitCost,
+      })
+    }
+
+    // 2) Gelen ürünleri doğrula
+    const receivedProducts = await tx.product.findMany({
+      where: { id: { in: input.received.map((r) => r.productId) } },
+      select: {
+        id: true,
+        name: true,
+        productType: true,
+        mainStock: true,
+        mainPurchasePrice: true,
+      },
+    })
+    const prodById = new Map(receivedProducts.map((p) => [p.id, p]))
+    for (const r of input.received) {
+      const p = prodById.get(r.productId)
+      if (!p) throw new Error(`Ürün bulunamadı: ${r.productId}`)
+      if (p.productType === "SET") {
+        throw new Error(`"${p.name}" set ürün — takas karşılığı olamaz`)
+      }
+    }
+
+    // 3) Saf hesap (girdi doğrulaması dahil)
+    const totals = calculateSettlement(
+      givenLines,
+      input.received.map((r) => ({
+        productId: r.productId,
+        quantity: r.quantity,
+        unitPrice: r.unitPrice,
+      })),
+    )
+
+    // 4) Kapatma kaydı
+    const settlement = await tx.exchangeSettlement.create({
+      data: {
+        counterpartyId: input.counterpartyId,
+        givenCost: totals.givenCost,
+        receivedCost: totals.receivedCost,
+        note: formatSettlementNote(totals, input.note),
+      },
+    })
+
+    // 5) Verilenleri kapat (gerekirse böl)
+    for (const line of givenLines) {
+      const ex = exById.get(line.exchangeId)!
+      const kalan = ex.quantity - line.settleQuantity
+
+      if (kalan > 0) {
+        // Kısmi: kalan adet için yeni PENDING kayıt aç, orijinali kapanan adede indir
+        const split = await tx.exchange.create({
+          data: {
+            direction: "GIVEN",
+            counterpartyId: ex.counterpartyId,
+            productId: ex.productId,
+            quantity: kalan,
+            quantityToStock: 0,
+            unitPrice: line.unitCost, // maliyeti mühürle — sonraki kapatma doğru olsun
+            expirationDate: ex.expirationDate,
+            status: "PENDING",
+            note: ex.note,
+          },
+        })
+        splitExchangeIds.push(split.id)
+      }
+
+      await tx.exchange.update({
+        where: { id: ex.id },
+        data: {
+          quantity: line.settleQuantity,
+          unitPrice: line.unitCost, // kapatma anındaki maliyeti mühürle
+          status: "COMPLETED",
+          completedAt: new Date(),
+          settlementId: settlement.id,
+        },
+      })
+      closedExchangeIds.push(ex.id)
+
+      // Borç bitti: exchangeStock düş
+      await tx.product.update({
+        where: { id: ex.productId },
+        data: {
+          exchangeStock: Math.max(0, ex.product.exchangeStock - line.settleQuantity),
+        },
+      })
+      await tx.stockMovement.create({
+        data: {
+          productId: ex.productId,
+          type: "EXCHANGE_COMPLETE",
+          quantity: line.settleQuantity,
+          unitPrice: line.unitCost,
+          counterpartyId: ex.counterpartyId,
+          note: `Takas kapatma #${settlement.id} (maliyet denkliği)`,
+        },
+      })
+      affectedProductIds.add(ex.productId)
+    }
+
+    // 6) Gelenleri stoğa al
+    for (const r of input.received) {
+      const p = prodById.get(r.productId)!
+      const oldStock = p.mainStock
+      const oldPrice = p.mainPurchasePrice ? Number(p.mainPurchasePrice) : 0
+      const newAvgPrice = weightedAveragePrice({
+        oldStock,
+        oldPrice,
+        newStock: r.quantity,
+        newPrice: r.unitPrice,
+      })
+      const priceChanged = purchasePriceChanged(oldPrice, newAvgPrice)
+
+      await tx.product.update({
+        where: { id: p.id },
+        data: {
+          mainStock: oldStock + r.quantity,
+          mainPurchasePrice: newAvgPrice,
+          ...(priceChanged ? { mainPriceUpdatedAt: new Date() } : {}),
+        },
+      })
+      await tx.stockMovement.create({
+        data: {
+          productId: p.id,
+          type: "EXCHANGE_IN",
+          quantity: r.quantity,
+          unitPrice: r.unitPrice,
+          counterpartyId: input.counterpartyId,
+          note: r.note ?? `Takas kapatma #${settlement.id} karşılığı`,
+        },
+      })
+      if (priceChanged && newAvgPrice != null) {
+        await tx.priceHistory.create({
+          data: {
+            productId: p.id,
+            priceType: "MAIN_PURCHASE",
+            oldValue: oldPrice || null,
+            newValue: newAvgPrice,
+            enteredValue: r.unitPrice,
+            reason: `Takas kapatma #${settlement.id}`,
+          },
+        })
+      }
+      await tx.exchange.create({
+        data: {
+          direction: "RECEIVED",
+          counterpartyId: input.counterpartyId,
+          productId: p.id,
+          quantity: r.quantity,
+          quantityToStock: r.quantity,
+          unitPrice: r.unitPrice,
+          addedToStock: true,
+          status: "COMPLETED",
+          completedAt: new Date(),
+          settlementId: settlement.id,
+          note: r.note ?? null,
+        },
+      })
+      affectedProductIds.add(p.id)
+    }
+
+    return { settlementId: settlement.id, totals }
+  })
+
+  const ids = Array.from(affectedProductIds)
+  if (ids.length > 0) {
+    await Promise.all(ids.map((id) => recalculateMarketplacePrices(id)))
+    await recalculateSetsContainingComponents(ids)
+  }
+
+  return {
+    settlementId: result.settlementId,
+    givenCost: result.totals.givenCost,
+    receivedCost: result.totals.receivedCost,
+    difference: result.totals.difference,
+    closedExchangeIds,
+    splitExchangeIds,
+    affectedProductIds: ids,
+  }
 }

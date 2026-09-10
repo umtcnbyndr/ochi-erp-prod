@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useConfirm } from "@/components/common/confirm-provider"
 import {
@@ -55,12 +56,18 @@ import {
 import { Trash2 } from "lucide-react"
 import { formatDateTime } from "@/lib/utils"
 
+import { SettleDialog } from "./settle-dialog"
+
 export interface PendingExchange {
   id: number
   direction: "GIVEN" | "RECEIVED"
   quantity: number
   quantityToStock: number
   unitPrice: number | null
+  /** Kapatmada kullanılacak birim maliyet (mühürlenmiş fiyat ya da bugünkü COGS) */
+  unitCost: number | null
+  /** false ise maliyet bugünkü fiyattan hesaplandı (geçmiş fiyat kaydedilmemiş) */
+  costSealed: boolean
   note: string | null
   createdAt: string
   counterparty: { id: number; name: string; type: "PHARMACY" | "DISTRIBUTOR" | "INDIVIDUAL" }
@@ -128,6 +135,7 @@ function groupExchanges(items: PendingExchange[]): PendingGroup[] {
 
 export function PendingList({ pending, counterparties, isAdmin = false }: Props) {
   const [exporting, startExport] = useTransition()
+  const router = useRouter()
   const [counterpartyFilter, setCounterpartyFilter] = useState<string>("all")
   const [search, setSearch] = useState("")
 
@@ -148,6 +156,17 @@ export function PendingList({ pending, counterparties, isAdmin = false }: Props)
   const receivedPending = filtered.filter((ex) => ex.direction === "RECEIVED")
   const givenPending = filtered.filter((ex) => ex.direction === "GIVEN")
 
+  // Kapatma düğmeleri için: açık "verilen" kaydı olan cariler
+  const givenCounterparties = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; count: number }>()
+    for (const ex of givenPending) {
+      const c = map.get(ex.counterparty.id)
+      if (c) c.count += 1
+      else map.set(ex.counterparty.id, { id: ex.counterparty.id, name: ex.counterparty.name, count: 1 })
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count)
+  }, [givenPending])
+
   // Eski bekleyenler - 7 gün ve üstü
   const overdueCount = filtered.filter((ex) => daysSince(ex.createdAt) >= 7).length
   const receivedOverdue = receivedPending.filter((ex) => daysSince(ex.createdAt) >= 7).length
@@ -160,6 +179,8 @@ export function PendingList({ pending, counterparties, isAdmin = false }: Props)
   // Selection state — exchange id bazlı
   const [selectedReceived, setSelectedReceived] = useState<Set<number>>(new Set())
   const [selectedGiven, setSelectedGiven] = useState<Set<number>>(new Set())
+  // Takas kapatma (maliyet denkliği) — cari bazında açılır
+  const [settleFor, setSettleFor] = useState<{ id: number; name: string } | null>(null)
 
   function toggleReceived(id: number) {
     setSelectedReceived((prev) => {
@@ -449,6 +470,28 @@ export function PendingList({ pending, counterparties, isAdmin = false }: Props)
               onClear={() => setSelectedGiven(new Set())}
             />
           )}
+          {/* Cari bazında toplu kapatma — maliyet denkliği (2026-09-10) */}
+          {givenCounterparties.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-3">
+              <span className="text-xs text-muted-foreground">
+                Maliyet üzerinden kapat:
+              </span>
+              {givenCounterparties.map((c) => (
+                <Button
+                  key={c.id}
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => setSettleFor({ id: c.id, name: c.name })}
+                >
+                  {c.name}
+                  <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">
+                    {c.count}
+                  </Badge>
+                </Button>
+              ))}
+            </div>
+          )}
           {givenGroups.map((group) => (
             <PendingGroupCard
               key={group.key}
@@ -460,6 +503,20 @@ export function PendingList({ pending, counterparties, isAdmin = false }: Props)
           ))}
         </TabsContent>
       </Tabs>
+
+      {settleFor && (
+        <SettleDialog
+          open
+          onOpenChange={(v) => !v && setSettleFor(null)}
+          counterpartyId={settleFor.id}
+          counterpartyName={settleFor.name}
+          givenRows={givenPending.filter((ex) => ex.counterparty.id === settleFor.id)}
+          onDone={() => {
+            setSettleFor(null)
+            router.refresh()
+          }}
+        />
+      )}
     </div>
   )
 }
