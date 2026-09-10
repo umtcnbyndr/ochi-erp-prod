@@ -14,6 +14,7 @@
 import { prisma } from "@/lib/db"
 import { Prisma } from "@prisma/client"
 import { buildManualAllocations, netProceeds } from "@/lib/pricing/budget-allocation"
+import { weightedAveragePrice, purchasePriceChanged } from "@/lib/pricing"
 // NOT: kademeli tarife (resolveEffectiveCommissionSync) bu modülde KULLANILMAZ —
 // bütçe hesabı bilinçli olarak pazaryerinin SABİT oranıyla yapılır (2026-09-10).
 import { recalculateMarketplacePrices } from "./marketplace-price"
@@ -124,14 +125,21 @@ export async function getProductBudgetInfo(productId: number): Promise<{
   productId: number
   name: string
   barcode: string
+  /** SADECE ana depo stoğu — cadde ASLA dahil değil (ayrı cari, kullanıcı kararı) */
+  mainStock: number
   currentCost: number
+  /** Sistemin hesapladığı TY satış fiyatı (elle sabit varsa o, yoksa formül) */
+  systemSalePrice: number | null
   buyboxPrice: number | null
   ownsBuybox: boolean
-  minSalePrice: number | null
-  targetPrice: number | null
-  priceGap: number
-  monthlyUnits: number
-  suggestedAmount: number
+  /** stok × alış — ne kadarlık malı sübvanse ediyoruz */
+  totalValue: number
+  /** Alış bu seviyeye inerse vitrine girebiliriz */
+  targetCost: number | null
+  /** (alış − hedef alış) × ana stok — bu ürün için gereken toplam bütçe */
+  requiredDiscount: number
+  /** Bilgi amaçlı: son 30 gün satışı (hesaba GİRMEZ) */
+  soldLast30: number
   hasGap: boolean
 } | null> {
   const mp = await tyConfig()
@@ -141,8 +149,13 @@ export async function getProductBudgetInfo(productId: number): Promise<{
       id: true,
       name: true,
       primaryBarcode: true,
+      mainStock: true,
       mainPurchasePrice: true,
       brand: { select: { priceUndercutBuffer: true } },
+      marketplacePrices: {
+        where: { marketplace: { name: "Trendyol" } },
+        select: { manualOverride: true, calculatedPrice: true },
+      },
     },
   })
   if (!p) return null
@@ -158,25 +171,32 @@ export async function getProductBudgetInfo(productId: number): Promise<{
     `),
   ])
   const snap = snaps.get(productId) ?? null
-  const monthlyUnits = sold[0]?.sold ?? 0
   const cost = Number(p.mainPurchasePrice ?? 0)
+  const mainStock = p.mainStock
   const buffer = Number(p.brand?.priceUndercutBuffer ?? 0)
+  const tymp = p.marketplacePrices[0]
+  const systemSalePrice = tymp
+    ? Number(tymp.manualOverride ?? tymp.calculatedPrice ?? 0) || null
+    : null
 
-  let minSalePrice: number | null = null
-  let targetPrice: number | null = null
-  let priceGap = 0
-  let suggestedAmount = 0
-
+  // HEDEF ALIŞ: rakip fiyatından geriye doğru çözüm.
+  //   min satış = (alış + kargo + ek) / (1 − oranlar) ≤ (buybox − tampon)
+  //   → alış ≤ (buybox − tampon) × (1 − oranlar) − kargo − ek
+  // Komisyon SABİT (kademeli değil) — bkz. computeFreeItems'teki gerekçe.
+  let targetCost: number | null = null
+  let requiredDiscount = 0
   if (snap && cost > 0) {
-    targetPrice = snap.buyboxPrice - buffer
-    // SABİT komisyon — bkz. computeFreeItems'teki gerekçe.
-    const rate = Number(mp.commissionRate)
-    const factor = 1 - (rate + Number(mp.withholdingTax) + BUDGET_MIN_PROFIT_PCT) / 100
-    if (factor > 0) {
-      minSalePrice = (cost + Number(mp.shippingCost) + Number(mp.extraCost ?? 0)) / factor
-      priceGap = Math.max(0, minSalePrice - targetPrice)
-      // Fiyat açığını maliyet açığına çevir, aylık satışla çarp
-      suggestedAmount = Math.round(priceGap * factor * monthlyUnits * 100) / 100
+    const hedefFiyat = snap.buyboxPrice - buffer
+    const factor =
+      1 - (Number(mp.commissionRate) + Number(mp.withholdingTax) + BUDGET_MIN_PROFIT_PCT) / 100
+    if (factor > 0 && hedefFiyat > 0) {
+      const tc = hedefFiyat * factor - Number(mp.shippingCost) - Number(mp.extraCost ?? 0)
+      targetCost = Math.round(tc * 100) / 100
+      // Gereken bütçe TÜM ANA STOK üzerinden — indirim kalıcı, eldeki her adede işler
+      // (kullanıcı kararı 2026-09-10: aylık satış tahmini DEĞİL, gerçek stok).
+      if (tc < cost) {
+        requiredDiscount = Math.round((cost - tc) * mainStock * 100) / 100
+      }
     }
   }
 
@@ -184,15 +204,16 @@ export async function getProductBudgetInfo(productId: number): Promise<{
     productId,
     name: p.name,
     barcode: p.primaryBarcode,
+    mainStock,
     currentCost: cost,
+    systemSalePrice,
     buyboxPrice: snap?.buyboxPrice ?? null,
     ownsBuybox: snap?.ownsBuybox ?? false,
-    minSalePrice: minSalePrice != null ? Math.round(minSalePrice * 100) / 100 : null,
-    targetPrice: targetPrice != null ? Math.round(targetPrice * 100) / 100 : null,
-    priceGap: Math.round(priceGap * 100) / 100,
-    monthlyUnits,
-    suggestedAmount,
-    hasGap: priceGap > 0 && monthlyUnits > 0,
+    totalValue: Math.round(cost * mainStock * 100) / 100,
+    targetCost,
+    requiredDiscount,
+    soldLast30: sold[0]?.sold ?? 0,
+    hasGap: requiredDiscount > 0,
   }
 }
 
@@ -202,7 +223,8 @@ export interface ApplyBudgetInput {
    * Kullanıcının belirlediği dağıtım — hangi ürüne ne kadar (2026-09-10 kararı:
    * tutarı sistem değil KULLANICI seçer).
    */
-  allocations: Array<{ productId: number; amount: number; units: number }>
+  /** Kullanıcının belirlediği dağıtım — units GÖNDERİLMEZ, ana stok kullanılır */
+  allocations: Array<{ productId: number; amount: number }>
   note?: string | null
 }
 
@@ -239,13 +261,18 @@ export async function applyBudget(input: ApplyBudgetInput): Promise<ApplyBudgetR
     if (!(info.currentCost > 0)) {
       throw new Error(`"${info.name}" için alış fiyatı yok — bütçe dağıtılamaz`)
     }
+    if (info.mainStock <= 0) {
+      throw new Error(
+        `"${info.name}" ana depoda yok — bütçe yalnızca ana stoka uygulanır (cadde ayrı cari)`,
+      )
+    }
     nameById.set(a.productId, info.name)
-    // Adet KULLANICIDAN gelir (tahmini). Son 30 gün satışı sadece varsayılan öneri;
-    // hiç satmamış ürüne de bütçe verilebilir — zaten amaç o.
+    // Birim indirim = tutar ÷ ANA STOK. İndirim kalıcı olduğu için eldeki her adede
+    // işler; aylık satış tahmini kullanılmaz (kullanıcı kararı 2026-09-10).
     return {
       productId: a.productId,
       amount: a.amount,
-      units: a.units,
+      units: info.mainStock,
       currentCost: info.currentCost,
     }
   })
@@ -264,6 +291,66 @@ export async function applyBudget(input: ApplyBudgetInput): Promise<ApplyBudgetR
       },
     })
 
+    // ── 1) BEDELSİZ GELENLERİ STOĞA AL ──
+    // Kullanıcı kararı 2026-09-10: maliyet olarak NET GETİRİSİ yazılır.
+    // Neden: o para zaten diğer ürünlere aktarıldı; bedelsizi 0 maliyetle girersek
+    // aynı kazanç iki kere sayılır (hem bedelsiz satışında hem diğer üründe).
+    // Net değerle girince bedelsiz satışı NÖTR kalır, kazanç yalnızca dağıtılan
+    // ürünlerde görünür. Defterde iki taraf birbirini götürür.
+    for (const it of items) {
+      if (!(it.netPerUnit > 0) || it.quantity <= 0) continue
+      const fp = await tx.product.findUnique({
+        where: { id: it.productId },
+        select: { id: true, mainStock: true, mainPurchasePrice: true },
+      })
+      if (!fp) continue
+      const oldStock = fp.mainStock
+      const oldPrice = fp.mainPurchasePrice ? Number(fp.mainPurchasePrice) : 0
+      const newAvg = weightedAveragePrice({
+        oldStock,
+        oldPrice,
+        newStock: it.quantity,
+        newPrice: it.netPerUnit,
+      })
+      const changed = purchasePriceChanged(oldPrice, newAvg)
+
+      await tx.product.update({
+        where: { id: it.productId },
+        data: {
+          mainStock: oldStock + it.quantity,
+          mainPurchasePrice: newAvg,
+          ...(changed ? { mainPriceUpdatedAt: new Date() } : {}),
+        },
+      })
+      await tx.stockMovement.create({
+        data: {
+          productId: it.productId,
+          type: "IN",
+          quantity: it.quantity,
+          unitPrice: it.netPerUnit,
+          note:
+            `Bütçe partisi #${batch.id} — BEDELSİZ gelen ürün. ` +
+            `Maliyet olarak net getirisi yazıldı (buybox ${it.buyboxPrice ?? "?"} − pazaryeri giderleri = ` +
+            `${it.netPerUnit.toFixed(2)}/adet). Bu tutar bütçeye eklenip diğer ürünlerin alışından düşüldü, ` +
+            `bu yüzden bu ürünün satışı kâr/zarar açısından nötrdür.`,
+        },
+      })
+      if (changed && newAvg != null) {
+        await tx.priceHistory.create({
+          data: {
+            productId: it.productId,
+            priceType: "MAIN_PURCHASE",
+            oldValue: oldPrice || null,
+            newValue: newAvg,
+            enteredValue: it.netPerUnit,
+            reason: `Bütçe partisi #${batch.id} — bedelsiz gelen ${it.quantity} adet, net getirisiyle stoğa alındı`,
+          },
+        })
+      }
+      affected.push(it.productId)
+    }
+
+    // ── 2) BÜTÇEYİ DAĞIT (alış fiyatlarını düşür) ──
     for (const a of result.allocations) {
       const p = await tx.product.findUnique({
         where: { id: a.productId },
@@ -283,7 +370,10 @@ export async function applyBudget(input: ApplyBudgetInput): Promise<ApplyBudgetR
           oldValue: oldCost,
           newValue: a.newCost,
           enteredValue: a.newCost,
-          reason: `Bütçe dağıtımı #${batch.id} (−${a.perUnitDiscount.toFixed(2)}/adet)`,
+          reason:
+            `Bütçe dağıtımı #${batch.id} — BÜTÇE VERİLEN ürün. Alış ${a.perUnitDiscount.toFixed(2)}/adet ` +
+            `düşürüldü (${a.units} adet ana stok için toplam ${a.used.toFixed(2)} ₺). Kaynak: firmadan ` +
+            `bedelsiz gelen ürünlerin net getirisi.`,
         },
       })
       await tx.budgetAllocation.create({

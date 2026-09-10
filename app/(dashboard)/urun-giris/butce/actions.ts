@@ -48,7 +48,7 @@ export async function lookupCandidateAction(barcode: string) {
 
 export async function applyBudgetAction(input: {
   freeItems: FreeItemInput[]
-  allocations: Array<{ productId: number; amount: number; units: number }>
+  allocations: Array<{ productId: number; amount: number }>
   note?: string | null
 }) {
   try {
