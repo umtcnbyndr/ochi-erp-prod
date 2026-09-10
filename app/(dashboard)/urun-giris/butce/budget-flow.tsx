@@ -355,7 +355,9 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
       </Card>
 
       {/* ═══ İKİ TABLO YAN YANA ═══ */}
-      <div className="grid gap-4 xl:grid-cols-2">
+      {/* Sol tablo 5 kolonlu, sağ 8 kolonlu → eşit bölmek sağı eziyordu (kullanıcı:
+          "sağ taraf çok dar"). 40/60 asimetrik bölme. */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,4fr)_minmax(0,6fr)]">
         {/* ── SOL: bedelsiz gelenler ── */}
         <Card>
           <CardContent className="space-y-4 p-5 sm:p-6">
@@ -390,24 +392,23 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[118px]">Barkod</TableHead>
-                      <TableHead>Ürün</TableHead>
-                      <TableHead className="w-[70px] text-center">Adet</TableHead>
-                      <TableHead className="w-[100px] text-right">Buybox</TableHead>
-                      <TableHead className="w-[110px] text-right">Net Getiri</TableHead>
-                      <TableHead className="w-[40px]" />
+                      <TableHead className="min-w-[150px]">Ürün</TableHead>
+                      <TableHead className="w-[64px] text-center">Adet</TableHead>
+                      <TableHead className="w-[98px] text-right">Buybox</TableHead>
+                      <TableHead className="w-[106px] text-right">Net Getiri</TableHead>
+                      <TableHead className="w-[38px]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {free.map((r, i) => (
                       <TableRow key={r.key}>
-                        <TableCell className="font-mono text-[11px] text-muted-foreground">
-                          {r.barcode}
+                        <TableCell className="max-w-[200px] py-2">
+                          <p className="truncate text-sm font-medium leading-tight">{r.name}</p>
+                          <p className="font-mono text-[10px] leading-tight text-muted-foreground">
+                            {r.barcode}
+                          </p>
                         </TableCell>
-                        <TableCell className="max-w-[180px] truncate text-sm font-medium">
-                          {r.name}
-                        </TableCell>
-                        <TableCell className="text-center">
+                        <TableCell className="py-2 text-center">
                           <Input
                             type="number"
                             min={1}
@@ -423,16 +424,23 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
                         <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
                           {r.buyboxPrice ? formatCurrency(r.buyboxPrice) : "—"}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="py-2 text-right">
                           {r.netPerUnit > 0 ? (
-                            <span className="text-sm font-semibold tabular-nums text-emerald-600">
-                              {formatCurrency(r.netPerUnit * r.quantity)}
-                            </span>
+                            <>
+                              <span className="text-sm font-semibold tabular-nums text-emerald-600">
+                                {formatCurrency(r.netPerUnit * r.quantity)}
+                              </span>
+                              {r.quantity > 1 && (
+                                <p className="text-[10px] leading-tight text-muted-foreground">
+                                  {formatCurrency(r.netPerUnit)} × {r.quantity}
+                                </p>
+                              )}
+                            </>
                           ) : (
                             <span className="text-sm text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-2">
                           <Button
                             size="icon"
                             variant="ghost"
@@ -447,6 +455,161 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
                         </TableCell>
                       </TableRow>
                     ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── SAĞ: bütçe verilecekler ── */}
+        <Card className={cn(budget <= 0 && "opacity-60")}>
+          <CardContent className="space-y-4 p-5 sm:p-6">
+            <div className="flex items-center gap-2.5">
+              <StepBadge no={2} state={budget > 0 ? "active" : "locked"} />
+              <div>
+                <p className="font-medium leading-tight">Bütçe Verilecek Ürünler</p>
+                <p className="text-xs text-muted-foreground">
+                  {budget > 0 ? "Tutarı sen belirlersin" : "Önce bütçeyi hesapla"}
+                </p>
+              </div>
+              {targets.length > 0 && <Badge variant="secondary">{targets.length}</Badge>}
+            </div>
+
+            <BarcodeAdder placeholder="Barkod okut / yaz" onAdd={addTarget} busy={busyTarget} />
+
+            {targets.length === 0 ? (
+              <EmptyState
+                icon={Target}
+                title="Hedef ürün ekle"
+                description="Barkodu okut — stok, alış, hedef alış ve gereken indirim gelir. Tutarı istediğin gibi değiştirebilirsin. Bütçe yalnızca ANA DEPO stoğuna uygulanır."
+                className="py-7"
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[190px]">Ürün</TableHead>
+                      <TableHead className="w-[58px] text-center">Stok</TableHead>
+                      <TableHead className="w-[118px] text-right">Alış → Hedef</TableHead>
+                      <TableHead className="w-[112px] text-right">Satış / Buybox</TableHead>
+                      <TableHead className="w-[104px] text-right">Toplam Değer</TableHead>
+                      <TableHead className="w-[126px] text-right">Gereken İndirim</TableHead>
+                      <TableHead className="w-[38px]" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {targets.map((t, i) => {
+                      const girilen = Number(t.amount)
+                      const birim = girilen > 0 ? girilen / t.mainStock : 0
+                      const yeniAlis = t.currentCost - birim
+                      const eksik = t.hasGap && girilen > 0 && girilen < t.requiredDiscount - 0.01
+                      // Satır durumu — kullanıcı hangi ürünün neden ne durumda olduğunu
+                      // satırda görsün (önceden tablo altında genel uyarıydı, ilişkisizdi).
+                      const durum = t.ownsBuybox
+                        ? { renk: "border-l-emerald-500", metin: "Vitrin zaten bizde — gerek yok", cls: "text-emerald-600" }
+                        : t.hasGap
+                          ? { renk: "border-l-amber-500", metin: null, cls: "" }
+                          : t.buyboxPrice == null
+                            ? { renk: "border-l-muted", metin: "Piyasa verisi yok", cls: "text-muted-foreground" }
+                            : { renk: "border-l-sky-500", metin: "Bütçesiz de inebilirsin — fiyatı güncellemen yeterli", cls: "text-sky-600" }
+                      return (
+                        <TableRow key={t.key} className={cn("border-l-[3px]", durum.renk)}>
+                          <TableCell className="max-w-[240px] py-2">
+                            <p className="truncate text-sm font-medium leading-tight">{t.name}</p>
+                            <p className="font-mono text-[10px] leading-tight text-muted-foreground">
+                              {t.barcode}
+                            </p>
+                            {durum.metin && (
+                              <p className={cn("mt-0.5 text-[11px] leading-tight", durum.cls)}>
+                                {durum.metin}
+                              </p>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="text-center text-sm tabular-nums">
+                            {t.mainStock}
+                          </TableCell>
+
+                          {/* Alış → Hedef: kararın merkezi, bir arada okunmalı */}
+                          <TableCell className="py-2 text-right">
+                            <p className="text-sm font-medium tabular-nums leading-tight">
+                              {formatCurrency(t.currentCost)}
+                            </p>
+                            {t.targetCost != null && (
+                              <p
+                                className={cn(
+                                  "text-[11px] tabular-nums leading-tight",
+                                  t.hasGap ? "text-amber-600" : "text-muted-foreground",
+                                )}
+                              >
+                                → {formatCurrency(t.targetCost)}
+                              </p>
+                            )}
+                            {girilen > 0 && (
+                              <p
+                                className={cn(
+                                  "text-[11px] font-medium tabular-nums leading-tight",
+                                  eksik ? "text-amber-600" : "text-emerald-600",
+                                )}
+                              >
+                                yeni {formatCurrency(yeniAlis)}
+                              </p>
+                            )}
+                          </TableCell>
+
+                          {/* Satış / Buybox: piyasadaki konumumuz */}
+                          <TableCell className="py-2 text-right text-sm tabular-nums">
+                            <p className="leading-tight text-muted-foreground">
+                              {t.systemSalePrice ? formatCurrency(t.systemSalePrice) : "—"}
+                            </p>
+                            <p className="text-[11px] leading-tight text-muted-foreground">
+                              {t.buyboxPrice ? formatCurrency(t.buyboxPrice) : "—"}
+                            </p>
+                          </TableCell>
+
+                          <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
+                            {formatCurrency(t.totalValue)}
+                          </TableCell>
+
+                          <TableCell className="py-2">
+                            <Input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={t.amount}
+                              placeholder={t.hasGap ? String(t.requiredDiscount) : "0"}
+                              onChange={(e) =>
+                                setTargets((p) =>
+                                  p.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)),
+                                )
+                              }
+                              className={cn(
+                                "h-8 w-full px-2 text-right tabular-nums",
+                                eksik && "border-amber-400",
+                              )}
+                            />
+                            {t.hasGap && (
+                              <p className="mt-0.5 text-right text-[10px] leading-tight text-muted-foreground">
+                                gereken {formatCurrency(t.requiredDiscount)}
+                              </p>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="py-2">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={() => setTargets((p) => p.filter((_, j) => j !== i))}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -592,17 +755,10 @@ export function BudgetFlow({ gecmis }: { gecmis: Gecmis[] }) {
               <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
                 <span>
-                  Bazı ürünlerde gerekenden <strong className="text-foreground">az</strong> tutar
-                  girildi — alış yeterince düşmeyeceği için vitrine giremezsin. Yine de kâr marjın
-                  iyileşir.
+                  Turuncu kutulu satırlarda gerekenden <strong className="text-foreground">az</strong>{" "}
+                  tutar var — alış yeterince düşmeyeceği için vitrine giremezsin, ama kâr marjın
+                  yine de iyileşir.
                 </span>
-              </p>
-            )}
-            {targets.some((t) => !t.hasGap) && (
-              <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
-                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
-                Açığı olmayan ürünler var — fiyatı zaten rakiple yarışabiliyor, bütçeye ihtiyacı
-                yok. Yine de vermek istersen tutarı elle yaz.
               </p>
             )}
           </CardContent>
